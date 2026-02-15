@@ -272,6 +272,11 @@ function displaySoloLED(context) {
     sendMidiTascam(context, [TASCAM_SOLO_LED, ledState])
 }
 
+function displayCycleLED(context, isEnabled) {    
+    var ledState = isEnabled ? LED_STATES.On : LED_STATES.Off;
+    sendMidiTascam(context, [TASCAM_SOLO_LED, ledState])
+}
+
 function displayNullLED(context) {    
     var isEnabled = var_nullModeOn.getProcessValue(context)
 
@@ -309,6 +314,7 @@ var hostTransportStop = page.mHostAccess.mTransport.mValue.mStop    // unused (i
 var hostTransportStart = page.mHostAccess.mTransport.mValue.mStart
 var hostTransportRecord = page.mHostAccess.mTransport.mValue.mRecord
 var hostMetronomeActive = page.mHostAccess.mTransport.mValue.mMetronomeActive
+var hostCycleActive = page.mHostAccess.mTransport.mValue.mCycleActive
 var hostSelectPrevTrack = page.mHostAccess.mTrackSelection.mAction.mPrevTrack
 var hostSelectNextTrack = page.mHostAccess.mTrackSelection.mAction.mNextTrack
 
@@ -515,7 +521,12 @@ function assignSingleChannelBank(bankNum) {
     assignMuteBank(bankNum)
     assignSoloEnableBank(bankNum)
     assignSoloEnableButton(bankNum)
-} 
+}
+
+function assignSingleMuteBank() {    
+    assignFaderBank(0)
+    assignMuteBank(0)
+}
 
 function assignFaderBank(bankNum) {  
     // if we just want to use the main controls, we won't accidentally alter the mix.. bypass the Fader Bank bindings  
@@ -668,10 +679,23 @@ function makeNullDisplayMetronomeFeedback(button) {
     }
 }
 
+function makeSoloDisplayCycleFeedback(button) {
+    button.mSurfaceValue.mOnProcessValueChange = function (context, newValue) {
+        var isEnabled = newValue > 0                
+        displayCycleLED(context, isEnabled)    
+    }
+}
+
 function assignMetronomeButton()
 {    
     // bind null button to host metronome enable
     page.makeValueBinding(btnNull.mSurfaceValue, hostMetronomeActive).setTypeToggle()
+}
+
+function assignCycleButton()
+{    
+    // bind solo button to host cycle enable
+    page.makeValueBinding(btnSoloEnable.mSurfaceValue, hostCycleActive).setTypeToggle()
 }
 
 function assignMetronomeFader() {
@@ -769,7 +793,7 @@ function assignTransportControls() {
         }        
 }
 
-function assignLocatorControls() {    
+function assignLocatorControlsDualMode() {    
     // bind locator buttons to host marker commands, in regular non-"NULL" mode
     page.makeCommandBinding(btnLocateLeft.mSurfaceValue, "Transport", "Locate Previous Marker").setSubPage(subpage_LocatorsNormalMode)
     page.makeCommandBinding(btnLocateRight.mSurfaceValue, "Transport", "Locate Next Marker").setSubPage(subpage_LocatorsNormalMode)
@@ -779,6 +803,13 @@ function assignLocatorControls() {
     page.makeCommandBinding(btnLocateLeft.mSurfaceValue, "Transport", "Set Left Locator").setSubPage(subpage_LocatorsNullMode)
     page.makeCommandBinding(btnLocateRight.mSurfaceValue, "Transport", "Set Right Locator").setSubPage(subpage_LocatorsNullMode)
     page.makeCommandBinding(btnLocateSet.mSurfaceValue, "Transport", "Cycle").setSubPage(subpage_LocatorsNullMode)
+}
+
+function assignLocatorControlsMarkersOnly() {    
+    // bind locator buttons to host marker commands
+    page.makeCommandBinding(btnLocateLeft.mSurfaceValue, "Transport", "Locate Previous Marker")
+    page.makeCommandBinding(btnLocateRight.mSurfaceValue, "Transport", "Locate Next Marker")
+    page.makeCommandBinding(btnLocateSet.mSurfaceValue, "Transport", "Insert Marker")
 }
 
 function assignRecMasterButton()
@@ -881,7 +912,6 @@ makeTransportDisplayFeedback(var_rewPressed, TRANSPORT_LED_COMMANDS.Rewind)   //
 // wire up bindings from surface controls to host events
 assignTransportControls()
 assignRecMasterButton()
-assignLocatorControls()
 
 if (TRACKING_MODE) {
 	// bind master fader to click level
@@ -898,7 +928,16 @@ if (TRACKING_MODE) {
 	
 	// bind bank buttons to track select
 	assignBankButtonControlsTrackSelect()	
-	assignSingleChannelBank(0)  
+	assignSingleMuteBank() 
+
+	// bind locator controls to markers only
+	assignLocatorControlsMarkersOnly()
+	
+	// bind solo LED to host cycle state
+	makeSoloDisplayCycleFeedback(btnSoloEnable)
+	
+	// bind solo button to host cycle on/off
+	assignCycleButton()
 	
 } else {                                        // NORMAL MODE
 	// bind master fader in normal mode
@@ -913,16 +952,24 @@ if (TRACKING_MODE) {
 	
 	// bind bank buttons to bank select (in groups of BANK_SIZE)
 	assignBankButtonControls()
-	assignChannelBanks()	
+	assignChannelBanks()
+	
+	// bind locator controls to cycle and metronome modes
+	assignLocatorControlsDualMode()	
 }
 
 // this happens when the TASCAM device is first connected
 deviceDriver.mOnActivate = function(context) {        
-    // reset LED's to begin    
-    displaySoloLED(context)
+	if ( ! TRACKING_MODE )
+	{			
+		// init solo LED to off
+		displaySoloLED(context)		
+
+		// init variables for NULL & SOLO mode switching states, should trigger things to light up with Cubase
+		initCustomHostVars(context)  	
+	}
+
+    // reset bank LED's to off
     displayBankLeftLED(context, false)
     displayBankRightLED(context, false)    
-    
-    // init variables for NULL & SOLO mode switching states, should trigger things to light up with Cubase
-    initCustomHostVars(context)   
 }
