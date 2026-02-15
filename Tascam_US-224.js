@@ -12,6 +12,9 @@
 // tracking mode (simplified to mute/unmute tracks 1-4 with color rating system, metronome master fader+button, & cycle button)
 const TRACKING_MODE = true
 
+// nuclear LED MODE (lights all 4 green and red LED's for Play and Record)
+const NUCLEAR_LED_MODE = true
+
 // if we just want to use the main controls & ignore faders.. set to true or false
 const DISABLE_FADERS = true   
 
@@ -220,12 +223,25 @@ function makeTransportDisplayFeedback(buttonSurfaceValue, commandID) {
         var ledState = newValue > 0 ? LED_STATES.On : LED_STATES.Off;
         sendMidiTascam(context, [TASCAM_TRANSPORT_LED, commandID, ledState])
 		
-        // TRACKING_MODE extra: light all 4 channel REC LEDs together- nuclear option
-        if (TRACKING_MODE && commandID === TRANSPORT_LED_COMMANDS.Record) {       
+        if (!TRACKING_MODE) return
+		if (!NUCLEAR_LED_MODE) return
+
+		// BEGIN NUCLEAR MODE //////////////////////////////////////////////
+
+        // PLAY lights all 4 green SELECT LEDs
+        if (commandID === TRANSPORT_LED_COMMANDS.Play) {
+            for (var slot = 0; slot < BANK_SIZE; slot++) {
+                sendMidiTascam(context, [TASCAM_SELECT_LED, slot, ledState])
+            }
+        }		
+		
+        // RECORD lights all 4 red REC LEDs
+        if (commandID === TRANSPORT_LED_COMMANDS.Record) {       
             for (var slot = 0; slot < BANK_SIZE; slot++) {
                 sendMidiTascam(context, [TASCAM_REC_LED, slot, ledState])
             }
-        }		
+        }				
+		// END NUCLEAR MODE ////////////////////////////////////////////////		
     }
 }
 
