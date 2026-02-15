@@ -978,8 +978,11 @@ deviceDriver.mOnActivate = function(context) {
 		
 		// init solo LED to reflect var state
 		displaySoloLED(context)		
+	} else {		
+		// reset all select LED's to off
+	    for (var slot=0; slot<BANK_SIZE; slot++)
+			displaySelectLED(context, slot, 0, false)
 	}
-
     // reset bank LED's to off
     displayBankLeftLED(context, false)
     displayBankRightLED(context, false)    
