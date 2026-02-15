@@ -812,7 +812,7 @@ function assignLocatorControlsMarkersOnly() {
     page.makeCommandBinding(btnLocateSet.mSurfaceValue, "Transport", "Insert Marker")
 }
 
-function assignRecMasterButton()
+function assignRecMasterButtonDualMode()
 {
     // bind rec master button to metronome in "NULL" mode
     page.makeValueBinding(btnRecMaster.mSurfaceValue, hostMetronomeActive)
@@ -822,6 +822,12 @@ function assignRecMasterButton()
     // bind rec master button to enable/bypass mastering effect on main bus, in regular non-"NULL" mode
     page.makeCommandBinding(btnRecMaster.mSurfaceValue, "Mixer", "Bypass: Inserts on Main Mix")
         .setSubPage(subpage_RecMasterNormalMode)
+}
+
+function assignRecMasterButtonBusOnly()
+{
+    // bind rec master button to enable/bypass mastering effect on main bus
+    page.makeCommandBinding(btnRecMaster.mSurfaceValue, "Mixer", "Bypass: Inserts on Main Mix")
 }
 
 function assignJogWheelDualMode() {    
@@ -911,7 +917,6 @@ makeTransportDisplayFeedback(var_rewPressed, TRANSPORT_LED_COMMANDS.Rewind)   //
 
 // wire up bindings from surface controls to host events
 assignTransportControls()
-assignRecMasterButton()
 
 if (TRACKING_MODE) {
 	// bind master fader to click level
@@ -939,6 +944,9 @@ if (TRACKING_MODE) {
 	// bind solo button to host cycle on/off
 	assignCycleButton()
 	
+	// bind rec master button to decicated master bus inserts bypass
+	assignRecMasterButtonBusOnly()	
+		
 } else {                                        // NORMAL MODE
 	// bind master fader in normal mode
     assignMasterFader()
@@ -956,17 +964,20 @@ if (TRACKING_MODE) {
 	
 	// bind locator controls to cycle and metronome modes
 	assignLocatorControlsDualMode()	
+	
+	// bind rec master button to metronome and master bus
+	assignRecMasterButtonDualMode()	
 }
 
 // this happens when the TASCAM device is first connected
 deviceDriver.mOnActivate = function(context) {        
 	if ( ! TRACKING_MODE )
-	{			
-		// init solo LED to off
-		displaySoloLED(context)		
-
+	{		
 		// init variables for NULL & SOLO mode switching states, should trigger things to light up with Cubase
 		initCustomHostVars(context)  	
+		
+		// init solo LED to reflect var state
+		displaySoloLED(context)		
 	}
 
     // reset bank LED's to off
