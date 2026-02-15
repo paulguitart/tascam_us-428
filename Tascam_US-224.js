@@ -219,6 +219,13 @@ function makeTransportDisplayFeedback(buttonSurfaceValue, commandID) {
     buttonSurfaceValue.mOnProcessValueChange = function (context, newValue) {
         var ledState = newValue > 0 ? LED_STATES.On : LED_STATES.Off;
         sendMidiTascam(context, [TASCAM_TRANSPORT_LED, commandID, ledState])
+		
+        // TRACKING_MODE extra: light all 4 channel REC LEDs together- nuclear option
+        if (TRACKING_MODE && commandID === TRANSPORT_LED_COMMANDS.Record) {       
+            for (var slot = 0; slot < BANK_SIZE; slot++) {
+                sendMidiTascam(context, [TASCAM_REC_LED, slot, ledState])
+            }
+        }		
     }
 }
 
@@ -446,7 +453,7 @@ function assignBankButtonControls() {
             var isButtonPressed = newValue > 0
             displayBankRightLED(context, isButtonPressed)
 
-            if (isButtonPressed && selectedBank < MAX_BANK_COUNT) {
+            if (isButtonPressed && selectedBank < (MAX_BANK_COUNT-1)) {
                 selectedBank++
                 triggerBankSwitch(context, activeMapping, selectedBank)
             }
@@ -945,8 +952,8 @@ if (TRACKING_MODE) {
 	assignCycleButton()
 	
 	// bind rec master button to decicated master bus inserts bypass
-	assignRecMasterButtonBusOnly()	
-		
+	assignRecMasterButtonBusOnly()
+			
 } else {                                        // NORMAL MODE
 	// bind master fader in normal mode
     assignMasterFader()
@@ -982,6 +989,10 @@ deviceDriver.mOnActivate = function(context) {
 		// reset all select LED's to off
 	    for (var slot=0; slot<BANK_SIZE; slot++)
 			displaySelectLED(context, slot, 0, false)
+
+		// reset all record LED's to off
+	    for (var slot=0; slot<BANK_SIZE; slot++)
+			displayRecLED(context, slot, 0, false)
 	}
     // reset bank LED's to off
     displayBankLeftLED(context, false)
