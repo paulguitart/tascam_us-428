@@ -1,14 +1,16 @@
 // Tascam US-224             
 // "Control your Cubase DAW like a Portastudio"    
-// v1.0.0
+// v2.0.0
 //
 // By Paul Warner    (special thanks to Minas Chantzides!!)
 //
-// *TODO... banks follow selected track?
 
 //-----------------------------------------------------------------------------
 // 0. CUSTOM SETTINGS - change these CONST values to suit your own needs
 //-----------------------------------------------------------------------------
+
+// tracking mode (simplified to mute/unmute tracks 1-4 with color rating system, metronome master fader+button, & cycle button)
+const TRACKING_MODE = true
 
 // if we just want to use the main controls & ignore faders.. set to true or false
 const DISABLE_FADERS = true   
@@ -277,6 +279,11 @@ function displayNullLED(context) {
     sendMidiTascam(context, [TASCAM_NULL_LED, ledState])
 }
 
+function displayMetronomeNullLED(context, isEnabled) {    
+    var ledState = isEnabled ? LED_STATES.On : LED_STATES.Off;
+    sendMidiTascam(context, [TASCAM_NULL_LED, ledState])
+}
+
 //-----------------------------------------------------------------------------
 // 3. HOST MAPPING - create mapping pages and host bindings
 //-----------------------------------------------------------------------------
@@ -298,10 +305,12 @@ var hostChannelBank = makeNewHostChannelBank()
 // create host accessing objects
 var hostTransportRewind = page.mHostAccess.mTransport.mValue.mRewind
 var hostTransportFastForward = page.mHostAccess.mTransport.mValue.mForward
-var hostTransportStop = page.mHostAccess.mTransport.mValue.mStop    // unused, using a transport command for STOP to avoid playhead jump-back
+var hostTransportStop = page.mHostAccess.mTransport.mValue.mStop    // unused (instead using a transport command for STOP to avoid playhead jump-back)
 var hostTransportStart = page.mHostAccess.mTransport.mValue.mStart
 var hostTransportRecord = page.mHostAccess.mTransport.mValue.mRecord
 var hostMetronomeActive = page.mHostAccess.mTransport.mValue.mMetronomeActive
+var hostSelectPrevTrack = page.mHostAccess.mTrackSelection.mAction.mPrevTrack
+var hostSelectNextTrack = page.mHostAccess.mTrackSelection.mAction.mNextTrack
 
 // create custom vars on host for NULL mode switching
 var var_nullModeOn = deviceDriver.mSurface.makeCustomValueVariable("Null Mode On")
@@ -449,6 +458,22 @@ function triggerBankSwitch(context, activeMapping, bankNum) {
         subpage_MuteBank[bankNum].mAction.mActivate.trigger(activeMapping)                
         subpage_SelectEnableBank[bankNum].mAction.mActivate.trigger(activeMapping) 
     }        
+}
+
+function assignBankButtonControlsTrackSelect() {
+    // bind bank left button to host prev track selection
+    page.makeActionBinding(btnBankLeft.mSurfaceValue, hostSelectPrevTrack).mOnValueChange = 
+        function (context, activeMapping, newValue, diff) {            
+            var isButtonPressed = newValue > 0              
+            displayBankLeftLED(context, isButtonPressed)
+        }
+
+    // bind bank right button to host next track selection
+    page.makeActionBinding(btnBankRight.mSurfaceValue, hostSelectNextTrack).mOnValueChange = 
+        function (context, activeMapping, newValue, diff) {            
+            var isButtonPressed = newValue > 0
+            displayBankRightLED(context, isButtonPressed)
+        }    
 }
 
 function assignSoloEnableButton(bankNum) {
@@ -636,6 +661,37 @@ function assignMasterFader() {
         .setSubPage(subpage_RecMasterNullMode)
 } 
 
+function makeNullDisplayMetronomeFeedback(button) {
+    button.mSurfaceValue.mOnProcessValueChange = function (context, newValue) {
+        var isEnabled = newValue > 0                
+        displayMetronomeNullLED(context, isEnabled)    
+    }
+}
+
+function assignMetronomeButton()
+{    
+    // bind null button to host metronome enable
+    page.makeValueBinding(btnNull.mSurfaceValue, hostMetronomeActive).setTypeToggle()
+}
+
+function assignMetronomeFader() {
+    var clickLevel = page.mHostAccess.mTransport.mValue.mMetronomeClickLevel
+    page.makeValueBinding(fdrMasterFader.mSurfaceValue, clickLevel)
+}
+
+// UNUSED - binds master fader to last clicked group channel
+function assignGroupMasterFader() {
+	// create host Group 1 channel
+    var hostMixerZoneGroups = page.mHostAccess.mMixConsole.makeMixerBankZone().includeGroupChannels()
+    var groupChannel = hostMixerZoneGroups.makeMixerBankChannel()
+
+	// bind master fader to Group 1 channel
+    page.makeValueBinding(
+        fdrMasterFader.mSurfaceValue,
+        groupChannel.mValue.mVolume
+    )    
+}
+
 function assignNullVarsToModes() {
     // bind assign mode variable ON state, (trigger NULL assign mode subpage first)
     page.makeActionBinding(var_nullModeOn, subpage_NullAssignMode.mAction.mActivate).mOnValueChange =
@@ -737,7 +793,7 @@ function assignRecMasterButton()
         .setSubPage(subpage_RecMasterNormalMode)
 }
 
-function assignJogWheelControls() {    
+function assignJogWheelDualMode() {    
     if (SHUTTLE_MODE) {
         // bind custom vars to host jog/shuttle
         page.makeCommandBinding(var_JogShuttleLeft, 'Transport', 'Nudge Cursor Left')
@@ -787,6 +843,30 @@ function assignJogWheelControls() {
         }              
 }
 
+function assignJogWheelZoomOnly() {
+    // bind zoom commands
+    page.makeCommandBinding(var_zoomIn,  'Zoom', 'Zoom In')
+    page.makeCommandBinding(var_zoomOut, 'Zoom', 'Zoom Out')
+
+    knobJogWheel.mSurfaceValue.mOnProcessValueChange =
+        function(context, newValue, diff) {
+
+            var newZoomValue = Math.floor(newValue * 1000)
+
+            if (newZoomValue <= 0) {
+                var_zoomOut.setProcessValue(context, 1000)
+            }
+            if (newZoomValue > lastZoomValue || newZoomValue >= 1000) {
+                var_zoomIn.setProcessValue(context, 1)
+            }
+            if (newZoomValue < lastZoomValue) {
+                var_zoomOut.setProcessValue(context, 1)
+            }
+
+            lastZoomValue = newZoomValue
+        }
+}
+
 //-----------------------------------------------------------------------------
 // 6. MAIN SECTION - call surface/host bindings
 //-----------------------------------------------------------------------------
@@ -802,13 +882,40 @@ makeTransportDisplayFeedback(var_rewPressed, TRANSPORT_LED_COMMANDS.Rewind)   //
 assignTransportControls()
 assignRecMasterButton()
 assignLocatorControls()
-assignBankButtonControls()
-assignChannelBanks()
-assignMasterFader()
-assignNullButtonToVars()
-assignNullVarsToModes()
-assignJogWheelControls() 
- 
+
+if (TRACKING_MODE) {
+	// bind master fader to click level
+    assignMetronomeFader()
+
+	// bind null LED to metronome button
+	makeNullDisplayMetronomeFeedback(btnNull)
+
+	// bind null button to metronome
+	assignMetronomeButton()
+
+	// bind Jog wheel to dedicated zoom control
+	assignJogWheelZoomOnly() 
+	
+	// bind bank buttons to track select
+	assignBankButtonControlsTrackSelect()	
+	assignSingleChannelBank(0)  
+	
+} else {                                        // NORMAL MODE
+	// bind master fader in normal mode
+    assignMasterFader()
+
+	// bind null button and LED's to mode switches
+	assignNullButtonToVars()
+	assignNullVarsToModes()	
+	
+	// bind Jog Wheel to dual shuttle and zoom mode depending on SHUTTLE_MODE
+	assignJogWheelDualMode()	
+	
+	// bind bank buttons to bank select (in groups of BANK_SIZE)
+	assignBankButtonControls()
+	assignChannelBanks()	
+}
+
 // this happens when the TASCAM device is first connected
 deviceDriver.mOnActivate = function(context) {        
     // reset LED's to begin    
