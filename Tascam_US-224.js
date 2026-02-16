@@ -24,6 +24,13 @@ const SHUTTLE_MODE = false
 // 50 banks * 4 = 200 total tracks.. increase if you need more tracks
 const MAX_BANK_COUNT = 50 
 
+// use an exact name and make multiple copies of the script if you want to use more than one US-224 together
+const USE_EXACT_PORT_NAMES = false
+
+// exact port names
+const INPUT_PORT_NAME  = 'US-224 Control'
+const OUTPUT_PORT_NAME = 'US-224 Control'
+
 //-----------------------------------------------------------------------------
 // 1. DRIVER SETUP - create driver object, midi ports and detection information
 //-----------------------------------------------------------------------------
@@ -38,12 +45,16 @@ var deviceDriver = midiremote_api.makeDeviceDriver('Tascam', 'US-224', 'Paul War
 var midiInput = deviceDriver.mPorts.makeMidiInput()
 var midiOutput = deviceDriver.mPorts.makeMidiOutput()
 
-// detect default MIDI port name for TASCAM USB device
-deviceDriver.makeDetectionUnit().detectPortPair(midiInput, midiOutput)
-    .expectInputNameContains('US-224 Control')
-    .expectOutputNameContains('US-224 Control')    
-    // .expectInputNameEquals('US-224 Control')
-    // .expectOutputNameEquals('US-224 Control')    
+// detect default MIDI port for TASCAM USB device
+if (! USE_EXACT_PORT_NAMES) {
+    deviceDriver.makeDetectionUnit().detectPortPair(midiInput, midiOutput)
+        .expectInputNameContains('US-224 Control')
+        .expectOutputNameContains('US-224 Control')  
+} else {
+    deviceDriver.makeDetectionUnit().detectPortPair(midiInput, midiOutput)
+        .expectInputNameEquals(INPUT_PORT_NAME)
+        .expectOutputNameEquals(OUTPUT_PORT_NAME)    
+}
 
 //-----------------------------------------------------------------------------
 // TASCAM DEVICE CONSTANTS - device codes for MIDI messages
@@ -204,7 +215,7 @@ bindButtonToMIDI(btnRecMaster, 41)
 for (var slot=0; slot<4; slot++) {    
     bindButtonToMIDI(btnMutes[slot], 0 + slot)      // cc 0-3
     bindButtonToMIDI(btnRecs[slot], 32 + slot)      // cc 32-35
-    bindFaderToMIDI(fdrFaders[slot], 64 + slot)     // cc 64-71     
+    bindFaderToMIDI(fdrFaders[slot], 64 + slot)     // cc 64-67     
 }
 
 // master fader MIDI binding
@@ -295,7 +306,7 @@ function displaySoloLED(context) {
     sendMidiTascam(context, [TASCAM_SOLO_LED, ledState])
 }
 
-function displayCycleLED(context, isEnabled) {    
+function displayCycleOnSoloLED(context, isEnabled) {    
     var ledState = isEnabled ? LED_STATES.On : LED_STATES.Off;
     sendMidiTascam(context, [TASCAM_SOLO_LED, ledState])
 }
@@ -705,7 +716,7 @@ function makeNullDisplayMetronomeFeedback(button) {
 function makeSoloDisplayCycleFeedback(button) {
     button.mSurfaceValue.mOnProcessValueChange = function (context, newValue) {
         var isEnabled = newValue > 0                
-        displayCycleLED(context, isEnabled)    
+        displayCycleOnSoloLED(context, isEnabled)    
     }
 }
 
