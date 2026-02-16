@@ -9,14 +9,14 @@
 // 0. CUSTOM SETTINGS - change these CONST values to suit your own needs
 //-----------------------------------------------------------------------------
 
-// tracking mode (simplified to mute/unmute tracks 1-4 with color rating system, metronome master fader+button, & cycle button)
+// tracking mode (simplified to mute/unmute tracks 1-4 with metronome on master fader & null button, cycle on solo button)
 const TRACKING_MODE = true
 
-// nuclear LED MODE (lights all 4 green and red LED's for Play and Record)
+// nuclear LED MODE (lights all 4 green and red LED's for Play and Record, in tracking mode only)
 const NUCLEAR_LED_MODE = true
 
 // if we just want to use the main controls & ignore faders.. set to true or false
-const DISABLE_FADERS = true   
+const DISABLE_FADERS = false   
 
 // if we want the normal jog wheel behavior to shuttle playhead instead of track select up/down
 const SHUTTLE_MODE = false
