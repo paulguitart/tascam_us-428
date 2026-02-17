@@ -275,9 +275,9 @@ function makeTransportDisplayFeedback(buttonSurfaceValue, commandID) {
 }
 
 function forceFaderPositionsDump(context, channelStripNum) {
-    // Forces US-428 to send current fader position messages to host 
+    // Forces US-224 to send current fader position messages to host 
     // DUMP_FADER_POS:  F0 4E<UNIT> 12 10<STRIP #> <STATE> F7 
-    // Note: <STRIP #>is a number in the range [0..7], corresponding to the
+    // Note: <STRIP #>is a number in the range [0..3], corresponding to the
     // channel-strip #, and <STATE>is either 0x00 (LED OFF) or 0x7F (LED ON)
     sendMidiTascam(context, [0x10, channelStripNum])
 }
