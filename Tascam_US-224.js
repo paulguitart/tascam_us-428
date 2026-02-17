@@ -12,7 +12,7 @@
 // tracking mode (simplified to mute/unmute tracks 1-4 with metronome on master fader & null button, cycle on solo button)
 const TRACKING_MODE = true
 
-// nuclear LED MODE (lights all 4 green and red LED's for Play and Record, in tracking mode only)
+// nuclear LED MODE (lights all 4 red LED's for Record, in tracking mode only)
 const NUCLEAR_LED_MODE = true
 
 // if we just want to use the main controls & ignore faders.. set to true or false
@@ -136,19 +136,28 @@ btnMutes[1] = deviceDriver.mSurface.makeButton(2.0, 12.0, 2.0, 1.0)
 btnMutes[2] = deviceDriver.mSurface.makeButton(4.0, 12.0, 2.0, 1.0)
 btnMutes[3] = deviceDriver.mSurface.makeButton(6.0, 12.0, 2.0, 1.0)
 
-// record enable buttons
-var btnRecs = []
-btnRecs[0] = deviceDriver.mSurface.makeButton(0.0, 14.0, 2.0, 1.0)
-btnRecs[1] = deviceDriver.mSurface.makeButton(2.0, 14.0, 2.0, 1.0)
-btnRecs[2] = deviceDriver.mSurface.makeButton(4.0, 14.0, 2.0, 1.0)
-btnRecs[3] = deviceDriver.mSurface.makeButton(6.0, 14.0, 2.0, 1.0)
+if (! TRACKING_MODE) {
+	// record enable buttons
+	var btnRecs = []
+	btnRecs[0] = deviceDriver.mSurface.makeButton(0.0, 14.0, 2.0, 1.0)
+	btnRecs[1] = deviceDriver.mSurface.makeButton(2.0, 14.0, 2.0, 1.0)
+	btnRecs[2] = deviceDriver.mSurface.makeButton(4.0, 14.0, 2.0, 1.0)
+	btnRecs[3] = deviceDriver.mSurface.makeButton(6.0, 14.0, 2.0, 1.0)
 
-// select buttons (dummy buttons to hold select LED state)
-var btnSelectsDummy = []
-btnSelectsDummy[0] = deviceDriver.mSurface.makeButton(0.0, 18.0, 2.0, 1.0)
-btnSelectsDummy[1] = deviceDriver.mSurface.makeButton(2.0, 18.0, 2.0, 1.0)
-btnSelectsDummy[2] = deviceDriver.mSurface.makeButton(4.0, 18.0, 2.0, 1.0)
-btnSelectsDummy[3] = deviceDriver.mSurface.makeButton(6.0, 18.0, 2.0, 1.0)
+	// select buttons (dummy buttons to hold track select LED state only)
+	var btnSelectsDummy = []
+	btnSelectsDummy[0] = deviceDriver.mSurface.makeButton(0.0, 18.0, 2.0, 1.0)
+	btnSelectsDummy[1] = deviceDriver.mSurface.makeButton(2.0, 18.0, 2.0, 1.0)
+	btnSelectsDummy[2] = deviceDriver.mSurface.makeButton(4.0, 18.0, 2.0, 1.0)
+	btnSelectsDummy[3] = deviceDriver.mSurface.makeButton(6.0, 18.0, 2.0, 1.0)
+} else {
+	// select buttons (actual buttons for track solo)
+	var btnSelects = []
+	btnSelects[0] = deviceDriver.mSurface.makeButton(0.0, 18.0, 2.0, 1.0)
+	btnSelects[1] = deviceDriver.mSurface.makeButton(2.0, 18.0, 2.0, 1.0)
+	btnSelects[2] = deviceDriver.mSurface.makeButton(4.0, 18.0, 2.0, 1.0)
+	btnSelects[3] = deviceDriver.mSurface.makeButton(6.0, 18.0, 2.0, 1.0)
+}
 
 // channel faders
 var fdrFaders = []
@@ -212,10 +221,17 @@ bindButtonToMIDI(btnSoloEnable, 42)
 bindButtonToMIDI(btnRecMaster, 41)
 
 // channel slot buttons MIDI bindings
-for (var slot=0; slot<4; slot++) {    
+for (var slot=0; slot<4; slot++) {
     bindButtonToMIDI(btnMutes[slot], 0 + slot)      // cc 0-3
-    bindButtonToMIDI(btnRecs[slot], 32 + slot)      // cc 32-35
-    bindFaderToMIDI(fdrFaders[slot], 64 + slot)     // cc 64-67     
+    bindFaderToMIDI(fdrFaders[slot], 64 + slot)     // cc 64-67
+
+    if (!TRACKING_MODE) {
+        // NORMAL MODE: SELECT presses act as "REC enable" buttons
+        bindButtonToMIDI(btnRecs[slot], 32 + slot)  // cc 32-35
+    } else {
+        // TRACKING MODE: SELECT presses are real "SELECT" buttons (solo)
+        bindButtonToMIDI(btnSelects[slot], 32 + slot) // cc 32-35
+    }
 }
 
 // master fader MIDI binding
@@ -240,11 +256,11 @@ function makeTransportDisplayFeedback(buttonSurfaceValue, commandID) {
 		// BEGIN NUCLEAR MODE //////////////////////////////////////////////
 
         // PLAY lights all 4 green SELECT LEDs
-        if (commandID === TRANSPORT_LED_COMMANDS.Play) {
-            for (var slot = 0; slot < BANK_SIZE; slot++) {
-                sendMidiTascam(context, [TASCAM_SELECT_LED, slot, ledState])
-            }
-        }		
+        // if (commandID === TRANSPORT_LED_COMMANDS.Play) {
+        //    for (var slot = 0; slot < BANK_SIZE; slot++) {
+        //        sendMidiTascam(context, [TASCAM_SELECT_LED, slot, ledState])
+        //    }
+        //}		
 		
         // RECORD lights all 4 red REC LEDs
         if (commandID === TRANSPORT_LED_COMMANDS.Record) {       
@@ -538,6 +554,22 @@ function assignSoloEnableButton(bankNum) {
                     subpage_RecEnableBank[bankNum].mAction.mActivate.trigger(activeMapping)                                        
                 }
             }.bind({bankNum})
+}
+
+function assignSingleSoloBank() {
+    for (var slot=0; slot<BANK_SIZE; slot++) {
+        var hostChannel = getHostChannel(0, slot)
+
+        // SELECT toggles SOLO
+        page.makeValueBinding(btnSelects[slot].mSurfaceValue, hostChannel.mValue.mSolo)
+            .setTypeToggle()
+
+        // SOLO state drives SELECT LED
+        hostChannel.mValue.mSolo.mOnProcessValueChange =
+            function(context, activeMapping, newValue) {
+                displaySelectLED(context, this.slot, 0, newValue > 0)
+            }.bind({ slot: slot })
+    }
 }
 
 function assignChannelBanks() {
@@ -968,6 +1000,7 @@ if (TRACKING_MODE) {
 	// bind bank buttons to track select
 	assignBankButtonControlsTrackSelect()	
 	assignSingleMuteBank() 
+	assignSingleSoloBank()
 
 	// bind locator controls to markers only
 	assignLocatorControlsMarkersOnly()
@@ -1013,10 +1046,6 @@ deviceDriver.mOnActivate = function(context) {
 		// init solo LED to reflect var state
 		displaySoloLED(context)		
 	} else {		
-		// reset all select LED's to off
-	    for (var slot=0; slot<BANK_SIZE; slot++)
-			displaySelectLED(context, slot, 0, false)
-
 		// reset all record LED's to off
 	    for (var slot=0; slot<BANK_SIZE; slot++)
 			displayRecLED(context, slot, 0, false)
