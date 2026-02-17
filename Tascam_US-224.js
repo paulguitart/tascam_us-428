@@ -199,14 +199,14 @@ var btnBankLeft = deviceDriver.mSurface.makeButton(6.0, 0.0, 2.0, 1.0)
 var btnBankRight = deviceDriver.mSurface.makeButton(8.0, 0.0, 2.0, 1.0)
 
 // null/metronome
-var btnNull = deviceDriver.mSurface.makeButton(14.0, 2.0, 2.0, 1.0)
+var btnNull = deviceDriver.mSurface.makeButton(2.0, 8.0, 2.0, 1.0)
 
 // jogwheel
-var knobJogWheel = deviceDriver.mSurface.makeKnob(12.0, 4.0, 4.0, 4.0)
+var knobJogWheel = deviceDriver.mSurface.makeKnob(4.0, 6.0, 4.0, 4.0)
 
 // master slot buttons
-var btnSoloEnable = deviceDriver.mSurface.makeButton(17.0, 12.0, 2.0, 1.0)
-var btnRecMaster = deviceDriver.mSurface.makeButton(17.0, 14.0, 2.0, 1.0)
+var btnSoloEnable = deviceDriver.mSurface.makeButton(9.0, 12.0, 2.0, 1.0)
+var btnRecMaster = deviceDriver.mSurface.makeButton(9.0, 14.0, 2.0, 1.0)
 
 // mute buttons
 var btnMutes = []
@@ -246,7 +246,7 @@ fdrFaders[2] = deviceDriver.mSurface.makeFader(4.0, 16.0, 2.0, 3.0)
 fdrFaders[3] = deviceDriver.mSurface.makeFader(6.0, 16.0, 2.0, 3.0)
 
 // master fader
-var fdrMasterFader = deviceDriver.mSurface.makeFader(17.0, 16.0, 2.0, 3.0)
+var fdrMasterFader = deviceDriver.mSurface.makeFader(9.0, 16.0, 2.0, 3.0)
 
 // bind any button to MIDI
 function bindButtonToMIDI(button, midi_CC) {
@@ -455,15 +455,15 @@ var hostMixerBankZone = page.mHostAccess.mMixConsole.makeMixerBankZone()
 var hostChannelBank = makeNewHostChannelBank()
 
 // create host accessing objects
-var hostTransportRewind = page.mHostAccess.mTransport.mValue.mRewind
-var hostTransportFastForward = page.mHostAccess.mTransport.mValue.mForward
-var hostTransportStop = page.mHostAccess.mTransport.mValue.mStop    // unused (instead using a transport command for STOP to avoid playhead jump-back)
-var hostTransportStart = page.mHostAccess.mTransport.mValue.mStart
-var hostTransportRecord = page.mHostAccess.mTransport.mValue.mRecord
-var hostMetronomeActive = page.mHostAccess.mTransport.mValue.mMetronomeActive
-var hostCycleActive = page.mHostAccess.mTransport.mValue.mCycleActive
-var hostSelectPrevTrack = page.mHostAccess.mTrackSelection.mAction.mPrevTrack
-var hostSelectNextTrack = page.mHostAccess.mTrackSelection.mAction.mNextTrack
+var hostTransport_Rewind = page.mHostAccess.mTransport.mValue.mRewind
+var hostTransport_FastForward = page.mHostAccess.mTransport.mValue.mForward
+var hostTransport_Stop = page.mHostAccess.mTransport.mValue.mStop    // unused (instead using a transport command for STOP to avoid playhead jump-back)
+var hostTransport_Start = page.mHostAccess.mTransport.mValue.mStart
+var hostTransport_Record = page.mHostAccess.mTransport.mValue.mRecord
+var host_MetronomeActive = page.mHostAccess.mTransport.mValue.mMetronomeActive
+var host_CycleActive = page.mHostAccess.mTransport.mValue.mCycleActive
+var host_SelectPrevTrack = page.mHostAccess.mTrackSelection.mAction.mPrevTrack
+var host_SelectNextTrack = page.mHostAccess.mTrackSelection.mAction.mNextTrack
 
 // create custom vars on host for NULL mode switching
 var var_nullModeOn = deviceDriver.mSurface.makeCustomValueVariable("Null Mode On")
@@ -588,7 +588,7 @@ function initCustomHostVars(context) {
 // 5. ASSIGN FUNCTIONS - create host bindings
 //-----------------------------------------------------------------------------
 
-function assignBankButtonControls() {
+function assignBankButtonControls_BankSelect() {
     // bind bank left button to prev bank selection    
     page.makeValueBinding(btnBankLeft.mSurfaceValue, var_bankLeftPressed).mOnValueChange = 
         function (context, activeMapping, newValue, diff) {            
@@ -627,16 +627,16 @@ function triggerBankSwitch(context, activeMapping, bankNum) {
     }        
 }
 
-function assignBankButtonControlsTrackSelect() {
+function assignBankButtonControls_TrackSelect() {
     // bind bank left button to host prev track selection
-    page.makeActionBinding(btnBankLeft.mSurfaceValue, hostSelectPrevTrack).mOnValueChange = 
+    page.makeActionBinding(btnBankLeft.mSurfaceValue, host_SelectPrevTrack).mOnValueChange = 
         function (context, activeMapping, newValue, diff) {            
             var isButtonPressed = newValue > 0              
             displayBankLeftLED(context, isButtonPressed)
         }
 
     // bind bank right button to host next track selection
-    page.makeActionBinding(btnBankRight.mSurfaceValue, hostSelectNextTrack).mOnValueChange = 
+    page.makeActionBinding(btnBankRight.mSurfaceValue, host_SelectNextTrack).mOnValueChange = 
         function (context, activeMapping, newValue, diff) {            
             var isButtonPressed = newValue > 0
             displayBankRightLED(context, isButtonPressed)
@@ -667,7 +667,7 @@ function assignSoloEnableButton(bankNum) {
             }.bind({bankNum})
 }
 
-function assignSingleSoloBank() {
+function assignSoloBank_Single() {
     for (var slot=0; slot<BANK_SIZE; slot++) {
         var hostChannel = getHostChannel(0, slot)
 
@@ -683,14 +683,14 @@ function assignSingleSoloBank() {
     }
 }
 
-function assignChannelBanks() {
+function assignChannelBanks_Multi() {
     // assign MAX_BANK_COUNT banks of BANK_SIZE faders
     for (var bankNum = 0; bankNum < MAX_BANK_COUNT; bankNum++) {
-        assignSingleChannelBank(bankNum)
+        assignChannelBank(bankNum)
     }    
 }
 
-function assignSingleChannelBank(bankNum) {    
+function assignChannelBank(bankNum) {    
     assignFaderBank(bankNum)
     assignSelectedLEDBank(bankNum)
     assignRecEnableBank(bankNum)
@@ -700,7 +700,7 @@ function assignSingleChannelBank(bankNum) {
     assignSoloEnableButton(bankNum)
 }
 
-function assignSingleMuteBank() {    
+function assignMuteBank_Single() {    
     assignFaderBank(0)
     assignMuteBank(0)
 }
@@ -825,7 +825,7 @@ function getHostChannel(bankNum, slot) {
     return hostChannelBank[bankNum * BANK_SIZE + slot]
 }
 
-function assignMasterFader() {
+function assignMasterFader_DualMode() {
     // if we just want to use the main controls, we won't accidentally alter the mix.. bypass the master fader bindings
     if (DISABLE_FADERS) return  
 
@@ -880,19 +880,19 @@ function showStopHoldProgress(context, now) {
     }
 }
 
-function assignMetronomeButton()
+function assignNullButton_Metronome()
 {    
     // bind null button to host metronome enable
-    page.makeValueBinding(btnNull.mSurfaceValue, hostMetronomeActive).setTypeToggle()
+    page.makeValueBinding(btnNull.mSurfaceValue, host_MetronomeActive).setTypeToggle()
 }
 
-function assignCycleButton()
+function assignSoloButton_Cycle()
 {    
     // bind solo button to host cycle enable
-    page.makeValueBinding(btnSoloEnable.mSurfaceValue, hostCycleActive).setTypeToggle()
+    page.makeValueBinding(btnSoloEnable.mSurfaceValue, host_CycleActive).setTypeToggle()
 }
 
-function assignMetronomeFader() {
+function assignMasterFader_Metronome() {
     var clickLevel = page.mHostAccess.mTransport.mValue.mMetronomeClickLevel
     page.makeValueBinding(fdrMasterFader.mSurfaceValue, clickLevel)
 }
@@ -910,7 +910,7 @@ function assignGroupMasterFader() {
     )    
 }
 
-function assignNullVarsToModes() {
+function assignNullVars_DualMode() {
     // bind assign mode variable ON state, (trigger NULL assign mode subpage first)
     page.makeActionBinding(var_nullModeOn, subpage_NullAssignMode.mAction.mActivate).mOnValueChange =
         function(context, activeMapping, newValue, diff) {
@@ -954,7 +954,7 @@ function toggleSoloModeVars(context) {
     displaySoloLED(context)
 }
 
-function assignNullButtonToVars() {
+function assignNullButton_Vars() {
     btnNull.mSurfaceValue.mOnProcessValueChange = function(context, newValue, diff) {        
         if(newValue > 0) {
             // button pressed (ignore button release)
@@ -968,10 +968,10 @@ function assignTransportControls() {
     // https://steinbergmedia.github.io/midiremote_api_doc/examples/commandbindings
 
     // bind buttons to host transport events
-    page.makeValueBinding(btnPlay.mSurfaceValue, hostTransportStart).setTypeToggle()
-    page.makeValueBinding(btnRecord.mSurfaceValue, hostTransportRecord).setTypeToggle()     
-    page.makeValueBinding(btnFastForward.mSurfaceValue, hostTransportFastForward)    
-    page.makeValueBinding(var_rewPressed, hostTransportRewind)
+    page.makeValueBinding(btnPlay.mSurfaceValue, hostTransport_Start).setTypeToggle()
+    page.makeValueBinding(btnRecord.mSurfaceValue, hostTransport_Record).setTypeToggle()     
+    page.makeValueBinding(btnFastForward.mSurfaceValue, hostTransport_FastForward)    
+    page.makeValueBinding(var_rewPressed, hostTransport_Rewind)
     page.makeCommandBinding(var_RTZPressed, "Transport", "Return to Zero")    
 	
 	// use transport command, because mStop causes playhead to jump back
@@ -995,7 +995,7 @@ function assignTransportControls() {
         }        
 }
 
-function assignLocatorControlsDualMode() {    
+function assignLocatorControls_DualMode() {    
     // bind locator buttons to host marker commands, in regular non-"NULL" mode
     page.makeCommandBinding(btnLocateLeft.mSurfaceValue, "Transport", "Locate Previous Marker").setSubPage(subpage_LocatorsNormalMode)
     page.makeCommandBinding(btnLocateRight.mSurfaceValue, "Transport", "Locate Next Marker").setSubPage(subpage_LocatorsNormalMode)
@@ -1007,7 +1007,7 @@ function assignLocatorControlsDualMode() {
     page.makeCommandBinding(btnLocateSet.mSurfaceValue, "Transport", "Cycle").setSubPage(subpage_LocatorsNullMode)
 }
 
-function assignLocatorControlsTrackingMode() {    
+function assignLocatorControls_TrackingMode() {    
     // bind locator buttons to host marker commands
     page.makeCommandBinding(btnLocateSet.mSurfaceValue, "Transport", "Insert Marker")
 	page.makeCommandBinding(var_locLeftPressed,  "Transport", "Locate Previous Marker")
@@ -1043,7 +1043,7 @@ function assignLocatorControlsTrackingMode() {
 function assignRecMasterButtonDualMode()
 {
     // bind rec master button to metronome in "NULL" mode
-    page.makeValueBinding(btnRecMaster.mSurfaceValue, hostMetronomeActive)
+    page.makeValueBinding(btnRecMaster.mSurfaceValue, host_MetronomeActive)
         .setTypeToggle()
         .setSubPage(subpage_RecMasterNullMode)
 
@@ -1064,7 +1064,7 @@ function assignSaveCommand()
 	page.makeCommandBinding(var_savePressed, "File", "Save")
 }
 
-function assignJogWheelDualMode() {    
+function assignJogWheel_DualMode() {    
     if (SHUTTLE_MODE) {
         // bind custom vars to host jog/shuttle
         page.makeCommandBinding(var_JogShuttleLeft, 'Transport', 'Nudge Cursor Left')
@@ -1114,7 +1114,7 @@ function assignJogWheelDualMode() {
         }              
 }
 
-function assignJogWheelZoomOnly() {
+function assignJogWheel_ZoomOnly() {
     // bind zoom commands
     page.makeCommandBinding(var_zoomIn,  'Zoom', 'Zoom In')
     page.makeCommandBinding(var_zoomOut, 'Zoom', 'Zoom Out')
@@ -1156,7 +1156,7 @@ hostTimeDisplay.mOnChangeTempoBPM = function (activeDevice, activeMapping, tempo
 }
 
 // record listener to handle rec LED's in nuclear mode
-hostTransportRecord.mOnProcessValueChange = function (context, activeMapping, value) {
+hostTransport_Record.mOnProcessValueChange = function (context, activeMapping, value) {
     nuclear_isRecording = value > 0
 
     // when recording stops, reset rec LED's to off
@@ -1297,54 +1297,54 @@ if (ENABLE_STOP_HOLD_SAVE) {
 
 if (TRACKING_MODE) {
 	// bind master fader to click level
-    assignMetronomeFader()
+    assignMasterFader_Metronome()
 
 	// bind null LED to metronome button
 	makeNullDisplayMetronomeFeedback(btnNull)
 
 	// bind null button to metronome
-	assignMetronomeButton()
+	assignNullButton_Metronome()
 
 	// bind Jog wheel to dedicated zoom control
-	assignJogWheelZoomOnly() 
+	assignJogWheel_ZoomOnly() 
 	
 	// bind bank buttons to track select
-	assignBankButtonControlsTrackSelect()	
-	assignSingleMuteBank() 
-	assignSingleSoloBank()
+	assignBankButtonControls_TrackSelect()	
+	assignMuteBank_Single() 
+	assignSoloBank_Single()
 
 	// bind locator controls to markers and undo/redo "STOP" chords
-	assignLocatorControlsTrackingMode()
+	assignLocatorControls_TrackingMode()
 	
 	// bind solo LED to host cycle state
 	makeSoloDisplayCycleFeedback(btnSoloEnable)
 	
 	// bind solo button to host cycle on/off
-	assignCycleButton()
+	assignSoloButton_Cycle()
 	
 	// bind rec master button to decicated master bus inserts bypass
 	assignRecMasterButtonBusOnly()
 			
 } else {                                        // NORMAL MODE
 	// bind master fader in normal mode
-    assignMasterFader()
+    assignMasterFader_DualMode()
 
 	// bind null button and LED's to mode switches
-	assignNullButtonToVars()
-	assignNullVarsToModes()	
+	assignNullButton_Vars()
+	assignNullVars_DualMode()	
 	
 	// bind Jog Wheel to dual shuttle and zoom mode depending on SHUTTLE_MODE
-	assignJogWheelDualMode()	
+	assignJogWheel_DualMode()	
 	
 	// bind bank buttons to bank select (in groups of BANK_SIZE)
-	assignBankButtonControls()
-	assignChannelBanks()
+	assignBankButtonControls_BankSelect()
+	assignChannelBanks_Multi()
 	
 	// bind locator controls to cycle and metronome modes
-	assignLocatorControlsDualMode()	
+	assignLocatorControls_DualMode()	
 	
 	// bind rec master button to metronome and master bus
-	assignRecMasterButtonDualMode()	
+	assignRecMasterButton_DualMode()	
 }
 
 // this happens when the TASCAM device is first connected
