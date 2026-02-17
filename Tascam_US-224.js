@@ -100,11 +100,14 @@ const MASTER_FADER_SCALE = 0.75                          // 0.75 sets the max ra
 var selectedBank = 0
 
 // nuclear LED tempo mode vars
-var nuclear_tempoBpm = 120
-var nuclear_msPerBeat = 500
-var nuclear_lastBlinkMs = 0
+const NUCLEAR_BLINK_RESET = -1
+const DEFAULT_BLINK_MS = 500
+const MINIMUM_BLINK_MS = 150
+var nuclear_tempoBpm = 60000 / DEFAULT_BLINK_MS
+var nuclear_msPerBeat = DEFAULT_BLINK_MS
 var nuclear_isRecording = false
 var nuclear_blinkState = false
+var nuclear_lastBlinkMs = NUCLEAR_BLINK_RESET
 
 //-----------------------------------------------------------------------------
 // 2. SURFACE LAYOUT - create control elements and midi bindings
@@ -973,11 +976,21 @@ function assignJogWheelZoomOnly() {
 
 // host tempo listener for nuclear LED mode
 hostTimeDisplay.mOnChangeTempoBPM = function (activeDevice, activeMapping, tempoBPM) {
-    if (tempoBPM > 0) {
-        nuclear_tempoBpm = tempoBPM
-        nuclear_msPerBeat = 60000 / tempoBPM
-        // console.log('Tempo BPM: ' + tempoBPM + ' | msPerBeat: ' + nuclear_msPerBeat)
+    // replace garbage tempo values
+    if (!isFinite(tempoBPM) || tempoBPM <= 0) {
+        console.log("WARNING: Defaulting invalid tempo: " + tempoBPM)
+		tempoBPM = 60000 / DEFAULT_BLINK_MS       
     }
+    
+	nuclear_tempoBpm = tempoBPM
+	
+	// compute milliseconds
+	nuclear_msPerBeat = 60000 / tempoBPM
+	
+	// sanity guardrail (never faster than ~400 BPM blinking)
+	nuclear_msPerBeat = Math.max(MINIMUM_BLINK_MS, nuclear_msPerBeat)  
+	
+	// console.log('Tempo BPM: ' + tempoBPM + ' | msPerBeat: ' + nuclear_msPerBeat)    
 }
 
 // record listener to handle rec LED's in nuclear mode
@@ -987,29 +1000,42 @@ hostTransportRecord.mOnProcessValueChange = function (context, activeMapping, va
     // when recording stops, reset rec LED's to off
     if (!nuclear_isRecording) {
         nuclear_blinkState = false
+        nuclear_lastBlinkMs = NUCLEAR_BLINK_RESET
         for (var slot = 0; slot < BANK_SIZE; slot++) {
             sendMidiTascam(context, [TASCAM_REC_LED, slot, LED_STATES.Off])
         }
-    } else {
-        nuclear_lastBlinkMs = 0 // force an immediate blink
+        return
     }
+
+    // arm: force immediate blink on next idle pass
+    nuclear_lastBlinkMs = NUCLEAR_BLINK_RESET
+
+	// repair invalid blink interval, don't silently kill blinking (shouldn't ever happen)
+	if (!isFinite(nuclear_msPerBeat) || nuclear_msPerBeat < MINIMUM_BLINK_MS)
+		nuclear_msPerBeat = DEFAULT_BLINK_MS		
 }
 
-// nuclear mode idle timer to blink red LED's during recording
+// nuclear mode idle timer to blink red LED's during recording (measured this at about 10 calls per second FYI)
 if (TRACKING_MODE && NUCLEAR_LED_MODE) {
     deviceDriver.mOnIdle = function (context, activeMapping) {
         if (!nuclear_isRecording) return
 
         var now = Date.now()
+
         // blink on quarter notes (or switch to /2 for eighths, *2 for half notes)
-        if (nuclear_lastBlinkMs && (now - nuclear_lastBlinkMs) < nuclear_msPerBeat) return
+        if (
+            nuclear_lastBlinkMs !== NUCLEAR_BLINK_RESET &&
+            (now - nuclear_lastBlinkMs) < nuclear_msPerBeat
+        ) return
+		
         nuclear_lastBlinkMs = now
-
         nuclear_blinkState = !nuclear_blinkState
-        var led = nuclear_blinkState ? LED_STATES.On : LED_STATES.Off
+		
+        var ledState = nuclear_blinkState ? LED_STATES.On : LED_STATES.Off
 
+		// fire all 4 rec LED's
         for (var slot = 0; slot < BANK_SIZE; slot++) {
-            sendMidiTascam(context, [TASCAM_REC_LED, slot, led])
+            sendMidiTascam(context, [TASCAM_REC_LED, slot, ledState])
         }
     }
 }
