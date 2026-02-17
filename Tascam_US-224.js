@@ -4,12 +4,15 @@
 //
 // By Paul Warner    (special thanks to Minas Chantzides!!)
 //
+// NOTE: In Cubase, pressing STOP while already stopped may jump to last start position.
+// For STOP+LOC undo/redo chords, we accept this as a feature: it brings you back to
+// where the last take occurred before undoing.
 
 //-----------------------------------------------------------------------------
 // 0. CUSTOM SETTINGS - change these CONST values to suit your own needs
 //-----------------------------------------------------------------------------
 
-// tracking mode (simplified to mute/unmute tracks 1-4 with metronome on master fader & null button, cycle on solo button)
+// tracking mode (simplified to mute/unmute tracks 1-4 with metronome on master fader & null button, cycle on solo button, undo/redo on stop+locators)
 const TRACKING_MODE = true
 
 // nuclear LED MODE (lights all 4 red LED's for Record, in tracking mode only)
@@ -383,6 +386,14 @@ var var_soloModeOff = deviceDriver.mSurface.makeCustomValueVariable("Solo Mode O
 // create custom vars to intercept simultaneous button presses for STOP+REW = RTZ
 var var_rewPressed = deviceDriver.mSurface.makeCustomValueVariable("REW Pressed")
 var var_RTZPressed = deviceDriver.mSurface.makeCustomValueVariable("RTZ Pressed")
+
+if (TRACKING_MODE) {
+	// STOP+LOC undo/redo chords (tracking mode only)
+	var var_locLeftPressed  = deviceDriver.mSurface.makeCustomValueVariable("LOC Left Pressed")
+	var var_locRightPressed = deviceDriver.mSurface.makeCustomValueVariable("LOC Right Pressed")
+	var var_undoPressed = deviceDriver.mSurface.makeCustomValueVariable("Undo Pressed")
+	var var_redoPressed = deviceDriver.mSurface.makeCustomValueVariable("Redo Pressed")	
+}
 
 // dummy host vars to bind bank button triggers
 var var_bankLeftPressed = page.mCustom.makeHostValueVariable("Bank Left Pressed")
@@ -854,6 +865,8 @@ function assignTransportControls() {
     // catch STOP+REW buttons to send RTZ command, or pass single REW button command, thru custom variable
     btnRewind.mSurfaceValue.mOnProcessValueChange = 
         function(context, newValue, diff) {
+			if (newValue <= 0) return // ignore release
+			
             var stopPressed = btnStop.mSurfaceValue.getProcessValue(context)
             if (stopPressed) {
                 var_RTZPressed.setProcessValue(context, 1.0)                            
@@ -875,11 +888,37 @@ function assignLocatorControlsDualMode() {
     page.makeCommandBinding(btnLocateSet.mSurfaceValue, "Transport", "Cycle").setSubPage(subpage_LocatorsNullMode)
 }
 
-function assignLocatorControlsMarkersOnly() {    
+function assignLocatorControlsTrackingMode() {    
     // bind locator buttons to host marker commands
-    page.makeCommandBinding(btnLocateLeft.mSurfaceValue, "Transport", "Locate Previous Marker")
-    page.makeCommandBinding(btnLocateRight.mSurfaceValue, "Transport", "Locate Next Marker")
     page.makeCommandBinding(btnLocateSet.mSurfaceValue, "Transport", "Insert Marker")
+	page.makeCommandBinding(var_locLeftPressed,  "Transport", "Locate Previous Marker")
+	page.makeCommandBinding(var_locRightPressed, "Transport", "Locate Next Marker")
+	page.makeCommandBinding(var_undoPressed, "Edit", "Undo")
+	page.makeCommandBinding(var_redoPressed, "Edit", "Redo")
+
+	btnLocateLeft.mSurfaceValue.mOnProcessValueChange =
+		function(context, newValue, diff) {
+			if (newValue <= 0) return // ignore release
+
+			var stopPressed = btnStop.mSurfaceValue.getProcessValue(context) > 0
+			if (stopPressed) {
+				var_undoPressed.setProcessValue(context, 1.0)
+			} else {
+				var_locLeftPressed.setProcessValue(context, newValue)
+			}
+		}
+
+	btnLocateRight.mSurfaceValue.mOnProcessValueChange =
+		function(context, newValue, diff) {
+			if (newValue <= 0) return // ignore release
+
+			var stopPressed = btnStop.mSurfaceValue.getProcessValue(context) > 0
+			if (stopPressed) {
+				var_redoPressed.setProcessValue(context, 1.0)
+			} else {
+				var_locRightPressed.setProcessValue(context, newValue)
+			}
+		}			
 }
 
 function assignRecMasterButtonDualMode()
@@ -1072,8 +1111,8 @@ if (TRACKING_MODE) {
 	assignSingleMuteBank() 
 	assignSingleSoloBank()
 
-	// bind locator controls to markers only
-	assignLocatorControlsMarkersOnly()
+	// bind locator controls to markers and undo/redo "STOP" chords
+	assignLocatorControlsTrackingMode()
 	
 	// bind solo LED to host cycle state
 	makeSoloDisplayCycleFeedback(btnSoloEnable)
