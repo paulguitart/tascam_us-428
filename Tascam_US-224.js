@@ -119,7 +119,8 @@ if (TRACKING_MODE && ENABLE_NUCLEAR_BLINK) {
 
 if (ENABLE_STOP_HOLD_SAVE) {
 	// long press STOP to save vars
-	const STOP_SAVE_HOLD_MS = 1500
+	const STOP_SAVE_HOLD_MS = 2000
+	const STOP_SAVE_PREDELAY_MS = 500
 	const STOP_SAVE_RESET = -1
 	var stopHoldStartMs = STOP_SAVE_RESET
 	var stopSaveArmed = false		
@@ -820,10 +821,15 @@ function makeSoloDisplayCycleFeedback(button) {
 }
 
 function showStopHoldProgress(context, now) {
-    // 0.0 -> 1.0
-    var t = (now - stopHoldStartMs) / STOP_SAVE_HOLD_MS
-    t = Math.max(0, Math.min(1, t))
+    var elapsed = now - stopHoldStartMs
 
+    // Shift timeline so progress starts AFTER the predelay
+    var adjustedElapsed = elapsed - STOP_SAVE_PREDELAY_MS
+    var adjustedHold = STOP_SAVE_HOLD_MS - STOP_SAVE_PREDELAY_MS
+
+    var t = adjustedElapsed / adjustedHold    // 0.0 -> 1.0
+    t = Math.max(0, Math.min(1, t))
+	
     // 4 LEDs: 0..4 lit
     var lit = Math.floor(t * (BANK_SIZE + 1))  // gives 0..4
     for (var i=0; i<BANK_SIZE; i++) {
