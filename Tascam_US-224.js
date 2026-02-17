@@ -862,17 +862,17 @@ function assignTransportControls() {
     page.makeCommandBinding(btnStop.mSurfaceValue, "Transport", "Stop")    // (use transport command, because mStop causes playhead to jump back)
     page.makeCommandBinding(var_RTZPressed, "Transport", "Return to Zero")    
     
-    // catch STOP+REW buttons to send RTZ command, or pass single REW button command, thru custom variable
+    // catch STOP+REW buttons to send RTZ command, or forward single REW button command, thru custom variable
     btnRewind.mSurfaceValue.mOnProcessValueChange = 
-        function(context, newValue, diff) {
-			if (newValue <= 0) return // ignore release
-			
+        function(context, newValue, diff) {			
+			var rewindPressed = newValue > 0
             var stopPressed = btnStop.mSurfaceValue.getProcessValue(context)
-            if (stopPressed) {
-                var_RTZPressed.setProcessValue(context, 1.0)                            
-            } else {                
-                var_rewPressed.setProcessValue(context, newValue)            
-            }
+			
+            if (stopPressed && rewindPressed) {
+                var_RTZPressed.setProcessValue(context, 1.0)          // stop is also pressed.. fire an RTZ
+			} else {
+				var_rewPressed.setProcessValue(context, newValue)     // stop isn't pressed.. fire a normal rewind
+			}			
         }        
 }
 
@@ -898,25 +898,25 @@ function assignLocatorControlsTrackingMode() {
 
 	btnLocateLeft.mSurfaceValue.mOnProcessValueChange =
 		function(context, newValue, diff) {
-			if (newValue <= 0) return // ignore release
-
+			var locLeftPressed = (newValue > 0)
 			var stopPressed = btnStop.mSurfaceValue.getProcessValue(context) > 0
-			if (stopPressed) {
-				var_undoPressed.setProcessValue(context, 1.0)
+
+			if (stopPressed && locLeftPressed) {
+				var_undoPressed.setProcessValue(context, 1.0)          // stop is also pressed.. fire an undo
 			} else {
-				var_locLeftPressed.setProcessValue(context, newValue)
+				var_locLeftPressed.setProcessValue(context, newValue)  // stop isn't pressed.. fire a normal locLeft
 			}
 		}
 
 	btnLocateRight.mSurfaceValue.mOnProcessValueChange =
 		function(context, newValue, diff) {
-			if (newValue <= 0) return // ignore release
-
+			var locRightPressed = (newValue > 0)
 			var stopPressed = btnStop.mSurfaceValue.getProcessValue(context) > 0
-			if (stopPressed) {
-				var_redoPressed.setProcessValue(context, 1.0)
+			
+			if (stopPressed && locRightPressed) {
+				var_redoPressed.setProcessValue(context, 1.0)           // stop is also pressed.. fire a redo
 			} else {
-				var_locRightPressed.setProcessValue(context, newValue)
+				var_locRightPressed.setProcessValue(context, newValue)  // stop isn't pressed.. fire a normal locRight
 			}
 		}			
 }
