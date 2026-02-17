@@ -15,17 +15,20 @@
 // tracking mode (simplified to mute/unmute tracks 1-4 with metronome on master fader & null button, cycle on solo button, undo/redo on stop+locators)
 const TRACKING_MODE = true
 
-// nuclear LED MODE (lights all 4 red LED's for Record, in tracking mode only)
-const NUCLEAR_LED_MODE = true
+// 50 banks * 4 = 200 total tracks.. increase if you need more tracks
+const MAX_BANK_COUNT = 50 
 
 // if we just want to use the main controls & ignore faders.. set to true or false
 const DISABLE_FADERS = false   
 
+// nuclear LED MODE (lights all 4 red LED's for Record, in tracking mode only)
+const ENABLE_NUCLEAR_BLINK = true
+
+// hold STOP button to save 
+const ENABLE_STOP_HOLD_SAVE = true
+
 // if we want the normal jog wheel behavior to shuttle playhead instead of track select up/down
 const SHUTTLE_MODE = false
-
-// 50 banks * 4 = 200 total tracks.. increase if you need more tracks
-const MAX_BANK_COUNT = 50 
 
 // use an exact name and make multiple copies of the script if you want to use more than one US-224 together
 const USE_EXACT_PORT_NAMES = false
@@ -102,15 +105,34 @@ const MASTER_FADER_SCALE = 0.75                          // 0.75 sets the max ra
 // selected bank 
 var selectedBank = 0
 
-// nuclear LED tempo mode vars
-const NUCLEAR_BLINK_RESET = -1
-const DEFAULT_BLINK_MS = 500
-const MINIMUM_BLINK_MS = 150
-var nuclear_tempoBpm = 60000 / DEFAULT_BLINK_MS
-var nuclear_msPerBeat = DEFAULT_BLINK_MS
-var nuclear_isRecording = false
-var nuclear_blinkState = false
-var nuclear_lastBlinkMs = NUCLEAR_BLINK_RESET
+if (TRACKING_MODE && ENABLE_NUCLEAR_BLINK) {
+	// nuclear LED tempo mode vars
+	const NUCLEAR_BLINK_RESET = -1
+	const DEFAULT_BLINK_MS = 500
+	const MINIMUM_BLINK_MS = 150
+	var nuclear_tempoBpm = 60000 / DEFAULT_BLINK_MS
+	var nuclear_msPerBeat = DEFAULT_BLINK_MS
+	var nuclear_isRecording = false
+	var nuclear_blinkState = false
+	var nuclear_lastBlinkMs = NUCLEAR_BLINK_RESET
+}
+
+if (ENABLE_STOP_HOLD_SAVE) {
+	// long press STOP to save vars
+	const STOP_SAVE_HOLD_MS = 1500
+	const STOP_SAVE_RESET = -1
+	var stopHoldStartMs = STOP_SAVE_RESET
+	var stopSaveArmed = false		
+	
+	// save LED blink vars
+	const SAVE_BLINK_RESET = -1
+	const SAVE_BLINK_INTERVAL_MS = 150
+	const SAVE_BLINK_TOGGLES = 6   // 6 toggles = 3 full blinks
+	var saveBlink_isActive = false
+	var saveBlink_lastMs = SAVE_BLINK_RESET
+	var saveBlink_toggleCount = 0
+	var saveBlink_stateOn = false	
+}
 
 //-----------------------------------------------------------------------------
 // 2. SURFACE LAYOUT - create control elements and midi bindings
@@ -264,7 +286,7 @@ function makeTransportDisplayFeedback(buttonSurfaceValue, commandID) {
         sendMidiTascam(context, [TASCAM_TRANSPORT_LED, commandID, ledState])
 				
         if (!TRACKING_MODE) return
-		if (!NUCLEAR_LED_MODE) return
+		if (!ENABLE_NUCLEAR_BLINK) return
 		
 		return  // "always on" is unused since we are blinking now instead 
 		
@@ -275,6 +297,25 @@ function makeTransportDisplayFeedback(buttonSurfaceValue, commandID) {
             }
         }				
     }
+}
+
+function setTransportLed(context, commandID, isOn) {
+    sendMidiTascam(context, [TASCAM_TRANSPORT_LED, commandID, isOn ? LED_STATES.On : LED_STATES.Off])
+}
+
+function setAllTransportLeds(context, isOn) {	
+    setTransportLed(context, TRANSPORT_LED_COMMANDS.Rewind,      isOn)
+    setTransportLed(context, TRANSPORT_LED_COMMANDS.FastForward, isOn)
+    setTransportLed(context, TRANSPORT_LED_COMMANDS.Play,        isOn)
+    setTransportLed(context, TRANSPORT_LED_COMMANDS.Record,      isOn)
+}
+
+function blinkAllTransportLEDs(context) {
+    // arm the animation; actual toggling happens in mOnIdle
+    saveBlink_isActive = true
+    saveBlink_lastMs = SAVE_BLINK_RESET
+    saveBlink_toggleCount = 0
+    saveBlink_stateOn = false
 }
 
 function forceFaderPositionsDump(context, channelStripNum) {
@@ -393,6 +434,12 @@ if (TRACKING_MODE) {
 	var var_locRightPressed = deviceDriver.mSurface.makeCustomValueVariable("LOC Right Pressed")
 	var var_undoPressed = deviceDriver.mSurface.makeCustomValueVariable("Undo Pressed")
 	var var_redoPressed = deviceDriver.mSurface.makeCustomValueVariable("Redo Pressed")	
+}
+
+if (ENABLE_STOP_HOLD_SAVE) {
+	// long press STOP to save vars
+	var var_stopPressed = deviceDriver.mSurface.makeCustomValueVariable("Stop Pressed")
+	var var_savePressed = deviceDriver.mSurface.makeCustomValueVariable("Save Pressed")
 }
 
 // dummy host vars to bind bank button triggers
@@ -859,8 +906,14 @@ function assignTransportControls() {
     page.makeValueBinding(btnRecord.mSurfaceValue, hostTransportRecord).setTypeToggle()     
     page.makeValueBinding(btnFastForward.mSurfaceValue, hostTransportFastForward)    
     page.makeValueBinding(var_rewPressed, hostTransportRewind)
-    page.makeCommandBinding(btnStop.mSurfaceValue, "Transport", "Stop")    // (use transport command, because mStop causes playhead to jump back)
     page.makeCommandBinding(var_RTZPressed, "Transport", "Return to Zero")    
+	
+	// use transport command, because mStop causes playhead to jump back
+	if (ENABLE_STOP_HOLD_SAVE) {
+		page.makeCommandBinding(var_stopPressed, "Transport", "Stop")	
+	} else {
+		page.makeCommandBinding(btnStop.mSurfaceValue, "Transport", "Stop")    
+	}
     
     // catch STOP+REW buttons to send RTZ command, or forward single REW button command, thru custom variable
     btnRewind.mSurfaceValue.mOnProcessValueChange = 
@@ -937,6 +990,12 @@ function assignRecMasterButtonBusOnly()
 {
     // bind rec master button to enable/bypass mastering effect on main bus
     page.makeCommandBinding(btnRecMaster.mSurfaceValue, "Mixer", "Bypass: Inserts on Main Mix")
+}
+
+function assignSaveCommand()
+{
+	// this var is triggered by long press of STOP button (in tracking mode only)
+	page.makeCommandBinding(var_savePressed, "File", "Save")
 }
 
 function assignJogWheelDualMode() {    
@@ -1054,28 +1113,90 @@ hostTransportRecord.mOnProcessValueChange = function (context, activeMapping, va
 		nuclear_msPerBeat = DEFAULT_BLINK_MS		
 }
 
-// nuclear mode idle timer to blink red LED's during recording (measured this at about 10 calls per second FYI)
-if (TRACKING_MODE && NUCLEAR_LED_MODE) {
-    deviceDriver.mOnIdle = function (context, activeMapping) {
-        if (!nuclear_isRecording) return
+// Track STOP press/release (does NOT replace normal Stop binding)
+if (ENABLE_STOP_HOLD_SAVE) {
+	btnStop.mSurfaceValue.mOnProcessValueChange =
+	function(context, newValue, diff) {
+		var stopPressed = (newValue > 0)
+		if (stopPressed) {			
+			// normal STOP behavior: fire stop var
+			var_stopPressed.setProcessValue(context, 1.0)
+		
+			// arm long press timer
+			stopHoldStartMs = Date.now()
+			stopSaveArmed = true
+		} else {                                 
+			// release stop var
+			var_stopPressed.setProcessValue(context, 0.0)
 
+			// reset long press timer
+			stopHoldStartMs = STOP_SAVE_RESET
+			stopSaveArmed = false
+		}
+	}	
+}
+
+// nuclear mode idle timer to blink red LED's during recording & handle STOP long press to save
+if ((TRACKING_MODE && ENABLE_NUCLEAR_BLINK) || ENABLE_STOP_HOLD_SAVE) {
+	
+	// measured this at about 10 calls per second FYI (a bit less during record)
+    deviceDriver.mOnIdle = function (context, activeMapping) {
         var now = Date.now()
 
-        // blink on quarter notes (or switch to /2 for eighths, *2 for half notes)
-        if (
-            nuclear_lastBlinkMs !== NUCLEAR_BLINK_RESET &&
-            (now - nuclear_lastBlinkMs) < nuclear_msPerBeat
-        ) return
-		
-        nuclear_lastBlinkMs = now
-        nuclear_blinkState = !nuclear_blinkState
-		
-        var ledState = nuclear_blinkState ? LED_STATES.On : LED_STATES.Off
+		// ---- SAVE CONFIRM BLINK ----
+		if (saveBlink_isActive) {
 
-		// fire all 4 rec LED's
-        for (var slot = 0; slot < BANK_SIZE; slot++) {
-            sendMidiTascam(context, [TASCAM_REC_LED, slot, ledState])
-        }
+			if (saveBlink_lastMs !== SAVE_BLINK_RESET && (now - saveBlink_lastMs) < SAVE_BLINK_INTERVAL_MS)
+				return
+
+			saveBlink_lastMs = now
+			saveBlink_stateOn = !saveBlink_stateOn
+
+			setAllTransportLeds(context, saveBlink_stateOn)
+
+			saveBlink_toggleCount++
+			if (saveBlink_toggleCount >= SAVE_BLINK_TOGGLES) {
+				saveBlink_isActive = false
+				saveBlink_lastMs = SAVE_BLINK_RESET
+				saveBlink_toggleCount = 0
+				saveBlink_stateOn = false
+			}
+		}
+
+		// ---- STOP HOLD SAVE ----
+		if (ENABLE_STOP_HOLD_SAVE && stopSaveArmed && stopHoldStartMs !== STOP_SAVE_RESET) {
+			if ((now - stopHoldStartMs) >= STOP_SAVE_HOLD_MS) {
+				// fire a save trigger (pulse)
+				var_savePressed.setProcessValue(context, 1.0)
+				var_savePressed.setProcessValue(context, 0.0)
+				
+				// disarm so it fires once per hold
+				stopSaveArmed = false
+				stopHoldStartMs = STOP_SAVE_RESET
+
+				// blink transport LEDs to confirm
+				blinkAllTransportLEDs(context)
+			}
+		}
+
+		// ---- NUCLEAR RECORD LED BLINK ----
+		if (ENABLE_NUCLEAR_BLINK && nuclear_isRecording) {
+			// blink on quarter notes (or switch to /2 for eighths, *2 for half notes)
+			if (
+				nuclear_lastBlinkMs !== NUCLEAR_BLINK_RESET &&
+				(now - nuclear_lastBlinkMs) < nuclear_msPerBeat
+			) return
+			
+			nuclear_lastBlinkMs = now
+			nuclear_blinkState = !nuclear_blinkState
+			
+			var ledState = nuclear_blinkState ? LED_STATES.On : LED_STATES.Off
+
+			// fire all 4 rec LED's
+			for (var slot = 0; slot < BANK_SIZE; slot++) {
+				sendMidiTascam(context, [TASCAM_REC_LED, slot, ledState])
+			}
+		}	
     }
 }
 
@@ -1084,7 +1205,6 @@ if (TRACKING_MODE && NUCLEAR_LED_MODE) {
 //-----------------------------------------------------------------------------
 
 // bind transport LED's
-makeTransportDisplayFeedback(btnStop.mSurfaceValue, TRANSPORT_LED_COMMANDS.Stop)
 makeTransportDisplayFeedback(btnPlay.mSurfaceValue, TRANSPORT_LED_COMMANDS.Play)
 makeTransportDisplayFeedback(btnRecord.mSurfaceValue, TRANSPORT_LED_COMMANDS.Record)
 makeTransportDisplayFeedback(btnFastForward.mSurfaceValue, TRANSPORT_LED_COMMANDS.FastForward)
@@ -1122,6 +1242,9 @@ if (TRACKING_MODE) {
 	
 	// bind rec master button to decicated master bus inserts bypass
 	assignRecMasterButtonBusOnly()
+	
+	// bind "save" command to STOP longpress var
+	assignSaveCommand()
 			
 } else {                                        // NORMAL MODE
 	// bind master fader in normal mode
