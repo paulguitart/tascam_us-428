@@ -99,6 +99,13 @@ const MASTER_FADER_SCALE = 0.75                          // 0.75 sets the max ra
 // selected bank 
 var selectedBank = 0
 
+// nuclear LED tempo mode vars
+var nuclear_tempoBpm = 120
+var nuclear_msPerBeat = 500
+var nuclear_lastBlinkMs = 0
+var nuclear_isRecording = false
+var nuclear_blinkState = false
+
 //-----------------------------------------------------------------------------
 // 2. SURFACE LAYOUT - create control elements and midi bindings
 //-----------------------------------------------------------------------------
@@ -249,18 +256,11 @@ function makeTransportDisplayFeedback(buttonSurfaceValue, commandID) {
     buttonSurfaceValue.mOnProcessValueChange = function (context, newValue) {
         var ledState = newValue > 0 ? LED_STATES.On : LED_STATES.Off;
         sendMidiTascam(context, [TASCAM_TRANSPORT_LED, commandID, ledState])
-		
+				
         if (!TRACKING_MODE) return
 		if (!NUCLEAR_LED_MODE) return
-
-		// BEGIN NUCLEAR MODE //////////////////////////////////////////////
-
-        // PLAY lights all 4 green SELECT LEDs
-        // if (commandID === TRANSPORT_LED_COMMANDS.Play) {
-        //    for (var slot = 0; slot < BANK_SIZE; slot++) {
-        //        sendMidiTascam(context, [TASCAM_SELECT_LED, slot, ledState])
-        //    }
-        //}		
+		
+		return  // "always on" is unused since we are blinking now instead 
 		
         // RECORD lights all 4 red REC LEDs
         if (commandID === TRANSPORT_LED_COMMANDS.Record) {       
@@ -268,7 +268,6 @@ function makeTransportDisplayFeedback(buttonSurfaceValue, commandID) {
                 sendMidiTascam(context, [TASCAM_REC_LED, slot, ledState])
             }
         }				
-		// END NUCLEAR MODE ////////////////////////////////////////////////		
     }
 }
 
@@ -346,13 +345,15 @@ function displayMetronomeNullLED(context, isEnabled) {
 // create at least one mapping page
 var page = deviceDriver.mMapping.makePage('Tascam US-224 Mixer Page')
 
-// create host mixer zone for main channel section
+// create a host mTimeDisplay reference for nuclear LED mode
+var hostTimeDisplay = page.mHostAccess.mTransport.mTimeDisplay
+
+// create host mixer zone for main channel section (should include audio and group channels)
 var hostMixerBankZone = page.mHostAccess.mMixConsole.makeMixerBankZone()
     .excludeInputChannels()
     .excludeOutputChannels()
     .excludeSamplerChannels()
     .excludeVCAChannels() 
-//  .includeAudioChannels()
 
 // build array of TOTAL_TRACK_COUNT host mixer bank channel items for main channel section
 var hostChannelBank = makeNewHostChannelBank()
@@ -968,6 +969,49 @@ function assignJogWheelZoomOnly() {
 
             lastZoomValue = newZoomValue
         }
+}
+
+// host tempo listener for nuclear LED mode
+hostTimeDisplay.mOnChangeTempoBPM = function (activeDevice, activeMapping, tempoBPM) {
+    if (tempoBPM > 0) {
+        nuclear_tempoBpm = tempoBPM
+        nuclear_msPerBeat = 60000 / tempoBPM
+        // console.log('Tempo BPM: ' + tempoBPM + ' | msPerBeat: ' + nuclear_msPerBeat)
+    }
+}
+
+// record listener to handle rec LED's in nuclear mode
+hostTransportRecord.mOnProcessValueChange = function (context, activeMapping, value) {
+    nuclear_isRecording = value > 0
+
+    // when recording stops, reset rec LED's to off
+    if (!nuclear_isRecording) {
+        nuclear_blinkState = false
+        for (var slot = 0; slot < BANK_SIZE; slot++) {
+            sendMidiTascam(context, [TASCAM_REC_LED, slot, LED_STATES.Off])
+        }
+    } else {
+        nuclear_lastBlinkMs = 0 // force an immediate blink
+    }
+}
+
+// nuclear mode idle timer to blink red LED's during recording
+if (TRACKING_MODE && NUCLEAR_LED_MODE) {
+    deviceDriver.mOnIdle = function (context, activeMapping) {
+        if (!nuclear_isRecording) return
+
+        var now = Date.now()
+        // blink on quarter notes (or switch to /2 for eighths, *2 for half notes)
+        if (nuclear_lastBlinkMs && (now - nuclear_lastBlinkMs) < nuclear_msPerBeat) return
+        nuclear_lastBlinkMs = now
+
+        nuclear_blinkState = !nuclear_blinkState
+        var led = nuclear_blinkState ? LED_STATES.On : LED_STATES.Off
+
+        for (var slot = 0; slot < BANK_SIZE; slot++) {
+            sendMidiTascam(context, [TASCAM_REC_LED, slot, led])
+        }
+    }
 }
 
 //-----------------------------------------------------------------------------
