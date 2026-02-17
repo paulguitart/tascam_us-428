@@ -385,6 +385,11 @@ function displayMetronomeNullLED(context, isEnabled) {
     sendMidiTascam(context, [TASCAM_NULL_LED, ledState])
 }
 
+function resetAllRecLEDs(context) {
+	for (var slot=0; slot<BANK_SIZE; slot++)
+		displayRecLED(context, slot, 0, false)	
+}
+
 //-----------------------------------------------------------------------------
 // 3. HOST MAPPING - create mapping pages and host bindings
 //-----------------------------------------------------------------------------
@@ -814,6 +819,18 @@ function makeSoloDisplayCycleFeedback(button) {
     }
 }
 
+function showStopHoldProgress(context, now) {
+    // 0.0 -> 1.0
+    var t = (now - stopHoldStartMs) / STOP_SAVE_HOLD_MS
+    t = Math.max(0, Math.min(1, t))
+
+    // 4 LEDs: 0..4 lit
+    var lit = Math.floor(t * (BANK_SIZE + 1))  // gives 0..4
+    for (var i=0; i<BANK_SIZE; i++) {
+        sendMidiTascam(context, [TASCAM_REC_LED, i, (i < lit) ? LED_STATES.On : LED_STATES.Off])
+    }
+}
+
 function assignMetronomeButton()
 {    
     // bind null button to host metronome enable
@@ -1087,8 +1104,6 @@ hostTimeDisplay.mOnChangeTempoBPM = function (activeDevice, activeMapping, tempo
 	
 	// sanity guardrail (never faster than ~400 BPM blinking)
 	nuclear_msPerBeat = Math.max(MINIMUM_BLINK_MS, nuclear_msPerBeat)  
-	
-	// console.log('Tempo BPM: ' + tempoBPM + ' | msPerBeat: ' + nuclear_msPerBeat)    
 }
 
 // record listener to handle rec LED's in nuclear mode
@@ -1129,6 +1144,13 @@ if (ENABLE_STOP_HOLD_SAVE) {
 			// release stop var
 			var_stopPressed.setProcessValue(context, 0.0)
 
+			// reset "progress indicator" LED's
+			if (stopSaveArmed) {
+				if (!ENABLE_NUCLEAR_BLINK || !nuclear_isRecording) {
+					resetAllRecLEDs(context)
+				}
+			}			
+
 			// reset long press timer
 			stopHoldStartMs = STOP_SAVE_RESET
 			stopSaveArmed = false
@@ -1160,6 +1182,10 @@ if ((TRACKING_MODE && ENABLE_NUCLEAR_BLINK) || ENABLE_STOP_HOLD_SAVE) {
 				saveBlink_lastMs = SAVE_BLINK_RESET
 				saveBlink_toggleCount = 0
 				saveBlink_stateOn = false
+
+				// reset "progress indicator" LED's
+				if (!ENABLE_NUCLEAR_BLINK || !nuclear_isRecording)
+					resetAllRecLEDs(context)				
 			}
 		}
 
@@ -1175,8 +1201,10 @@ if ((TRACKING_MODE && ENABLE_NUCLEAR_BLINK) || ENABLE_STOP_HOLD_SAVE) {
 				stopHoldStartMs = STOP_SAVE_RESET
 
 				// blink transport LEDs to confirm
-				blinkAllTransportLEDs(context)
-			}
+				blinkAllTransportLEDs(context)				
+			} else if (!ENABLE_NUCLEAR_BLINK || !nuclear_isRecording) {
+				showStopHoldProgress(context, now)
+			}				
 		}
 
 		// ---- NUCLEAR RECORD LED BLINK ----
@@ -1213,6 +1241,11 @@ makeTransportDisplayFeedback(var_rewPressed, TRANSPORT_LED_COMMANDS.Rewind)   //
 // wire up bindings from surface controls to host events
 assignTransportControls()
 
+if (ENABLE_STOP_HOLD_SAVE) {		
+	// bind "save" command to STOP longpress var
+	assignSaveCommand()
+}
+
 if (TRACKING_MODE) {
 	// bind master fader to click level
     assignMetronomeFader()
@@ -1242,9 +1275,6 @@ if (TRACKING_MODE) {
 	
 	// bind rec master button to decicated master bus inserts bypass
 	assignRecMasterButtonBusOnly()
-	
-	// bind "save" command to STOP longpress var
-	assignSaveCommand()
 			
 } else {                                        // NORMAL MODE
 	// bind master fader in normal mode
@@ -1279,8 +1309,7 @@ deviceDriver.mOnActivate = function(context) {
 		displaySoloLED(context)		
 	} else {		
 		// reset all record LED's to off
-	    for (var slot=0; slot<BANK_SIZE; slot++)
-			displayRecLED(context, slot, 0, false)
+		resetAllRecLEDs(context)
 	}
     // reset bank LED's to off
     displayBankLeftLED(context, false)
