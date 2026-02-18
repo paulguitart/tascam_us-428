@@ -46,10 +46,10 @@ TASCAM US-224 v2.0 | MODE SUMMARY
 GLOBAL COMMANDS (Both Modes):
 ----------------------------------------------------------------------------------------------------
 STOP (Tap)             : Stop Transport
-STOP (Hold 2s)         : TRIGGER SAVE (w/ LED progress bar & confirm blink)
+STOP (Hold 2s)         : TRIGGER SAVE (w/ red LED progress bar & confirm transport LED blink)
 STOP + REW             : RETURN TO ZERO (RTZ)
 REW / FF / PLAY / REC  : Standard Transport
-BANK L / R             : Navigation (Behavior varies by mode)
+BANK L / R             : Bank/Track Navigation
 
 ----------------------------------------------------------------------------------------------------
 MODE A: TRACKING (TRACKING_MODE = true)
@@ -63,20 +63,25 @@ JOG WHEEL              : HORIZONTAL ZOOM
 BANK L / R             : NAVIGATE TRACK SELECTION (Focus)
 STOP + LOC L           : UNDO
 STOP + LOC R           : REDO
-REC LEDS (1-4)         : NUCLEAR BLINK (Sync to Project Tempo during Record)
-
+MUTE BUTTONS 1-4       : Mute On/Off for Tracks 1-4 (Fixed) (Yellow LED's)
+SELECT BUTTONS 1-4     : Solo On/Off for Tracks 1-4 (Fixed) (Green LED's)
+REC LEDS 1-4           : NUCLEAR BLINK RED (Sync to Project Tempo during Record)
+ 
 ----------------------------------------------------------------------------------------------------
 MODE B: NORMAL (TRACKING_MODE = false)
 Focus: Full Mixer Control. Bank-aware.
 ----------------------------------------------------------------------------------------------------
 FADERS 1-4             : Vol for Active Bank
-MASTER FADER           : [Normal] Stereo Out | [Null Mode] FX Return 1
 NULL BUTTON            : TOGGLE NULL MODE (Swaps Master Fader & Jog behavior)
 SOLO BUTTON            : TOGGLE SOLO MODE (Swaps Mute/Select behavior)
-JOG WHEEL              : [Normal] Shuttle/Track Select | [Null Mode] Horizontal Zoom
 BANK L / R             : SHIFT ACTIVE BANK (Groups of 4)
-MUTE BUTTONS           : [Normal] Mute | [Solo Mode] Solo
-SELECT BUTTONS         : [Normal] Record Enable | [Solo Mode] Select/Focus
+MASTER FADER           : [Normal] Stereo Out           | [Null Mode] FX Return 1
+JOG WHEEL              : [Normal] Shuttle/Track Select | [Null Mode] Horizontal Zoom
+MUTE BUTTONS 1-4       : [Normal] Mute                 | [Solo Mode] Solo
+MUTE LEDS 1-4          : [Normal] Mute                 | [Solo Mode] Solo
+SELECT BUTTONS 1-4     : [Normal] Record Enable        | [Solo Mode] Select/Focus
+SELECT LEDS 1-4        : Track Select Focus        (Current Bank, both modes)
+REC LEDS 1-4           : Record Enable On/Off      (Current Bank, both modes)
 ====================================================================================================
 */
 
