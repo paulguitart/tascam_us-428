@@ -19,6 +19,13 @@ const DISABLE_FADERS = false
  // if we want to use the "LOW" EQ knobs for Low Cut PreFilter.. set to true or false
 const LOW_EQ_PREFILTER_MODE = true   
 
+// use an exact name and make multiple copies of the script if you want to use more than one US-428 together
+const USE_EXACT_PORT_NAMES = false
+
+// exact port names
+const INPUT_PORT_NAME  = 'US-428 Control'
+const OUTPUT_PORT_NAME = 'US-428 Control'
+
 /*
 ====================================================================================================
 TASCAM US-428 v2.0 | MODE SUMMARY
@@ -55,9 +62,9 @@ AUX 1 - 4              : [Tap] Select Send. Jog Wheel controls level.
 
 4. TRANSPORT & JOGWHEEL
 ----------------------------------------------------------------------------------------------------
-JOG WHEEL              : [Normal] Horizontal Zoom.  | [Asgn] FX Send Level (selected track).
-LOCATE LEFT / RIGHT    : [Normal] Prev/Next Marker. | [Asgn] Set Left/Right Locators.
-SET BUTTON             : [Normal] Insert Marker.    | [Asgn] Cycle On/Off (loop record).
+JOG WHEEL              : [Normal] FX Send (AUX 1-4).   | [Asgn] Horizontal Zoom.
+LOCATE LEFT / RIGHT    : [Normal] Prev/Next Marker.    | [Asgn] Set Left/Right Locators.
+SET BUTTON             : [Normal] Insert Marker.       | [Asgn] Cycle On/Off (loop record).
 STOP (Tap)             : Stop Transport
 STOP (Hold 2s)         : TRIGGER SAVE (Progress shown on F1-F3, transport LED blink to confirm)
 STOP + LOC L           : UNDO
@@ -80,10 +87,16 @@ var deviceDriver = midiremote_api.makeDeviceDriver('Tascam', 'US-428', 'Paul War
 var midiInput = deviceDriver.mPorts.makeMidiInput()
 var midiOutput = deviceDriver.mPorts.makeMidiOutput()
 
-// detect default MIDI port name for TASCAM USB device
-deviceDriver.makeDetectionUnit().detectPortPair(midiInput, midiOutput)
-    .expectInputNameContains('US-428 Control')
-    .expectOutputNameContains('US-428 Control')    
+// detect default MIDI port for TASCAM USB device
+if (! USE_EXACT_PORT_NAMES) {
+    deviceDriver.makeDetectionUnit().detectPortPair(midiInput, midiOutput)
+        .expectInputNameContains('US-428 Control')
+        .expectOutputNameContains('US-428 Control')  
+} else {
+    deviceDriver.makeDetectionUnit().detectPortPair(midiInput, midiOutput)
+        .expectInputNameEquals(INPUT_PORT_NAME)
+        .expectOutputNameEquals(OUTPUT_PORT_NAME)    
+}
 
 //-----------------------------------------------------------------------------
 // TASCAM DEVICE CONSTANTS - device codes for MIDI messages
