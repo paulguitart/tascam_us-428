@@ -5,9 +5,12 @@
 //
 // By Paul Warner    (special thanks to Minas Chantzides!!)
 //
-// NOTE: In Cubase, pressing STOP while already stopped may jump to last start position.
-// For STOP+LOC undo/redo chords, we accept this as a feature: it brings you back to
-// where the last take occurred before undoing.
+// Wishlist Features
+// -----------------
+// Long Press Stop - Save (with transport blink to confirm)
+// Stop+Loc - undo/redo
+// Stop+Wheel / Stop+Pan - fine adjust dB
+// Null+Wheel - Cubase metronome volume
 
 //-----------------------------------------------------------------------------
 // 0. CUSTOM SETTINGS - change these CONST values to suit your own needs
@@ -40,31 +43,26 @@ BANK L / R             : SELECT PREVIOUS/NEXT TRACK
 
 2. MIXING & CHANNEL STRIP (ASGN & SOLO Toggles)
 ----------------------------------------------------------------------------------------------------
-SOLO BUTTON (Toggle)   : [OFF] Mutes = Mute, Recs = Record Arm.
-                       : [ON]  Mutes = Solo, Recs = Select/Focus.
-ASGN BUTTON (Toggle)   : [OFF] Mixer buttons behave normally.
-                       : [ON]  "Assign Mode" - EQ/AUX buttons become bypass/on-off toggles.
-PAN KNOB               : [Normal] Pan Selected Track.  | [Asgn] Selected Track Volume.
-MASTER FADER           : [Normal] Stereo Out Volume.   | [Asgn] FX Send Slot 1 Level.
-MUTE BUTTONS 1-8       : [Normal] Mute On/Off.         | [Solo] Solo On/Off.
-MUTE LEDS 1-8 (Yellow) : [Normal] Mute State.          | [Solo] Solo State.
-SELECT BUTTONS 1-8     : [Normal] Track Focus/Select.  | [Solo] Record Enable.
-SELECT LEDS 1-8 (Green): TRACK FOCUS                   | (All Modes)
-REC LEDS 1-8 (Red)     : RECORD ENABLE                 | (All Modes)
+PAN KNOB               : [Normal] Pan Selected Track.  | [ASGN] Selected Track Volume.
+MASTER FADER           : [Normal] Stereo Out Volume.   | [ASGN] FX Send Slot 1 Level.
+EQ BAND (HI->LOW)      : Gain/Freq/Q knobs.            | (All Modes) 
+EQ BUTTONS (1-4)       : [Normal] Select EQ Band.      | [ASGN] EQ Band On/Off.
+AUX BUTTONS (1-4)      : [Normal] Select AUX Send.     | [ASGN] Aux Send On/Off.
+MUTE BUTTONS (1-8)     : [Normal] Mute On/Off.         | [SOLO] Solo On/Off.
+MUTE LEDS (Yellow)     : [Normal] Mute State.          | [SOLO] Solo State.
+SELECT BUTTONS (1-8)   : [Normal] Single Track Focus.  | [SOLO] Record Enable.
+SELECT LEDS (Green)    : Track Focus (all)             | (All Modes)
+REC LEDS (Red)         : Record Enable                 | (All Modes)
 
-3. EQ & AUX SECTION (Selected Track Focus)
-----------------------------------------------------------------------------------------------------
-EQ BAND (HI - LOW)     : [Tap] Select Band to tweak via G/F/Q knobs. 
-                       : [Asgn] Toggle Band ON / OFF.
-LOW EQ MODE (Const)    : If PREFILTER_MODE = true, Low Band controls Pre-Filter Low Cut.
-AUX 1 - 4              : [Tap] Select Send. Jog Wheel controls level.
-                       : [Asgn] Toggle FX Send ON / OFF.
+*LOW EQ MODE (Const)   : If PREFILTER_MODE = true, Low Band controls Pre-Filter Low Cut.
+
+NOTE: ASGN is the “ON/OFF + LED state” layer (EQ/AUX). Normal mode is the “select/adjust” layer.
 
 4. TRANSPORT & JOGWHEEL
 ----------------------------------------------------------------------------------------------------
-JOG WHEEL              : [Normal] FX Send (AUX 1-4).   | [Asgn] Horizontal Zoom.
-LOCATE LEFT / RIGHT    : [Normal] Prev/Next Marker.    | [Asgn] Set Left/Right Locators.
-SET BUTTON             : [Normal] Insert Marker.       | [Asgn] Cycle On/Off (loop record).
+JOG WHEEL              : [Normal] FX Send (AUX 1-4).   | [ASGN] Horizontal Zoom.
+LOCATE LEFT / RIGHT    : [Normal] Prev/Next Marker.    | [ASGN] Set Left/Right Locators.
+SET BUTTON             : [Normal] Insert Marker.       | [ASGN] Cycle On/Off (loop record).
 STOP (Tap)             : Stop Transport
 STOP (Hold 2s)         : TRIGGER SAVE (Progress shown on F1-F3, transport LED blink to confirm)
 STOP + LOC L           : UNDO
@@ -1127,19 +1125,21 @@ function assignTransportControls() {
     page.makeValueBinding(btnRecord.mSurfaceValue, hostTransport_Record).setTypeToggle()     
     page.makeValueBinding(btnFastForward.mSurfaceValue, hostTransport_FastForward)    
     page.makeValueBinding(var_rewPressed, hostTransport_Rewind)
-    page.makeCommandBinding(btnStop.mSurfaceValue, "Transport", "Stop")    // (use transport command, because mStop causes playhead to jump back)
+    page.makeCommandBinding(btnStop.mSurfaceValue, "Transport", "Stop")    // use transport command, because mStop causes playhead to jump back
     page.makeCommandBinding(var_RTZPressed, "Transport", "Return to Zero")    
     
-    // catch STOP+REW buttons to send RTZ command, or pass single REW button command, thru custom variable
+    // catch STOP+REW buttons to send RTZ command, or forward single REW button command, thru custom variable
     btnRewind.mSurfaceValue.mOnProcessValueChange = 
-        function(context, newValue, diff) {
+        function(context, newValue, diff) {			
+			var rewindPressed = newValue > 0
             var stopPressed = btnStop.mSurfaceValue.getProcessValue(context)
-            if (stopPressed) {
-                var_RTZPressed.setProcessValue(context, 1.0)                            
-            } else {                
-                var_rewPressed.setProcessValue(context, newValue)            
-            }
-        }        
+			
+            if (stopPressed && rewindPressed) {
+                var_RTZPressed.setProcessValue(context, 1.0)          // stop is also pressed.. fire an RTZ
+			} else {
+				var_rewPressed.setProcessValue(context, newValue)     // stop isn't pressed.. fire a normal rewind
+			}			
+        }  		
 }
 
 function assignLocatorControls() {    
