@@ -1,16 +1,13 @@
 
 // Tascam US-428                           
 // "Make your Cubase DAW feel like a Portastudio"    
-// v1.0
+// v2.0.0
 //
 // By Paul Warner    (special thanks to Minas Chantzides!!)
 //
-// TODO Bug Fixes / Refinements
-// ----------------------------
-// disable faders using a ASGN/NULL instead of DISABLE_FADERS constant
-// Auto page over when left/right track select reaches beyond bank?
-// SET button toggle marker on/off instead of ON only?
-// Adding/removing/reordering >24 host tracks bug !!??
+// NOTE: In Cubase, pressing STOP while already stopped may jump to last start position.
+// For STOP+LOC undo/redo chords, we accept this as a feature: it brings you back to
+// where the last take occurred before undoing.
 
 //-----------------------------------------------------------------------------
 // 0. CUSTOM SETTINGS - change these CONST values to suit your own needs
@@ -20,7 +17,54 @@
 const DISABLE_FADERS = false   
 
  // if we want to use the "LOW" EQ knobs for Low Cut PreFilter.. set to true or false
-const LOW_EQ_PREFILTER_MODE = false   
+const LOW_EQ_PREFILTER_MODE = true   
+
+/*
+====================================================================================================
+TASCAM US-428 v2.0 | MODE SUMMARY
+====================================================================================================
+
+1. BANKING & TRACK SELECTION (24-Tracks in 3 Banks)
+----------------------------------------------------------------------------------------------------
+F1 LED / BUTTON        : BANK A (Tracks 1-8)   | Hardware faders 1-8 control these slots.
+F2 LED / BUTTON        : BANK B (Tracks 9-16)  | Lights indicate active focus range.
+F3 LED / BUTTON        : BANK C (Tracks 17-24) | No screen needed to see where you are.
+BANK L / R             : SELECT PREVIOUS/NEXT TRACK
+
+2. MIXING & CHANNEL STRIP (ASGN & SOLO Toggles)
+----------------------------------------------------------------------------------------------------
+SOLO BUTTON (Toggle)   : [OFF] Mutes = Mute, Recs = Record Arm.
+                       : [ON]  Mutes = Solo, Recs = Select/Focus.
+ASGN BUTTON (Toggle)   : [OFF] Mixer buttons behave normally.
+                       : [ON]  "Assign Mode" - EQ/AUX buttons become bypass/on-off toggles.
+PAN KNOB               : [Normal] Pan Selected Track.  | [Asgn] Selected Track Volume.
+MASTER FADER           : [Normal] Stereo Out Volume.   | [Asgn] FX Send Slot 1 Level.
+MUTE BUTTONS 1-8       : [Normal] Mute On/Off.         | [Solo] Solo On/Off.
+MUTE LEDS 1-8 (Yellow) : [Normal] Mute State.          | [Solo] Solo State.
+SELECT BUTTONS 1-8     : [Normal] Track Focus/Select.  | [Solo] Record Enable.
+SELECT LEDS 1-8 (Green): TRACK FOCUS                   | (All Modes)
+REC LEDS 1-8 (Red)     : RECORD ENABLE                 | (All Modes)
+
+3. EQ & AUX SECTION (Selected Track Focus)
+----------------------------------------------------------------------------------------------------
+EQ BAND (HI - LOW)     : [Tap] Select Band to tweak via G/F/Q knobs. 
+                       : [Asgn] Toggle Band ON / OFF.
+LOW EQ MODE (Const)    : If PREFILTER_MODE = true, Low Band controls Pre-Filter Low Cut.
+AUX 1 - 4              : [Tap] Select Send. Jog Wheel controls level.
+                       : [Asgn] Toggle FX Send ON / OFF.
+
+4. TRANSPORT & JOGWHEEL
+----------------------------------------------------------------------------------------------------
+JOG WHEEL              : [Normal] Horizontal Zoom.  | [Asgn] FX Send Level (selected track).
+LOCATE LEFT / RIGHT    : [Normal] Prev/Next Marker. | [Asgn] Set Left/Right Locators.
+SET BUTTON             : [Normal] Insert Marker.    | [Asgn] Cycle On/Off (loop record).
+STOP (Tap)             : Stop Transport
+STOP (Hold 2s)         : TRIGGER SAVE (Progress shown on F1-F3, transport LED blink to confirm)
+STOP + LOC L           : UNDO
+STOP + LOC R           : REDO
+STOP + REW             : RETURN TO ZERO (RTZ)
+----------------------------------------------------------------------------------------------------
+*/
 
 //-----------------------------------------------------------------------------
 // 1. DRIVER SETUP - create driver object, midi ports and detection information
@@ -381,28 +425,22 @@ function forceFaderPositionsDump(context, channelStripNum) {
 }
 
 function displayMuteLED(context, channelSlot, Fn, isEnabled) {
-    // do not alter LED's for non-visible channels
-    if (selectedFunction != Fn) return
+    if (selectedFunction != Fn) return     // do not alter LED's for non-visible channels
     
-    // update Mute LED
     sendMidiTascam(context, [TASCAM_MUTE_LED, channelSlot,
         (isEnabled ? LED_STATES.On : LED_STATES.Off)])
 }
 
 function displayRecLED(context, channelSlot, Fn, isEnabled) {
-    // do not alter LED's for non-visible channels
-    if (selectedFunction != Fn) return
+    if (selectedFunction != Fn) return     // do not alter LED's for non-visible channels
 
-    // update Rec LED
     sendMidiTascam(context, [TASCAM_REC_LED, channelSlot, 
         (isEnabled ? LED_STATES.On : LED_STATES.Off)])
 }
 
 function displaySelectLED(context, channelSlot, Fn, isEnabled) {    
-    // do not alter LED's for non-visible channels
-    if (selectedFunction != Fn) return
+    if (selectedFunction != Fn) return     // do not alter LED's for non-visible channels
 
-    // update Select LED
     sendMidiTascam(context, [TASCAM_SELECT_LED, channelSlot, 
         (isEnabled ? LED_STATES.On : LED_STATES.Off)])
 }
@@ -489,36 +527,35 @@ function displayAssignedEQLED(context, assignedEQBand, isEnabled) {
 // create at least one mapping page
 var page = deviceDriver.mMapping.makePage('Tascam US-428 Mixer Page')
 
-// create host mixer zone for main channel section
+// create host mixer zone for main channel section (should include audio and group channels)
 var hostMixerBankZone = page.mHostAccess.mMixConsole.makeMixerBankZone()
     .excludeInputChannels()
     .excludeOutputChannels()
     .excludeSamplerChannels()
     .excludeVCAChannels() 
-//  .includeAudioChannels()
 
 // build array of 24 host mixer bank channel items for main channel section (3 banks of 8)
 var hostChannelBank = makeNewHostChannelBank()
 
 // create host accessing objects
-var hostSelectedTrackChannel = page.mHostAccess.mTrackSelection.mMixerChannel
-var hostSelectedEQChannel = page.mHostAccess.mTrackSelection.mMixerChannel.mChannelEQ
-var hostTransportRewind = page.mHostAccess.mTransport.mValue.mRewind
-var hostTransportFastForward = page.mHostAccess.mTransport.mValue.mForward
-var hostTransportStop = page.mHostAccess.mTransport.mValue.mStop    // unused, using a transport command for STOP to avoid playhead jump-back
-var hostTransportStart = page.mHostAccess.mTransport.mValue.mStart
-var hostTransportRecord = page.mHostAccess.mTransport.mValue.mRecord
-var hostMetronomeActive = page.mHostAccess.mTransport.mValue.mMetronomeActive
-var hostSelectPrevTrack = page.mHostAccess.mTrackSelection.mAction.mPrevTrack
-var hostSelectNextTrack = page.mHostAccess.mTrackSelection.mAction.mNextTrack
-var hostFirstQuickControl = page.mHostAccess.mFocusedQuickControls.getByIndex(0)    // unused.. for now
+var host_SelectedTrackChannel = page.mHostAccess.mTrackSelection.mMixerChannel
+var host_SelectedEQChannel = page.mHostAccess.mTrackSelection.mMixerChannel.mChannelEQ
+var hostTransport_Rewind = page.mHostAccess.mTransport.mValue.mRewind
+var hostTransport_FastForward = page.mHostAccess.mTransport.mValue.mForward
+var hostTransport_Stop = page.mHostAccess.mTransport.mValue.mStop    // unused, using a transport command for STOP to avoid playhead jump-back
+var hostTransport_Start = page.mHostAccess.mTransport.mValue.mStart
+var hostTransport_Record = page.mHostAccess.mTransport.mValue.mRecord
+var host_MetronomeActive = page.mHostAccess.mTransport.mValue.mMetronomeActive
+var host_SelectPrevTrack = page.mHostAccess.mTrackSelection.mAction.mPrevTrack
+var host_SelectNextTrack = page.mHostAccess.mTrackSelection.mAction.mNextTrack
+var host_FirstQuickControl = page.mHostAccess.mFocusedQuickControls.getByIndex(0)    // unused.. for now
 
 // 4 host EQ bands for the selected channel
-var hostEQBand = []
-hostEQBand[EQ_BANDS.High] = hostSelectedEQChannel.mBand4
-hostEQBand[EQ_BANDS.HighMid] = hostSelectedEQChannel.mBand3
-hostEQBand[EQ_BANDS.LowMid] = hostSelectedEQChannel.mBand2
-hostEQBand[EQ_BANDS.Low] = hostSelectedEQChannel.mBand1
+var host_EQBand = []
+host_EQBand[EQ_BANDS.High] = host_SelectedEQChannel.mBand4
+host_EQBand[EQ_BANDS.HighMid] = host_SelectedEQChannel.mBand3
+host_EQBand[EQ_BANDS.LowMid] = host_SelectedEQChannel.mBand2
+host_EQBand[EQ_BANDS.Low] = host_SelectedEQChannel.mBand1
 
 // create custom var on host for current selected function bank
 var var_selectedFunction = page.mCustom.makeHostValueVariable("Selected Function Bank")
@@ -665,14 +702,14 @@ function initCustomHostVars(context) {
 
 function assignBankButtonControls() {
     // bind bank left button to host prev track selection
-    page.makeActionBinding(btnBankLeft.mSurfaceValue, hostSelectPrevTrack).mOnValueChange = 
+    page.makeActionBinding(btnBankLeft.mSurfaceValue, host_SelectPrevTrack).mOnValueChange = 
         function (context, activeMapping, newValue, diff) {            
             var isButtonPressed = newValue > 0              
             displayBankLeftLED(context, isButtonPressed)
         }
 
     // bind bank right button to host next track selection
-    page.makeActionBinding(btnBankRight.mSurfaceValue, hostSelectNextTrack).mOnValueChange = 
+    page.makeActionBinding(btnBankRight.mSurfaceValue, host_SelectNextTrack).mOnValueChange = 
         function (context, activeMapping, newValue, diff) {            
             var isButtonPressed = newValue > 0
             displayBankRightLED(context, isButtonPressed)
@@ -923,7 +960,7 @@ function assignFXSends() {
 
 function assignFXSendButtons(AUX) {
     // bind AUX button press to toggle FX send on/off within the AUX Assign Mode subpage
-    page.makeValueBinding(btnAuxes[AUX].mSurfaceValue, hostSelectedTrackChannel.mSends.getByIndex(AUX).mOn)
+    page.makeValueBinding(btnAuxes[AUX].mSurfaceValue, host_SelectedTrackChannel.mSends.getByIndex(AUX).mOn)
         .setTypeToggle()
         .setSubPage(subpage_AuxAssignMode)
     
@@ -937,7 +974,7 @@ function makeFXSendSubpage(AUX) {
     var subpage = area_JogwheelFXSendSubPages.makeSubPage('AUX' + AUX + ' FX Send Jogwheel')
     
     // bind jogweel to the corresponding FX send, per subpage    
-    page.makeValueBinding(knobJogWheel.mSurfaceValue, hostSelectedTrackChannel.mSends.getByIndex(AUX).mLevel)
+    page.makeValueBinding(knobJogWheel.mSurfaceValue, host_SelectedTrackChannel.mSends.getByIndex(AUX).mLevel)
         .setValueTakeOverModeScaled()
         .setSubPage(subpage)
     
@@ -1032,7 +1069,7 @@ function assignEQBandControl(eqBand)
 
     } else {      
         // finish binding normal EQ mode
-        var hostEQ = hostEQBand[eqBand]
+        var hostEQ = host_EQBand[eqBand]
 
         // bind EQ knobs to host eq band items, within band subpage        
         page.makeValueBinding(knobGain.mSurfaceValue, hostEQ.mGain).setValueTakeOverModeScaled().setSubPage(subpage_EQBand[eqBand])        
@@ -1073,10 +1110,10 @@ function assignTransportControls() {
     // https://steinbergmedia.github.io/midiremote_api_doc/examples/commandbindings
 
     // bind buttons to host transport events
-    page.makeValueBinding(btnPlay.mSurfaceValue, hostTransportStart).setTypeToggle()
-    page.makeValueBinding(btnRecord.mSurfaceValue, hostTransportRecord).setTypeToggle()     
-    page.makeValueBinding(btnFastForward.mSurfaceValue, hostTransportFastForward)    
-    page.makeValueBinding(var_rewPressed, hostTransportRewind)
+    page.makeValueBinding(btnPlay.mSurfaceValue, hostTransport_Start).setTypeToggle()
+    page.makeValueBinding(btnRecord.mSurfaceValue, hostTransport_Record).setTypeToggle()     
+    page.makeValueBinding(btnFastForward.mSurfaceValue, hostTransport_FastForward)    
+    page.makeValueBinding(var_rewPressed, hostTransport_Rewind)
     page.makeCommandBinding(btnStop.mSurfaceValue, "Transport", "Stop")    // (use transport command, because mStop causes playhead to jump back)
     page.makeCommandBinding(var_RTZPressed, "Transport", "Return to Zero")    
     
@@ -1107,12 +1144,12 @@ function assignLocatorControls() {
 function assignPanControl()
 {
     // bind pan knob to host selected track panning, in normal mode
-    page.makeValueBinding(knobPan.mSurfaceValue, hostSelectedTrackChannel.mValue.mPan)
+    page.makeValueBinding(knobPan.mSurfaceValue, host_SelectedTrackChannel.mValue.mPan)
         .setValueTakeOverModeScaled()
         .setSubPage(subpage_PanNormalMode)
 
     // bind pan knob to host selected track volume, in "ASGN" mode 
-    page.makeValueBinding(knobPan.mSurfaceValue, hostSelectedTrackChannel.mValue.mVolume)  // hostFirstQuickControl
+    page.makeValueBinding(knobPan.mSurfaceValue, host_SelectedTrackChannel.mValue.mVolume)  // host_FirstQuickControl
         .setValueTakeOverModeScaled()
         .setSubPage(subpage_PanAssignMode)
 }
@@ -1120,7 +1157,7 @@ function assignPanControl()
 function assignMetronomeButton()
 {    
     // bind null button to host metronome enable
-    page.makeValueBinding(btnNull.mSurfaceValue, hostMetronomeActive).setTypeToggle()
+    page.makeValueBinding(btnNull.mSurfaceValue, host_MetronomeActive).setTypeToggle()
 }
 
 function assignRecMasterButton()
