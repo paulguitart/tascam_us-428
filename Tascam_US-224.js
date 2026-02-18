@@ -30,13 +30,16 @@ const ENABLE_STOP_HOLD_SAVE = true
 // if we want the normal jog wheel behavior to shuttle playhead instead of track select up/down
 const SHUTTLE_MODE = false
 
-// use an exact name and make multiple copies of the script if you want to use more than one US-224 together
-const USE_EXACT_PORT_NAMES = false
+// set this to 1 unless you want to use more than one US-224 together on the same machine
+const MAX_TASCAM_UNITS = 1
 
-// exact port names
-const INPUT_PORT_NAME  = 'US-224 Control'
-const OUTPUT_PORT_NAME = 'US-224 Control'
-
+// exact port names (add or remove whatever numbers show up on your system)
+const EXACT_PORT_NAMES = [
+    'US-224 Control',
+    '2- US-224 Control',
+    '3- US-224 Control',
+    '4- US-224 Control'
+]
 
 /*
 ====================================================================================================
@@ -100,14 +103,16 @@ var midiInput = deviceDriver.mPorts.makeMidiInput()
 var midiOutput = deviceDriver.mPorts.makeMidiOutput()
 
 // detect default MIDI port for TASCAM USB device
-if (! USE_EXACT_PORT_NAMES) {
+if (MAX_TASCAM_UNITS == 1) {
     deviceDriver.makeDetectionUnit().detectPortPair(midiInput, midiOutput)
         .expectInputNameContains('US-224 Control')
         .expectOutputNameContains('US-224 Control')  
-} else {
-    deviceDriver.makeDetectionUnit().detectPortPair(midiInput, midiOutput)
-        .expectInputNameEquals(INPUT_PORT_NAME)
-        .expectOutputNameEquals(OUTPUT_PORT_NAME)    
+} else {	
+	for (var i = 0; i < EXACT_PORT_NAMES.length; i++) {
+		deviceDriver.makeDetectionUnit().detectPortPair(midiInput, midiOutput)
+			.expectInputNameEquals(EXACT_PORT_NAMES[i])
+			.expectOutputNameEquals(EXACT_PORT_NAMES[i])				
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -130,7 +135,7 @@ const LED_STATES = {
 }   
 
 // TASCAM MIDI command codes
-const TASCAM_MIDI_BEGIN = [0xF0, 0x4E, 0x0, 0x12]
+const TASCAM_MIDI_BEGIN = [0xF0, 0x4E, 0x0, 0x12]    // 0x0 is the default unit (device) number
 const TASCAM_MIDI_END = 0xF7
 const TASCAM_TRANSPORT_LED = 0x01
 const TASCAM_MUTE_LED = 0x02
@@ -326,7 +331,18 @@ bindFaderToMIDI(fdrMasterFader, 75)
 //-----------------------------------------------------------------------------
 
 function sendMidiTascam(context, message) {
-    midiOutput.sendMidi(context, TASCAM_MIDI_BEGIN.concat(message).concat([TASCAM_MIDI_END]))
+    for (var i = 0; i < MAX_TASCAM_UNITS; i++) {        
+		// copy the code template        
+		var begin_code = TASCAM_MIDI_BEGIN.slice()
+		
+		// embed specific unit number into tascam MIDI code sequence
+		begin_code[2] = i                            
+		
+        midiOutput.sendMidi(
+            context,
+            begin_code.concat(message).concat([TASCAM_MIDI_END])
+        )
+    }
 }
 
 function makeTransportDisplayFeedback(buttonSurfaceValue, commandID) {    
