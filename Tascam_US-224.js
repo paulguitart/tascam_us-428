@@ -171,7 +171,7 @@ if (ENABLE_STOP_HOLD_SAVE) {
 	// save LED blink vars
 	const SAVE_BLINK_RESET = -1
 	const SAVE_BLINK_INTERVAL_MS = 150
-	const SAVE_BLINK_TOGGLES = 6   // 6 toggles = 3 full blinks
+	const SAVE_BLINK_TOGGLES = 6                // 6 toggles = 3 full blinks
 	var saveBlink_isActive = false
 	var saveBlink_lastMs = SAVE_BLINK_RESET
 	var saveBlink_toggleCount = 0
@@ -332,7 +332,7 @@ function makeTransportDisplayFeedback(buttonSurfaceValue, commandID) {
         if (!TRACKING_MODE) return
 		if (!ENABLE_NUCLEAR_BLINK) return
 		
-		return  // "always on" is unused since we are blinking now instead 
+		return  // "always on" below is unused, since we are blinking now instead 
 		
         // RECORD lights all 4 red REC LEDs
         if (commandID === TRANSPORT_LED_COMMANDS.Record) {       
@@ -371,28 +371,22 @@ function forceFaderPositionsDump(context, channelStripNum) {
 }
 
 function displayMuteLED(context, channelSlot, bankNum, isEnabled) {
-    // do not alter LED's for non-visible channels
-    if (selectedBank != bankNum) return
+    if (selectedBank != bankNum) return     // do not alter LED's for non-visible channels
     
-    // update Mute LED
     sendMidiTascam(context, [TASCAM_MUTE_LED, channelSlot,
         (isEnabled ? LED_STATES.On : LED_STATES.Off)])
 }
 
 function displayRecLED(context, channelSlot, bankNum, isEnabled) {
-    // do not alter LED's for non-visible channels
-    if (selectedBank != bankNum) return
+    if (selectedBank != bankNum) return     // do not alter LED's for non-visible channels
 
-    // update Rec LED
     sendMidiTascam(context, [TASCAM_REC_LED, channelSlot, 
         (isEnabled ? LED_STATES.On : LED_STATES.Off)])
 }
 
 function displaySelectLED(context, channelSlot, bankNum, isEnabled) {    
-    // do not alter LED's for non-visible channels
-    if (selectedBank != bankNum) return
+    if (selectedBank != bankNum) return     // do not alter LED's for non-visible channels
 
-    // update Select LED
     sendMidiTascam(context, [TASCAM_SELECT_LED, channelSlot, 
         (isEnabled ? LED_STATES.On : LED_STATES.Off)])
 }
@@ -897,7 +891,7 @@ function assignMasterFader_Metronome() {
     page.makeValueBinding(fdrMasterFader.mSurfaceValue, clickLevel)
 }
 
-// UNUSED - binds master fader to last clicked group channel
+// UNUSED for reference- binds master fader to last clicked group channel
 function assignGroupMasterFader() {
 	// create host Group 1 channel
     var hostMixerZoneGroups = page.mHostAccess.mMixConsole.makeMixerBankZone().includeGroupChannels()
@@ -1060,7 +1054,7 @@ function assignRecMasterButtonBusOnly()
 
 function assignSaveCommand()
 {
-	// this var is triggered by long press of STOP button (in tracking mode only)
+	// this var is triggered by long press of STOP button (when "ENABLE_STOP_HOLD_SAVE" mode enabled)
 	page.makeCommandBinding(var_savePressed, "File", "Save")
 }
 
