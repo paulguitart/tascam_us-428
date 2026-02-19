@@ -10,7 +10,6 @@
 // Long Press Stop - Save (with transport blink to confirm)
 // Stop+Loc - undo/redo
 // Stop+Wheel / Stop+Pan - fine adjust dB
-// Null+Wheel - Cubase metronome volume
 
 //-----------------------------------------------------------------------------
 // 0. CUSTOM SETTINGS - change these CONST values to suit your own needs
@@ -19,13 +18,16 @@
 // if we just want to use the main controls & ignore faders.. set to true or false
 const DISABLE_FADERS = true   
 
+// master fader is fixed to cubase metronome level
+const ENABLE_METRONOME_FADER = true
+
  // if we want to use the "LOW" EQ knobs for Low Cut PreFilter.. set to true or false
 const LOW_EQ_PREFILTER_MODE = true   
 
-// set this to 1 unless you want to use more than one US-428 together on the same machine
+// set this to 1 (recommended) unless you want to use multiple US-428 together on the same machine
 const MAX_TASCAM_UNITS = 1
 
-// exact port names (add or remove whatever numbers show up on your system)
+// exact port names (add/remove based on whatever MIDI device names show up on your system)
 const EXACT_PORT_NAMES = [
     'US-428 Control',
     '2- US-428 Control',
@@ -59,6 +61,7 @@ SELECT LEDS (Green)    : Track Focus (all)             | (All Modes)
 REC LEDS (Red)         : Record Enable                 | (All Modes)
 
 *LOW EQ MODE (Const)   : If PREFILTER_MODE = true, Low Band controls Pre-Filter Low Cut.
+*METRONOME MODE (Const): If ENABLE_METRONOME_FADER = true, Master fader controls Cubase click level
 
 NOTE: ASGN is the “ON/OFF + LED state” layer (EQ/AUX). Normal mode is the “select/adjust” layer.
 
@@ -927,7 +930,7 @@ function getHostChannel(Fn, slot) {
     return hostChannelBank[Fn * BANK_SIZE + slot]
 }
 
-function assignMasterFader() {
+function assignMasterFader_DualMode() {
     // if we just want to use the main controls, we won't accidentally alter the mix.. bypass the master fader bindings
     if (DISABLE_FADERS) return  
 
@@ -950,6 +953,12 @@ function assignMasterFader() {
         .setValueTakeOverModeScaled()
         .setSubPage(subpage_RecMasterAssignMode)
 } 
+
+function assignMasterFader_Metronome() {
+	// cubase metronome level is non-destructive to the mix, so we ignore DISABLE_FADERS here
+    var clickLevel = page.mHostAccess.mTransport.mValue.mMetronomeClickLevel
+    page.makeValueBinding(fdrMasterFader.mSurfaceValue, clickLevel)
+}
 
 function assignASGNVarsToModes() {
     // bind assign mode variable ON state, (trigger aux assign mode subpage first)
@@ -1260,12 +1269,19 @@ assignBankButtonControls()
 assignPanControl()
 assignMetronomeButton()
 assignChannelBanks()
-assignMasterFader()
 assignASGNButtonToVars()
 assignASGNVarsToModes()
 assignFXSends()
 assignEQBandControls()
 assignZoomToJogWheel() 
+
+if (ENABLE_METRONOME_FADER) {
+	// bind master fader to click level
+    assignMasterFader_Metronome()
+} else {
+	// bind master fader to dual mode Stereo Out level and FX channel 1 level
+	assignMasterFader_DualMode()
+}
  
 // this happens when the TASCAM device is first connected
 deviceDriver.mOnActivate = function(context) {        

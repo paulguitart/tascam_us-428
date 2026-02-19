@@ -30,10 +30,10 @@ const ENABLE_STOP_HOLD_SAVE = true
 // if we want the normal jog wheel behavior to shuttle playhead instead of track select up/down
 const SHUTTLE_MODE = false
 
-// set this to 1 unless you want to use more than one US-224 together on the same machine
+// set this to 1 (recommended) unless you want to use multiple US-224 together on the same machine
 const MAX_TASCAM_UNITS = 1
 
-// exact port names (add or remove whatever numbers show up on your system)
+// exact port names (add/remove based on whatever MIDI device names show up on your system)
 const EXACT_PORT_NAMES = [
     'US-224 Control',
     '2- US-224 Control',
