@@ -7,6 +7,11 @@
 // NOTE: In Cubase, pressing STOP while already stopped may jump to last start position.
 // For STOP+LOC undo/redo chords, we accept this as a feature: it brings you back to
 // where the last take occurred before undoing.
+//
+// Wishlist Features
+// -----------------
+// Long Press Stop+Rec Master - Selected track solo
+// Stop+Wheel - Selected track volume
 
 //-----------------------------------------------------------------------------
 // 0. CUSTOM SETTINGS - change these CONST values to suit your own needs
@@ -1012,6 +1017,9 @@ function assignTransportControls() {
             var stopPressed = btnStop.mSurfaceValue.getProcessValue(context)
 			
             if (stopPressed && rewindPressed) {
+				// reset stop longpress save until next press
+				resetStopProgress(context)				
+				
                 var_RTZPressed.setProcessValue(context, 1.0)          // stop is also pressed.. fire an RTZ
 			} else {
 				var_rewPressed.setProcessValue(context, newValue)     // stop isn't pressed.. fire a normal rewind
@@ -1048,8 +1056,8 @@ function assignLocatorControls_TrackingMode() {
 			var stopPressed = btnStop.mSurfaceValue.getProcessValue(context) > 0
 
 			if (stopPressed && locLeftPressed) {
-				// disarm stop longpress save until next press
-				stopSaveArmed = false 
+				// reset stop longpress save until next press
+				resetStopProgress(context)
 				
 				var_undoPressed.setProcessValue(context, 1.0)          // stop is also pressed.. fire an undo
 			} else {
@@ -1063,8 +1071,8 @@ function assignLocatorControls_TrackingMode() {
 			var stopPressed = btnStop.mSurfaceValue.getProcessValue(context) > 0
 			
 			if (stopPressed && locRightPressed) {
-				// disarm stop longpress save until next press
-				stopSaveArmed = false
+				// reset stop longpress save until next press
+				resetStopProgress(context)
 
 				var_redoPressed.setProcessValue(context, 1.0)           // stop is also pressed.. fire a redo
 			} else {
@@ -1078,8 +1086,8 @@ function assignLocatorControls_TrackingMode() {
 			var stopPressed = btnStop.mSurfaceValue.getProcessValue(context) > 0
 
 			if (stopPressed && locSetPressed) {
-				// disarm stop longpress save until next press
-				stopSaveArmed = false
+				// reset stop longpress save until next press
+				resetStopProgress(context)
 
 				// Read current mute from dummy button
 				var isMuted = btnDummySelectedMute.mSurfaceValue.getProcessValue(context)
@@ -1232,6 +1240,17 @@ hostTransport_Record.mOnProcessValueChange = function (context, activeMapping, v
 
 // Track STOP press/release (does NOT replace normal Stop binding)
 if (ENABLE_STOP_HOLD_SAVE) {
+	
+	function resetStopProgress(context) {		
+		stopSaveArmed = false
+		// reset long press timer
+		stopHoldStartMs = STOP_SAVE_RESET
+
+		if (!ENABLE_NUCLEAR_BLINK || !nuclear_isRecording) {
+			resetAllRecLEDs(context)
+		}				
+	}
+	
 	btnStop.mSurfaceValue.mOnProcessValueChange =
 	function(context, newValue, diff) {
 		var stopPressed = (newValue > 0)
@@ -1248,14 +1267,8 @@ if (ENABLE_STOP_HOLD_SAVE) {
 
 			// reset "progress indicator" LED's
 			if (stopSaveArmed) {
-				if (!ENABLE_NUCLEAR_BLINK || !nuclear_isRecording) {
-					resetAllRecLEDs(context)
-				}
+				resetStopProgress(context)
 			}			
-
-			// reset long press timer
-			stopHoldStartMs = STOP_SAVE_RESET
-			stopSaveArmed = false
 		}
 	}	
 }
@@ -1270,14 +1283,18 @@ if ((TRACKING_MODE && ENABLE_NUCLEAR_BLINK) || ENABLE_STOP_HOLD_SAVE) {
 		// ---- SAVE CONFIRM BLINK ----
 		if (saveBlink_isActive) {
 
+			// do nothing until the next blink time interval is reached
 			if (saveBlink_lastMs !== SAVE_BLINK_RESET && (now - saveBlink_lastMs) < SAVE_BLINK_INTERVAL_MS)
 				return
 
+			// time interval reached, proceed to advancing animation blink state
 			saveBlink_lastMs = now
 			saveBlink_stateOn = !saveBlink_stateOn
 
+			// toggle LED's on/off depending on updated blink state
 			setAllTransportLeds(context, saveBlink_stateOn)
 
+			// reset saveBlink to inactive once we reach the end of the animation
 			saveBlink_toggleCount++
 			if (saveBlink_toggleCount >= SAVE_BLINK_TOGGLES) {
 				saveBlink_isActive = false
