@@ -66,6 +66,7 @@ JOG WHEEL              : HORIZONTAL ZOOM
 BANK L / R             : NAVIGATE TRACK SELECTION (Focus)
 STOP + LOC L           : UNDO
 STOP + LOC R           : REDO
+STOP + SET             : MUTE/UNMUTE SELECTED TRACK
 MUTE BUTTONS 1-4       : Mute On/Off for Tracks 1-4 (Fixed) (Yellow LED's)
 SELECT BUTTONS 1-4     : Solo On/Off for Tracks 1-4 (Fixed) (Green LED's)
 REC LEDS 1-4           : NUCLEAR BLINK RED (Sync to Project Tempo during Record)
@@ -246,6 +247,9 @@ if (! TRACKING_MODE) {
 	btnSelects[1] = deviceDriver.mSurface.makeButton(2.0, 18.0, 2.0, 1.0)
 	btnSelects[2] = deviceDriver.mSurface.makeButton(4.0, 18.0, 2.0, 1.0)
 	btnSelects[3] = deviceDriver.mSurface.makeButton(6.0, 18.0, 2.0, 1.0)
+
+	// dummy button to control selected track mute/unmute
+	var btnDummySelectedMute = deviceDriver.mSurface.makeButton(2.0, 6.0, 2.0, 1.0)
 }
 
 // channel faders
@@ -479,6 +483,7 @@ var host_MetronomeActive = page.mHostAccess.mTransport.mValue.mMetronomeActive
 var host_CycleActive = page.mHostAccess.mTransport.mValue.mCycleActive
 var host_SelectPrevTrack = page.mHostAccess.mTrackSelection.mAction.mPrevTrack
 var host_SelectNextTrack = page.mHostAccess.mTrackSelection.mAction.mNextTrack
+var host_SelectedMute = page.mHostAccess.mTrackSelection.mMixerChannel.mValue.mMute
 
 // create custom vars on host for NULL mode switching
 var var_nullModeOn = deviceDriver.mSurface.makeCustomValueVariable("Null Mode On")
@@ -493,11 +498,15 @@ var var_rewPressed = deviceDriver.mSurface.makeCustomValueVariable("REW Pressed"
 var var_RTZPressed = deviceDriver.mSurface.makeCustomValueVariable("RTZ Pressed")
 
 if (TRACKING_MODE) {
-	// STOP+LOC undo/redo chords (tracking mode only)
+	// locator button vars (tracking mode only)
 	var var_locLeftPressed  = deviceDriver.mSurface.makeCustomValueVariable("LOC Left Pressed")
 	var var_locRightPressed = deviceDriver.mSurface.makeCustomValueVariable("LOC Right Pressed")
+	var var_locSetPressed = deviceDriver.mSurface.makeCustomValueVariable("LOC Set Pressed")
+
+	// STOP chords locator button vars (tracking mode only)
 	var var_undoPressed = deviceDriver.mSurface.makeCustomValueVariable("Undo Pressed")
 	var var_redoPressed = deviceDriver.mSurface.makeCustomValueVariable("Redo Pressed")	
+	var var_muteSelectedPressed = deviceDriver.mSurface.makeCustomValueVariable("Mute Selected Pressed")
 }
 
 if (ENABLE_STOP_HOLD_SAVE) {
@@ -1024,18 +1033,24 @@ function assignLocatorControls_DualMode() {
 
 function assignLocatorControls_TrackingMode() {    
     // bind locator buttons to host marker commands
-    page.makeCommandBinding(btnLocateSet.mSurfaceValue, "Transport", "Insert Marker")
+    page.makeCommandBinding(var_locSetPressed, "Transport", "Insert Marker")
 	page.makeCommandBinding(var_locLeftPressed,  "Transport", "Locate Previous Marker")
 	page.makeCommandBinding(var_locRightPressed, "Transport", "Locate Next Marker")
 	page.makeCommandBinding(var_undoPressed, "Edit", "Undo")
 	page.makeCommandBinding(var_redoPressed, "Edit", "Redo")
 
+	// bind dummy button to host selected track mute (*note- can't use .setTypeToggle() here)
+	page.makeValueBinding(btnDummySelectedMute.mSurfaceValue, host_SelectedMute)
+	
 	btnLocateLeft.mSurfaceValue.mOnProcessValueChange =
 		function(context, newValue, diff) {
 			var locLeftPressed = (newValue > 0)
 			var stopPressed = btnStop.mSurfaceValue.getProcessValue(context) > 0
 
 			if (stopPressed && locLeftPressed) {
+				// disarm stop longpress save until next press
+				stopSaveArmed = false 
+				
 				var_undoPressed.setProcessValue(context, 1.0)          // stop is also pressed.. fire an undo
 			} else {
 				var_locLeftPressed.setProcessValue(context, newValue)  // stop isn't pressed.. fire a normal locLeft
@@ -1048,11 +1063,34 @@ function assignLocatorControls_TrackingMode() {
 			var stopPressed = btnStop.mSurfaceValue.getProcessValue(context) > 0
 			
 			if (stopPressed && locRightPressed) {
+				// disarm stop longpress save until next press
+				stopSaveArmed = false
+
 				var_redoPressed.setProcessValue(context, 1.0)           // stop is also pressed.. fire a redo
 			} else {
 				var_locRightPressed.setProcessValue(context, newValue)  // stop isn't pressed.. fire a normal locRight
 			}
 		}			
+
+	btnLocateSet.mSurfaceValue.mOnProcessValueChange =
+		function(context, newValue, diff) {
+			var locSetPressed = (newValue > 0)
+			var stopPressed = btnStop.mSurfaceValue.getProcessValue(context) > 0
+
+			if (stopPressed && locSetPressed) {
+				// disarm stop longpress save until next press
+				stopSaveArmed = false
+
+				// Read current mute from dummy button
+				var isMuted = btnDummySelectedMute.mSurfaceValue.getProcessValue(context)
+				
+				// stop is also pressed.. fire a mute selected track toggle (via dummy button)
+				btnDummySelectedMute.mSurfaceValue.setProcessValue(context, isMuted > 0 ? 0.0 : 1.0)		
+			} else {
+				// stop isn't pressed.. fire a normal locSet
+				var_locSetPressed.setProcessValue(context, newValue)
+			}
+		}		
 }
 
 function assignRecMasterButtonDualMode()
@@ -1328,7 +1366,7 @@ if (TRACKING_MODE) {
 	assignMuteBank_Single() 
 	assignSoloBank_Single()
 
-	// bind locator controls to markers and undo/redo "STOP" chords
+	// bind locator controls to markers and undo/redo/mute "STOP" chords
 	assignLocatorControls_TrackingMode()
 	
 	// bind solo LED to host cycle state
