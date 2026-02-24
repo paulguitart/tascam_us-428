@@ -10,7 +10,6 @@
 //
 // Wishlist Features
 // -----------------
-// Long Press Stop+Rec Master - Selected track solo
 // Stop+Wheel - Selected track volume
 
 //-----------------------------------------------------------------------------
@@ -68,7 +67,8 @@ MASTER FADER           : METRONOME CLICK LEVEL
 NULL BUTTON            : METRONOME ON/OFF
 SOLO BUTTON            : CYCLE (LOOP) ON/OFF
 JOG WHEEL              : HORIZONTAL ZOOM
-BANK L / R             : NAVIGATE TRACK SELECTION (Focus)
+BANK L / R             : SELECT PREV/NEXT TRACK
+STOP + BANK L / R      : AUDITION PREV/NEXT TRACK (Bank L/R again to clear solos)
 STOP + LOC L           : UNDO
 STOP + LOC R           : REDO
 STOP + SET             : MUTE/UNMUTE SELECTED TRACK
@@ -174,6 +174,10 @@ if (TRACKING_MODE && ENABLE_NUCLEAR_BLINK) {
 	var nuclear_isRecording = false
 	var nuclear_blinkState = false
 	var nuclear_lastBlinkMs = NUCLEAR_BLINK_RESET
+}
+
+if (TRACKING_MODE) {	
+	var auditionActive = false
 }
 
 if (ENABLE_STOP_HOLD_SAVE) {
@@ -489,6 +493,7 @@ var host_CycleActive = page.mHostAccess.mTransport.mValue.mCycleActive
 var host_SelectPrevTrack = page.mHostAccess.mTrackSelection.mAction.mPrevTrack
 var host_SelectNextTrack = page.mHostAccess.mTrackSelection.mAction.mNextTrack
 var host_SelectedMute = page.mHostAccess.mTrackSelection.mMixerChannel.mValue.mMute
+var host_SelectedVolume = page.mHostAccess.mTrackSelection.mMixerChannel.mValue.mVolume   // unused, reserved for future use
 
 // create custom vars on host for NULL mode switching
 var var_nullModeOn = deviceDriver.mSurface.makeCustomValueVariable("Null Mode On")
@@ -512,6 +517,10 @@ if (TRACKING_MODE) {
 	var var_undoPressed = deviceDriver.mSurface.makeCustomValueVariable("Undo Pressed")
 	var var_redoPressed = deviceDriver.mSurface.makeCustomValueVariable("Redo Pressed")	
 	var var_muteSelectedPressed = deviceDriver.mSurface.makeCustomValueVariable("Mute Selected Pressed")
+	
+	// create custom vars for audition actions
+	var var_auditionKillSolos = deviceDriver.mSurface.makeCustomValueVariable("Audition Kill Solos")
+	var var_auditionSoloSelected = deviceDriver.mSurface.makeCustomValueVariable("Audition Solo Selected")	
 }
 
 if (ENABLE_STOP_HOLD_SAVE) {
@@ -621,10 +630,10 @@ function assignBankButtonControls_BankSelect() {
     // bind bank left button to prev bank selection    
     page.makeValueBinding(btnBankLeft.mSurfaceValue, var_bankLeftPressed).mOnValueChange = 
         function (context, activeMapping, newValue, diff) {            
-            var isButtonPressed = newValue > 0              
-            displayBankLeftLED(context, isButtonPressed)
+            var isBankLeftPressed = newValue > 0              
+            displayBankLeftLED(context, isBankLeftPressed)
             
-            if (isButtonPressed && selectedBank > 0) {
+            if (isBankLeftPressed && selectedBank > 0) {
                 selectedBank--
                 triggerBankSwitch(context, activeMapping, selectedBank)
             }
@@ -633,10 +642,10 @@ function assignBankButtonControls_BankSelect() {
     // bind bank right button to next bank selection
     page.makeValueBinding(btnBankRight.mSurfaceValue, var_bankRightPressed).mOnValueChange = 
         function (context, activeMapping, newValue, diff) {            
-            var isButtonPressed = newValue > 0
-            displayBankRightLED(context, isButtonPressed)
+            var isBankRightPressed = newValue > 0
+            displayBankRightLED(context, isBankRightPressed)
 
-            if (isButtonPressed && selectedBank < (MAX_BANK_COUNT-1)) {
+            if (isBankRightPressed && selectedBank < (MAX_BANK_COUNT-1)) {
                 selectedBank++
                 triggerBankSwitch(context, activeMapping, selectedBank)
             }
@@ -657,19 +666,58 @@ function triggerBankSwitch(context, activeMapping, bankNum) {
 }
 
 function assignBankButtonControls_TrackSelect() {
-    // bind bank left button to host prev track selection
+    // bind bank left button to host prev track selection, STOP+bankLeft = audition track
     page.makeActionBinding(btnBankLeft.mSurfaceValue, host_SelectPrevTrack).mOnValueChange = 
         function (context, activeMapping, newValue, diff) {            
-            var isButtonPressed = newValue > 0              
-            displayBankLeftLED(context, isButtonPressed)
+            var isBankPressed = newValue > 0              
+			var stopPressed = btnStop.mSurfaceValue.getProcessValue(context) > 0			
+
+            displayBankLeftLED(context, isBankPressed)
+			
+			if (isBankPressed && stopPressed) {
+				// enter/continue audition track select mode
+				auditionActive = true
+				auditionSelectedTrack(context)
+			} else if (isBankPressed && !stopPressed && auditionActive) {
+				// exit audition track select mode when stop button is released, deactivate all solos
+				auditionActive = false
+				pulseVar(context, var_auditionKillSolos)
+			}				
         }
 
-    // bind bank right button to host next track selection
+    // bind bank right button to host next track selection, STOP+bankRight = audition track
     page.makeActionBinding(btnBankRight.mSurfaceValue, host_SelectNextTrack).mOnValueChange = 
         function (context, activeMapping, newValue, diff) {            
-            var isButtonPressed = newValue > 0
-            displayBankRightLED(context, isButtonPressed)
+            var isBankPressed = newValue > 0              
+			var stopPressed = btnStop.mSurfaceValue.getProcessValue(context) > 0			
+
+            displayBankRightLED(context, isBankPressed)
+			
+			if (isBankPressed && stopPressed) {
+				// enter/continue audition track select mode
+				auditionActive = true
+				auditionSelectedTrack(context)
+			} else if (isBankPressed && !stopPressed && auditionActive) {
+				// exit audition track select mode when stop button is released, deactivate all solos
+				auditionActive = false
+				pulseVar(context, var_auditionKillSolos)
+			}				
         }    
+}
+
+function assignAuditionCommands() {
+    page.makeCommandBinding(var_auditionKillSolos, "Edit", "Deactivate All Solo")
+    page.makeCommandBinding(var_auditionSoloSelected, "Edit", "Solo")
+}
+
+function pulseVar(context, v) {
+    v.setProcessValue(context, 1.0)
+    v.setProcessValue(context, 0.0)
+}
+
+function auditionSelectedTrack(context) {
+    pulseVar(context, var_auditionKillSolos)
+    pulseVar(context, var_auditionSoloSelected)
 }
 
 function assignSoloEnableButton(bankNum) {
@@ -1378,8 +1426,13 @@ if (TRACKING_MODE) {
 	// bind Jog wheel to dedicated zoom control
 	assignJogWheel_ZoomOnly() 
 	
-	// bind bank buttons to track select
-	assignBankButtonControls_TrackSelect()	
+	// bind bank buttons to track select (with audition logic)
+	assignBankButtonControls_TrackSelect()
+
+	// bind vars to control audition solo logic in cubase
+	assignAuditionCommands()
+	
+	// bind fixed mute and solo banks for tracks 1-4
 	assignMuteBank_Single() 
 	assignSoloBank_Single()
 
