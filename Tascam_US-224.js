@@ -11,6 +11,7 @@
 // Wishlist Features
 // -----------------
 // Stop+Wheel - Selected track volume
+// 'Transport', 'Recall Cycle Marker 1' .. 9
 
 //-----------------------------------------------------------------------------
 // 0. CUSTOM SETTINGS - change these CONST values to suit your own needs
@@ -178,6 +179,9 @@ if (TRACKING_MODE && ENABLE_NUCLEAR_BLINK) {
 
 if (TRACKING_MODE) {	
 	var auditionActive = false
+	const AUDITION_SOLO_DELAY_MS = 250
+	const AUDITION_SOLO_RESET = 0
+	var auditionSoloDueMs = AUDITION_SOLO_RESET	
 }
 
 if (ENABLE_STOP_HOLD_SAVE) {
@@ -675,13 +679,14 @@ function assignBankButtonControls_TrackSelect() {
             displayBankLeftLED(context, isBankPressed)
 			
 			if (isBankPressed && stopPressed) {
+				// reset stop longpress save until next press
+				if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)				
+
 				// enter/continue audition track select mode
-				auditionActive = true
 				auditionSelectedTrack(context)
 			} else if (isBankPressed && !stopPressed && auditionActive) {
-				// exit audition track select mode when stop button is released, deactivate all solos
-				auditionActive = false
-				pulseVar(context, var_auditionKillSolos)
+				// exit audition track select mode when stop button is released
+				auditionExit(context)				
 			}				
         }
 
@@ -694,13 +699,14 @@ function assignBankButtonControls_TrackSelect() {
             displayBankRightLED(context, isBankPressed)
 			
 			if (isBankPressed && stopPressed) {
+				// reset stop longpress save until next press
+				if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)				
+
 				// enter/continue audition track select mode
-				auditionActive = true
 				auditionSelectedTrack(context)
 			} else if (isBankPressed && !stopPressed && auditionActive) {
-				// exit audition track select mode when stop button is released, deactivate all solos
-				auditionActive = false
-				pulseVar(context, var_auditionKillSolos)
+				// exit audition track select mode when stop button is released
+				auditionExit(context)				
 			}				
         }    
 }
@@ -715,9 +721,24 @@ function pulseVar(context, v) {
     v.setProcessValue(context, 0.0)
 }
 
+function auditionExit(context) {
+	auditionActive = false
+
+	// deactivate all solos				
+	pulseVar(context, var_auditionKillSolos)	
+
+	// reset timer to ensure any previously queued solo's are cancelled
+    auditionSoloDueMs = AUDITION_SOLO_RESET
+}
+
 function auditionSelectedTrack(context) {
+	auditionActive = true
+	
+	// deactivate all solos				
     pulseVar(context, var_auditionKillSolos)
-    pulseVar(context, var_auditionSoloSelected)
+	
+    // schedule solo slightly later during .onIdle() so Cubase has some time to finish track selection
+    auditionSoloDueMs = Date.now() + AUDITION_SOLO_DELAY_MS
 }
 
 function assignSoloEnableButton(bankNum) {
@@ -1066,7 +1087,7 @@ function assignTransportControls() {
 			
             if (stopPressed && rewindPressed) {
 				// reset stop longpress save until next press
-				resetStopProgress(context)				
+				if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)				
 				
                 var_RTZPressed.setProcessValue(context, 1.0)          // stop is also pressed.. fire an RTZ
 			} else {
@@ -1105,7 +1126,7 @@ function assignLocatorControls_TrackingMode() {
 
 			if (stopPressed && locLeftPressed) {
 				// reset stop longpress save until next press
-				resetStopProgress(context)
+				if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)
 				
 				var_undoPressed.setProcessValue(context, 1.0)          // stop is also pressed.. fire an undo
 			} else {
@@ -1120,7 +1141,7 @@ function assignLocatorControls_TrackingMode() {
 			
 			if (stopPressed && locRightPressed) {
 				// reset stop longpress save until next press
-				resetStopProgress(context)
+				if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)
 
 				var_redoPressed.setProcessValue(context, 1.0)           // stop is also pressed.. fire a redo
 			} else {
@@ -1135,7 +1156,7 @@ function assignLocatorControls_TrackingMode() {
 
 			if (stopPressed && locSetPressed) {
 				// reset stop longpress save until next press
-				resetStopProgress(context)
+				if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)
 
 				// Read current mute from dummy button
 				var isMuted = btnDummySelectedMute.mSurfaceValue.getProcessValue(context)
@@ -1372,6 +1393,15 @@ if ((TRACKING_MODE && ENABLE_NUCLEAR_BLINK) || ENABLE_STOP_HOLD_SAVE) {
 			} else if (!ENABLE_NUCLEAR_BLINK || !nuclear_isRecording) {
 				showStopHoldProgress(context, now)
 			}				
+		}
+
+		// ---- AUDITION delayed SOLO TRACK ----
+		if (TRACKING_MODE && auditionActive) {
+			if (auditionSoloDueMs !== AUDITION_SOLO_RESET && now >= auditionSoloDueMs) {
+				// fire the delayed Solo once (after Cubase finishes changing selection)
+				auditionSoloDueMs = AUDITION_SOLO_RESET
+				pulseVar(context, var_auditionSoloSelected)
+			}
 		}
 
 		// ---- NUCLEAR RECORD LED BLINK ----
