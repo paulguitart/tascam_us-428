@@ -8,6 +8,9 @@
 // For STOP+LOC undo/redo chords, we accept this as a feature: it brings you back to
 // where the last take occurred before undoing.
 //
+// NOTE: If you run out of zoom wheel range, rotate the wheel quickly in the opposite direction
+// to "grab" more travel in the desired range
+//
 // Wishlist Features
 // -----------------
 // Somehow control: makeCommandBinding('Transport', 'Recall Cycle Marker 1') .. 1 thru 9
@@ -543,13 +546,13 @@ var var_bankRightPressed = page.mCustom.makeHostValueVariable("Bank Right Presse
 // create custom vars for jog shuttle left/right
 var var_JogShuttleLeft = deviceDriver.mSurface.makeCustomValueVariable("Jog Shuttle Left")
 var var_JogShuttleRight = deviceDriver.mSurface.makeCustomValueVariable("Jog Shuttle Right")
-var lastShuttleValue = -1;
+var lastShuttleValue = -1
 
 // custom custom vars for jogwheel zoom/volume
 var var_knobJogWheel = page.mCustom.makeHostValueVariable("Jogwheel Position")
 var var_zoomIn = deviceDriver.mSurface.makeCustomValueVariable("Zoom In")
 var var_zoomOut = deviceDriver.mSurface.makeCustomValueVariable("Zoom Out")
-var lastZoomValue = -1;
+var lastZoomValue = -1
 
 //-----------------------------------------------------------------------------
 // 4. SUBPAGES - *note! the order created matters- first one is open by default
@@ -1523,6 +1526,10 @@ if (TRACKING_MODE) {
 	// bind rec master button to metronome and master bus
 	assignRecMasterButton_DualMode()	
 }
+
+//-----------------------------------------------------------------------------
+// 7. DEVICE ON ACTIVATE
+//-----------------------------------------------------------------------------
 
 // this happens when the TASCAM device is first connected
 deviceDriver.mOnActivate = function(context) {        
