@@ -13,10 +13,7 @@
 //
 // Wishlist Features
 // -----------------
-// Fix stop LED
-// STOP+locator = undo/redo
-// STOP+set = ...something else cool.. makeCommandBinding('Transport', 'Recall Cycle Marker 1') .. 1 thru 9
-// Nuclear record blink? (maybe)
+// STOP+track left/right = ...something cool.. makeCommandBinding('Transport', 'Recall Cycle Marker 1') .. 1 thru 9
 
 //-----------------------------------------------------------------------------
 // 0. CUSTOM SETTINGS - change these CONST values to suit your own needs
@@ -28,20 +25,47 @@ const ENABLE_KUSTOM_CHANNEL = true
 // hold STOP button to save 
 const ENABLE_STOP_HOLD_SAVE = true
 
+// send startup MIDI to force nanoKontrol into CC mode
+const FORCE_DEVICE_CC_MODE = true
+
+// 0.8 sets the max range of the fader closer to 0dB, 1.0 is full range (+6db)
+const TRACK_FADER_SCALE = 1.0 
+
 /*
 ====================================================================================================
-KORG NANOKONTROL2 v1.0 | COMMAND SUMMARY
+KORG NANOKONTROL2 v1.0 | Kustom Tracking Remote | COMMAND SUMMARY
 ====================================================================================================
 
 GLOBAL COMMANDS:
 ----------------------------------------------------------------------------------------------------
 STOP (Tap)             : Stop Transport
-STOP (Hold 2s)         : TRIGGER SAVE (w/ red LED progress bar & confirm transport LED blink)
+STOP (Hold 2s)         : TRIGGER SAVE (w/ confirm transport LED blink)
 STOP + REW             : RETURN TO ZERO (RTZ)
+STOP + MARKER LEFT     : UNDO
+STOP + MARKER RIGHT    : REDO
 REW / FF / PLAY / REC  : Standard Transport
-BANK L / R             : Bank/Track Navigation
+TRACK L / R            : SELECT PREV/NEXT TRACK
+CYCLE BUTTON           : CYCLE (LOOP) ON/OFF
+MARKER LEFT            : LOCATE PREV MARKER
+MARKER RIGHT           : LOCATE NEXT MARKER
+MARKER SET             : INSERT MARKER
 
-...TBD
+FADER BANK COMMANDS: (Channels 1-7)
+----------------------------------------------------------------------------------------------------
+
+FADERS 1-7             : Volume for Tracks 1-7 (Fixed)
+STOP + SET MARKER      : Master Bus Insert On/Off
+MUTE BUTTONS 1-7       : Mute On/Off for Tracks 1-7 (Fixed)
+SOLO BUTTONS 1-7       : Solo On/Off for Tracks 1-7 (Fixed)
+REC BUTTONS 1-7        : Record Enable On/Off for Tracks 1-7 (Fixed)
+
+KUSTOM CHANNEL COMMANDS: (Channel 8)
+----------------------------------------------------------------------------------------------------
+FADER                  : Metronome Click Level
+SOLO                   : Solo On/Off for Selected Track
+MUTE                   : Mute On/Off for Selected Track
+REC ENABLE             : Metronome On/Off
+PAN KNOB               : Horizontal Zoom (reverse the knob quickly to gain zoom range)
 
 ====================================================================================================
 */
@@ -242,8 +266,8 @@ function makeSurfaceElements() {
 	surfaceElements.btn_nextTrack = surface.makeButton(x + 2.5, y, 2, 1)
 	surfaceElements.btn_nextTrack.mSurfaceValue.mMidiBinding.setInputPort(midiInput).setOutputPort(midiOutput).bindToControlChange(0, 59)
 
-	surfaceElements.btn_insertMarker = surface.makeButton(x + 5, y + 2, 2, 1)
-	surfaceElements.btn_insertMarker.mSurfaceValue.mMidiBinding.setInputPort(midiInput).setOutputPort(midiOutput).bindToControlChange(0, 60)
+	surfaceElements.btn_setMarker = surface.makeButton(x + 5, y + 2, 2, 1)
+	surfaceElements.btn_setMarker.mSurfaceValue.mMidiBinding.setInputPort(midiInput).setOutputPort(midiOutput).bindToControlChange(0, 60)
 
 	surfaceElements.btn_prevMarker = surface.makeButton(x + 7.5, y + 2, 2, 1)
 	surfaceElements.btn_prevMarker.mSurfaceValue.mMidiBinding.setInputPort(midiInput).setOutputPort(midiOutput).bindToControlChange(0, 61)
@@ -297,15 +321,10 @@ var host_SelectedTrackChannel = page.mHostAccess.mTrackSelection.mMixerChannel
 var host_SelectedMute = host_SelectedTrackChannel.mValue.mMute
 var host_SelectedVolume = host_SelectedTrackChannel.mValue.mVolume
 
-// ---- Markers (basic) ----
-page.makeCommandBinding(surfaceElements.btn_insertMarker.mSurfaceValue, 'Transport', 'Insert Marker')
-page.makeCommandBinding(surfaceElements.btn_prevMarker.mSurfaceValue, 'Transport', 'Locate Previous Marker')
-page.makeCommandBinding(surfaceElements.btn_nextMarker.mSurfaceValue, 'Transport', 'Locate Next Marker')
-page.makeValueBinding(surfaceElements.transport.btnCycle.mSurfaceValue, host_CycleActive).setTypeToggle()
-
-// ---- Selected track navigation ----
+// ---- Selected track navigation/cycle ----
 page.makeActionBinding(surfaceElements.btn_prevTrack.mSurfaceValue, page.mHostAccess.mTrackSelection.mAction.mPrevTrack)
 page.makeActionBinding(surfaceElements.btn_nextTrack.mSurfaceValue, page.mHostAccess.mTrackSelection.mAction.mNextTrack)
+page.makeValueBinding(surfaceElements.transport.btnCycle.mSurfaceValue, host_CycleActive).setTypeToggle()
 
 // ---- Mixer channels ----
 var hostMixerBankZone = page.mHostAccess.mMixConsole.makeMixerBankZone()
@@ -337,6 +356,16 @@ if (ENABLE_STOP_HOLD_SAVE) {
 var var_rewPressed = surface.makeCustomValueVariable("REW Pressed")
 var var_RTZPressed = surface.makeCustomValueVariable("RTZ Pressed")
 
+// marker button vars
+var var_prevMarkerPressed  = deviceDriver.mSurface.makeCustomValueVariable("Prev Marker Pressed")
+var var_nextMarkerPressed = deviceDriver.mSurface.makeCustomValueVariable("Next Marker Pressed")
+var var_setMarkerPressed = deviceDriver.mSurface.makeCustomValueVariable("Set Marker Pressed")
+
+// STOP chords marker button vars
+var var_undoPressed = deviceDriver.mSurface.makeCustomValueVariable("Undo Pressed")
+var var_redoPressed = deviceDriver.mSurface.makeCustomValueVariable("Redo Pressed")	
+var var_masterInsertPressed = deviceDriver.mSurface.makeCustomValueVariable("Master Insert Pressed")
+
 // Track STOP press/release (does NOT replace normal Stop binding)
 if (ENABLE_STOP_HOLD_SAVE) {
 	
@@ -344,11 +373,6 @@ if (ENABLE_STOP_HOLD_SAVE) {
 		stopSaveArmed = false
 		// reset long press timer
 		stopHoldStartMs = STOP_SAVE_RESET
-
-		// TODO
-		//if (!ENABLE_NUCLEAR_BLINK || !nuclear_isRecording) {
-		//	resetAllRecLEDs(context)
-		//}				
 	}
 	
 	surfaceElements.transport.btnStop.mSurfaceValue.mOnProcessValueChange =
@@ -375,10 +399,9 @@ if (ENABLE_STOP_HOLD_SAVE) {
 			}
 		}	
 		
-		var_stopLed.mOnProcessValueChange = function (context, newValue) {
-			// If we're blinking transport LEDs for SAVE confirm, don't fight the blink.
-			if (saveBlink_isActive) return
-
+		var_stopLed.mOnProcessValueChange = function (context, newValue) {			
+			// if (saveBlink_isActive) return      // allow stop LED to follow blinks
+			
 			sendMidiKorg(context, TRANSPORT_MIDI_CC.Stop, newValue > 0)
 		}		
 }
@@ -409,7 +432,7 @@ function assignTransportControls() {
     surfaceElements.transport.btnRewind.mSurfaceValue.mOnProcessValueChange = 
         function(context, newValue, diff) {			
 			var rewindPressed = newValue > 0
-            var stopPressed = surfaceElements.transport.btnStop.mSurfaceValue.getProcessValue(context)
+            var stopPressed = surfaceElements.transport.btnStop.mSurfaceValue.getProcessValue(context) > 0
 			
             if (stopPressed && rewindPressed) {
 				// reset stop longpress save until next press
@@ -440,7 +463,7 @@ function assignChannelControls() {
 			page.makeValueBinding(mute,  host_SelectedTrackChannel.mValue.mMute).setTypeToggle()
 		} else {
 			// Default mapping (tracks 1–8)
-			page.makeValueBinding(fader, channel.mValue.mVolume).setValueTakeOverModeScaled()
+			page.makeValueBinding(fader, channel.mValue.mVolume).setValueTakeOverModeScaled().mapToValueRange(0, TRACK_FADER_SCALE) 
 			page.makeValueBinding(pan,   channel.mValue.mPan).setValueTakeOverModeScaled()
 			page.makeValueBinding(mute,  channel.mValue.mMute).setTypeToggle()
 			page.makeValueBinding(solo,  channel.mValue.mSolo).setTypeToggle()
@@ -475,6 +498,63 @@ function assignSaveCommand()
 {
 	// this var is triggered by long press of STOP button (when "ENABLE_STOP_HOLD_SAVE" mode enabled)
 	page.makeCommandBinding(var_savePressed, "File", "Save")
+}
+
+function assignMarkerControls() {    
+    // bind marker buttons to host marker commands
+    page.makeCommandBinding(var_setMarkerPressed, "Transport", "Insert Marker")
+	page.makeCommandBinding(var_prevMarkerPressed,  "Transport", "Locate Previous Marker")
+	page.makeCommandBinding(var_nextMarkerPressed, "Transport", "Locate Next Marker")
+	page.makeCommandBinding(var_undoPressed, "Edit", "Undo")
+	page.makeCommandBinding(var_redoPressed, "Edit", "Redo")
+	page.makeCommandBinding(var_masterInsertPressed, "Mixer", "Bypass: Inserts on Main Mix")
+
+	surfaceElements.btn_prevMarker.mSurfaceValue.mOnProcessValueChange =
+		function(context, newValue, diff) {
+			var prevMarkerPressed = (newValue > 0)
+			var stopPressed = surfaceElements.transport.btnStop.mSurfaceValue.getProcessValue(context) > 0
+
+			if (stopPressed && prevMarkerPressed) {
+				// reset stop longpress save until next press
+				if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)
+				
+				var_undoPressed.setProcessValue(context, 1.0)             // stop is also pressed.. fire an undo
+			} else {
+				var_prevMarkerPressed.setProcessValue(context, newValue)  // stop isn't pressed.. fire a normal prev marker
+			}
+		}
+
+	surfaceElements.btn_nextMarker.mSurfaceValue.mOnProcessValueChange =
+		function(context, newValue, diff) {
+			var nextMarkerPressed = (newValue > 0)
+			var stopPressed = surfaceElements.transport.btnStop.mSurfaceValue.getProcessValue(context) > 0
+			
+			if (stopPressed && nextMarkerPressed) {
+				// reset stop longpress save until next press
+				if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)
+
+				var_redoPressed.setProcessValue(context, 1.0)             // stop is also pressed.. fire a redo
+			} else {
+				var_nextMarkerPressed.setProcessValue(context, newValue)  // stop isn't pressed.. fire a normal next marker
+			}
+		}			
+
+	surfaceElements.btn_setMarker.mSurfaceValue.mOnProcessValueChange =
+		function(context, newValue, diff) {
+			var setMarkerPressed = (newValue > 0)
+			var stopPressed = surfaceElements.transport.btnStop.mSurfaceValue.getProcessValue(context) > 0
+
+			if (stopPressed && setMarkerPressed) {
+				// reset stop longpress save until next press
+				if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)
+
+				// stop is also pressed.. fire a master bus insert
+				var_masterInsertPressed.setProcessValue(context, 1.0) 
+			} else {
+				// stop isn't pressed.. fire a normal set marker
+				var_setMarkerPressed.setProcessValue(context, newValue)
+			}
+		}		
 }
 
 //-----------------------------------------------------------------------------
@@ -515,15 +595,15 @@ function setTransportLed(context, cc, isOn) {
     sendMidiKorg(context, cc, isOn)
 }
 
-function setAllTransportLeds(context, isOn) {	
+function setConfirmTransportLEDs(context, isOn) {	
     setTransportLed(context, TRANSPORT_MIDI_CC.Rewind,      isOn)
     setTransportLed(context, TRANSPORT_MIDI_CC.FastForward, isOn)
-    setTransportLed(context, TRANSPORT_MIDI_CC.Stop,        isOn)
+//  setTransportLed(context, TRANSPORT_MIDI_CC.Stop,        isOn)
     setTransportLed(context, TRANSPORT_MIDI_CC.Play,        isOn)
     setTransportLed(context, TRANSPORT_MIDI_CC.Record,      isOn)
 }
 
-function blinkAllTransportLEDs(context) {
+function blinkConfirmTransportLEDs(context) {
     // arm the animation; actual toggling happens in mOnIdle
     saveBlink_isActive = true
     saveBlink_lastMs = SAVE_BLINK_RESET
@@ -550,7 +630,7 @@ if (ENABLE_STOP_HOLD_SAVE) {
 			saveBlink_stateOn = !saveBlink_stateOn
 
 			// toggle LED's on/off depending on updated blink state
-			setAllTransportLeds(context, saveBlink_stateOn)
+			setConfirmTransportLEDs(context, saveBlink_stateOn)
 
 			// reset saveBlink to inactive once we reach the end of the animation
 			saveBlink_toggleCount++
@@ -558,11 +638,7 @@ if (ENABLE_STOP_HOLD_SAVE) {
 				saveBlink_isActive = false
 				saveBlink_lastMs = SAVE_BLINK_RESET
 				saveBlink_toggleCount = 0
-				saveBlink_stateOn = false
-
-				// reset "progress indicator" LED's
-				//if (!ENABLE_NUCLEAR_BLINK || !nuclear_isRecording)
-				//	resetAllRecLEDs(context)				
+				saveBlink_stateOn = false			
 			}
 		}
 
@@ -578,9 +654,7 @@ if (ENABLE_STOP_HOLD_SAVE) {
 				stopHoldStartMs = STOP_SAVE_RESET
 
 				// blink transport LEDs to confirm
-				blinkAllTransportLEDs(context)				
-			//} else if (!ENABLE_NUCLEAR_BLINK || !nuclear_isRecording) {
-			//	showStopHoldProgress(context, now)
+				blinkConfirmTransportLEDs(context)				
 			}				
 		}
     }
@@ -594,6 +668,7 @@ setupFeedback()
 
 assignTransportControls()
 assignChannelControls()
+assignMarkerControls()
 
 if (ENABLE_STOP_HOLD_SAVE) {	
 	assignSaveCommand()        // bind "save" command to STOP longpress var
@@ -608,12 +683,12 @@ if (ENABLE_KUSTOM_CHANNEL) {
 //-----------------------------------------------------------------------------
 
 deviceDriver.mOnActivate = function (context) {
-	// switchDeviceToCcModeWithExternalLed(context)
+	if (FORCE_DEVICE_CC_MODE) {
+		switchDeviceToCcModeWithExternalLed(context)
+	}	
 }
 
 page.mOnActivate = function (context) {
-
-	console.log('nanoKONTROL2 Tracking Remote page activated')
 
 }
 
