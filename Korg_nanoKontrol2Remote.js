@@ -23,7 +23,11 @@
 // 0. CUSTOM SETTINGS - change these CONST values to suit your own needs
 //-----------------------------------------------------------------------------
 
-const KUSTOM_CHANNEL_ENABLED = true
+// kustom channel for metronome fader, zoom knob, and selected track solo/mute
+const ENABLE_KUSTOM_CHANNEL = true
+
+// hold STOP button to save 
+const ENABLE_STOP_HOLD_SAVE = false
 
 /*
 ====================================================================================================
@@ -57,6 +61,28 @@ deviceDriver.makeDetectionUnit().detectPortPair(midiInput, midiOutput)
 	.expectSysexIdentityResponse('42', '1301', '0000')
 
 var surface = deviceDriver.mSurface
+
+//-----------------------------------------------------------------------------
+// STATE VARIABLES - custom control
+//-----------------------------------------------------------------------------
+
+if (ENABLE_STOP_HOLD_SAVE) {
+	// long press STOP to save vars
+	const STOP_SAVE_HOLD_MS = 2000
+	const STOP_SAVE_PREDELAY_MS = 500
+	const STOP_SAVE_RESET = -1
+	var stopHoldStartMs = STOP_SAVE_RESET
+	var stopSaveArmed = false		
+	
+	// save LED blink vars
+	const SAVE_BLINK_RESET = -1
+	const SAVE_BLINK_INTERVAL_MS = 150
+	const SAVE_BLINK_TOGGLES = 6                // 6 toggles = 3 full blinks
+	var saveBlink_isActive = false
+	var saveBlink_lastMs = SAVE_BLINK_RESET
+	var saveBlink_toggleCount = 0
+	var saveBlink_stateOn = false	
+}
 
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -259,23 +285,11 @@ var host_SelectedTrackChannel = page.mHostAccess.mTrackSelection.mMixerChannel
 var host_SelectedMute = host_SelectedTrackChannel.mValue.mMute
 var host_SelectedVolume = host_SelectedTrackChannel.mValue.mVolume
 
-// ---- Transport (basic) ----
-page.makeValueBinding(surfaceElements.transport.btnPlay.mSurfaceValue, hostTransport_Start).setTypeToggle()
-page.makeValueBinding(surfaceElements.transport.btnRecord.mSurfaceValue, hostTransport_Record).setTypeToggle()
-page.makeValueBinding(surfaceElements.transport.btnRewind.mSurfaceValue, hostTransport_Rewind)
-page.makeValueBinding(surfaceElements.transport.btnFastForward.mSurfaceValue, hostTransport_FastForward)
-page.makeCommandBinding(surfaceElements.transport.btnStop.mSurfaceValue, 'Transport', 'Stop')
-page.makeValueBinding(surfaceElements.transport.btnCycle.mSurfaceValue, host_CycleActive).setTypeToggle()
-
-// DEBUG //
-surfaceElements.transport.btnPlay.mSurfaceValue.mOnProcessValueChange = function (context, v) {
-	if (v > 0) console.log("PLAY pressed") }
-///////////
-
 // ---- Markers (basic) ----
 page.makeCommandBinding(surfaceElements.btn_insertMarker.mSurfaceValue, 'Transport', 'Insert Marker')
 page.makeCommandBinding(surfaceElements.btn_prevMarker.mSurfaceValue, 'Transport', 'Locate Previous Marker')
 page.makeCommandBinding(surfaceElements.btn_nextMarker.mSurfaceValue, 'Transport', 'Locate Next Marker')
+page.makeValueBinding(surfaceElements.transport.btnCycle.mSurfaceValue, host_CycleActive).setTypeToggle()
 
 // ---- Selected track navigation ----
 page.makeActionBinding(surfaceElements.btn_prevTrack.mSurfaceValue, page.mHostAccess.mTrackSelection.mAction.mPrevTrack)
@@ -292,18 +306,55 @@ var host_SelectedTrackChannel = page.mHostAccess.mTrackSelection.mMixerChannel
 var hostMetronomeActive = page.mHostAccess.mTransport.mValue.mMetronomeActive
 var hostMetronomeClickLevel = page.mHostAccess.mTransport.mValue.mMetronomeClickLevel
 
-//-----------------------------------------------------------------------------
-// STATE VARIABLES - custom control
-//-----------------------------------------------------------------------------
+if (ENABLE_KUSTOM_CHANNEL) {
+	var var_knobZoom = page.mCustom.makeHostValueVariable('Zoom Knob Position')
+	var var_zoomIn  = surface.makeCustomValueVariable('Zoom In')
+	var var_zoomOut = surface.makeCustomValueVariable('Zoom Out')
+	var lastZoomValue = -1
+}
 
-var var_knobZoom = page.mCustom.makeHostValueVariable('Zoom Knob Position')
-var var_zoomIn  = surface.makeCustomValueVariable('Zoom In')
-var var_zoomOut = surface.makeCustomValueVariable('Zoom Out')
-var lastZoomValue = -1
+// create custom vars to intercept simultaneous button presses for STOP+REW = RTZ
+var var_rewPressed = deviceDriver.mSurface.makeCustomValueVariable("REW Pressed")
+var var_RTZPressed = deviceDriver.mSurface.makeCustomValueVariable("RTZ Pressed")
 
 //-----------------------------------------------------------------------------
 // 4. ASSIGN FUNCTIONS - create host bindings
 //-----------------------------------------------------------------------------
+
+function assignTransportControls() {
+
+    // https://steinbergmedia.github.io/midiremote_api_doc/examples/commandbindings
+
+    // bind buttons to host transport events
+	page.makeValueBinding(surfaceElements.transport.btnPlay.mSurfaceValue, hostTransport_Start).setTypeToggle()
+	page.makeValueBinding(surfaceElements.transport.btnRecord.mSurfaceValue, hostTransport_Record).setTypeToggle()
+	page.makeValueBinding(surfaceElements.transport.btnFastForward.mSurfaceValue, hostTransport_FastForward)
+    page.makeValueBinding(var_rewPressed, hostTransport_Rewind)
+    page.makeCommandBinding(var_RTZPressed, "Transport", "Return to Zero")    
+	
+	// use transport command, because mStop causes playhead to jump back
+	if (ENABLE_STOP_HOLD_SAVE) {
+		page.makeCommandBinding(var_stopPressed, "Transport", "Stop")	
+	} else {
+		page.makeCommandBinding(surfaceElements.transport.btnStop.mSurfaceValue, "Transport", "Stop")    
+	}
+    
+    // catch STOP+REW buttons to send RTZ command, or forward single REW button command, thru custom variable
+    surfaceElements.transport.btnRewind.mSurfaceValue.mOnProcessValueChange = 
+        function(context, newValue, diff) {			
+			var rewindPressed = newValue > 0
+            var stopPressed = surfaceElements.transport.btnStop.mSurfaceValue.getProcessValue(context)
+			
+            if (stopPressed && rewindPressed) {
+				// reset stop longpress save until next press
+				// TODO- if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)				
+				
+                var_RTZPressed.setProcessValue(context, 1.0)          // stop is also pressed.. fire an RTZ
+			} else {
+				var_rewPressed.setProcessValue(context, newValue)     // stop isn't pressed.. fire a normal rewind
+			}			
+        }        
+}
 
 function assignChannelControls() {
 	for (var i = 0; i < 8; ++i) {
@@ -315,7 +366,7 @@ function assignChannelControls() {
 		var solo  = surfaceElements.faderStrips[i].btnSolo.mSurfaceValue
 		var rec   = surfaceElements.faderStrips[i].btnRec.mSurfaceValue
 
-		if (KUSTOM_CHANNEL_ENABLED && i === 7) {
+		if (ENABLE_KUSTOM_CHANNEL && i === 7) {
 			// Strip 8 special behavior
 			page.makeValueBinding(fader, hostMetronomeClickLevel).setValueTakeOverModeScaled()
 			page.makeValueBinding(rec,   hostMetronomeActive).setTypeToggle()
@@ -385,9 +436,10 @@ function setupFeedback() {
 
 setupFeedback()
 
+assignTransportControls()
 assignChannelControls()
 
-if (KUSTOM_CHANNEL_ENABLED) {
+if (ENABLE_KUSTOM_CHANNEL) {
 	assignZoomKnob()
 }
 
