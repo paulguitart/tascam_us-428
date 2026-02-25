@@ -10,14 +10,13 @@
 //
 // Wishlist Features
 // -----------------
-// Stop+Wheel - Selected track volume
-// 'Transport', 'Recall Cycle Marker 1' .. 9
+// Somehow control: makeCommandBinding('Transport', 'Recall Cycle Marker 1') .. 1 thru 9
 
 //-----------------------------------------------------------------------------
 // 0. CUSTOM SETTINGS - change these CONST values to suit your own needs
 //-----------------------------------------------------------------------------
 
-// tracking mode (simplified to mute/unmute tracks 1-4 with metronome on master fader & null button, cycle on solo button, undo/redo on stop+locators)
+// tracking mode -> true / normal mode -> false
 const TRACKING_MODE = true
 
 // 50 banks * 4 = 200 total tracks.. increase if you need more tracks
@@ -34,6 +33,9 @@ const ENABLE_STOP_HOLD_SAVE = true
 
 // if we want the normal jog wheel behavior to shuttle playhead instead of track select up/down
 const SHUTTLE_MODE = false
+
+// when audition is active, use jog wheel to control selected track volume
+const AUDITION_VOLUME_WHEEL = true
 
 // set this to 1 (recommended) unless you want to use multiple US-224 together on the same machine
 const MAX_TASCAM_UNITS = 1
@@ -63,11 +65,11 @@ BANK L / R             : Bank/Track Navigation
 MODE A: TRACKING (TRACKING_MODE = true)
 Focus: Performance & Speed. Locked to Tracks 1-4.
 ----------------------------------------------------------------------------------------------------
-FADERS 1-4             : Vol for Tracks 1-4 (Fixed)
+FADERS 1-4             : Volume for Tracks 1-4 (Fixed)
 MASTER FADER           : METRONOME CLICK LEVEL
 NULL BUTTON            : METRONOME ON/OFF
 SOLO BUTTON            : CYCLE (LOOP) ON/OFF
-JOG WHEEL              : HORIZONTAL ZOOM
+JOG WHEEL              : [Normal] Horizontal Zoom | [Audition] Selected Track Volume
 BANK L / R             : SELECT PREV/NEXT TRACK
 STOP + BANK L / R      : AUDITION PREV/NEXT TRACK (Bank L/R again to clear solos)
 STOP + LOC L           : UNDO
@@ -81,7 +83,7 @@ REC LEDS 1-4           : NUCLEAR BLINK RED (Sync to Project Tempo during Record)
 MODE B: NORMAL (TRACKING_MODE = false)
 Focus: Full Mixer Control. Bank-aware.
 ----------------------------------------------------------------------------------------------------
-FADERS 1-4             : Vol for Active Bank
+FADERS 1-4             : Track Volume for Active Bank
 NULL BUTTON            : TOGGLE NULL MODE (Swaps Master Fader & Jog behavior)
 SOLO BUTTON            : TOGGLE SOLO MODE (Swaps Mute/Select behavior)
 BANK L / R             : SHIFT ACTIVE BANK (Groups of 4)
@@ -142,7 +144,7 @@ const LED_STATES = {
 }   
 
 // TASCAM MIDI command codes
-const TASCAM_MIDI_BEGIN = [0xF0, 0x4E, 0x0, 0x12]    // 0x0 is the default unit (device) number
+const TASCAM_MIDI_BEGIN = [0xF0, 0x4E, 0x0, 0x12]    // Third value 0x0 is the default unit (device) number
 const TASCAM_MIDI_END = 0xF7
 const TASCAM_TRANSPORT_LED = 0x01
 const TASCAM_MUTE_LED = 0x02
@@ -156,7 +158,7 @@ const TASCAM_BANK_RIGHT_LED = 0x08
 // device constants
 const BANK_SIZE = 4
 const TOTAL_TRACK_COUNT = BANK_SIZE * MAX_BANK_COUNT     
-const MASTER_FADER_SCALE = 0.75                          // 0.75 sets the max range of the fader to 0dB
+const MASTER_FADER_SCALE = 0.75              // 0.75 sets the max range of the fader to 0dB, 1.0 is full range
 
 //-----------------------------------------------------------------------------
 // STATE VARIABLES - custom control
@@ -180,7 +182,7 @@ if (TRACKING_MODE && ENABLE_NUCLEAR_BLINK) {
 if (TRACKING_MODE) {	
 	var auditionActive = false
 	const AUDITION_SOLO_DELAY_MS = 250
-	const AUDITION_SOLO_RESET = 0
+	const AUDITION_SOLO_RESET = 0		
 	var auditionSoloDueMs = AUDITION_SOLO_RESET	
 }
 
@@ -496,8 +498,9 @@ var host_MetronomeActive = page.mHostAccess.mTransport.mValue.mMetronomeActive
 var host_CycleActive = page.mHostAccess.mTransport.mValue.mCycleActive
 var host_SelectPrevTrack = page.mHostAccess.mTrackSelection.mAction.mPrevTrack
 var host_SelectNextTrack = page.mHostAccess.mTrackSelection.mAction.mNextTrack
-var host_SelectedMute = page.mHostAccess.mTrackSelection.mMixerChannel.mValue.mMute
-var host_SelectedVolume = page.mHostAccess.mTrackSelection.mMixerChannel.mValue.mVolume   // unused, reserved for future use
+var host_SelectedTrackChannel = page.mHostAccess.mTrackSelection.mMixerChannel
+var host_SelectedMute = host_SelectedTrackChannel.mValue.mMute
+var host_SelectedVolume = host_SelectedTrackChannel.mValue.mVolume
 
 // create custom vars on host for NULL mode switching
 var var_nullModeOn = deviceDriver.mSurface.makeCustomValueVariable("Null Mode On")
@@ -538,13 +541,14 @@ var var_bankLeftPressed = page.mCustom.makeHostValueVariable("Bank Left Pressed"
 var var_bankRightPressed = page.mCustom.makeHostValueVariable("Bank Right Pressed")
 
 // create custom vars for jog shuttle left/right
-var var_JogShuttleLeft = deviceDriver.mSurface.makeCustomValueVariable('Jog Shuttle Left')
-var var_JogShuttleRight = deviceDriver.mSurface.makeCustomValueVariable('Jog Shuttle Right')
+var var_JogShuttleLeft = deviceDriver.mSurface.makeCustomValueVariable("Jog Shuttle Left")
+var var_JogShuttleRight = deviceDriver.mSurface.makeCustomValueVariable("Jog Shuttle Right")
 var lastShuttleValue = -1;
 
-// custom custom vars for zooming
-var var_zoomIn = deviceDriver.mSurface.makeCustomValueVariable('Zoom In')
-var var_zoomOut = deviceDriver.mSurface.makeCustomValueVariable('Zoom Out')
+// custom custom vars for jogwheel zoom/volume
+var var_knobJogWheel = page.mCustom.makeHostValueVariable("Jogwheel Position")
+var var_zoomIn = deviceDriver.mSurface.makeCustomValueVariable("Zoom In")
+var var_zoomOut = deviceDriver.mSurface.makeCustomValueVariable("Zoom Out")
 var lastZoomValue = -1;
 
 //-----------------------------------------------------------------------------
@@ -552,43 +556,51 @@ var lastZoomValue = -1;
 //-----------------------------------------------------------------------------
 
 // create RecMaster button NULL mode subpage area
-var area_RecMasterButtonSubPages = page.makeSubPageArea("RecMaster Button Subpage Area")
+var area_RecMasterButtonSubPages = page.makeSubPageArea('RecMaster Button Subpage Area')
 
-// create RecMaster NULL Modes Subpage
+// create RecMaster NULL modes subpage
 var subpage_RecMasterNormalMode = area_RecMasterButtonSubPages.makeSubPage('RecMaster Normal Mode') 
 var subpage_RecMasterNullMode = area_RecMasterButtonSubPages.makeSubPage('RecMaster Null Mode')
 
 // create locators buttons NULL mode subpage area
-var area_LocatorButtonsSubPages = page.makeSubPageArea("Locator Buttons Subpage Area")
+var area_LocatorButtonsSubPages = page.makeSubPageArea('Locator Buttons Subpage Area')
 
-// create locators NULL Modes Subpage
+// create locators NULL modes subpage
 var subpage_LocatorsNormalMode = area_LocatorButtonsSubPages.makeSubPage('Locator Buttons Normal Mode') 
 var subpage_LocatorsNullMode = area_LocatorButtonsSubPages.makeSubPage('Locator Buttons Null Mode')
 
 // create aux mode buttons subpage area
-var area_NullButtonSubPages = page.makeSubPageArea("NULL Button Subpage Area")
+var area_NullButtonSubPages = page.makeSubPageArea('NULL Button Subpage Area')
 
-// create Aux Assign Modes Subpage
+// create aux assign modes subpage
 var subpage_NullNormalMode = area_NullButtonSubPages.makeSubPage('NULL Normal Mode') 
 var subpage_NullAssignMode = area_NullButtonSubPages.makeSubPage('NULL Assign Mode')
 
-// create fader bank sub pages
+// create fader bank subpages
 var area_FaderBankSubPages = page.makeSubPageArea('Fader Banks Subpage Area')
 var subpage_FaderBank = makeBankSubPages(area_FaderBankSubPages, 'Fader Bank')
 
-// create selected LED bank sub pages
+// create selected LED bank subpages
 var area_SelectedLEDSubPages = page.makeSubPageArea('Selected LED Subpage Area')
 var subpage_SelectedLEDBank = makeBankSubPages(area_SelectedLEDSubPages, 'Selected LED Bank')
 
-// create rec enable bank sub pages
+// create rec enable bank subpages
 var area_RecEnableBankSubPages = page.makeSubPageArea('Rec Enable Subpage Area')
 var subpage_SelectEnableBank = makeBankSubPages(area_RecEnableBankSubPages, 'Select Enable Bank')
 var subpage_RecEnableBank = makeBankSubPages(area_RecEnableBankSubPages, 'Rec Enable Bank')
 
-// create mute/solo bank sub pages
+// create mute/solo bank subpages
 var area_MuteSoloBankSubPages = page.makeSubPageArea('Mute/Solo Subpage Area')
 var subpage_MuteBank = makeBankSubPages(area_MuteSoloBankSubPages, 'Mute Bank')
 var subpage_SoloEnableBank = makeBankSubPages(area_MuteSoloBankSubPages, 'Solo Enable Bank')
+
+// create jogwheel zoom/volume mode subpages
+var area_JogwheelSubPages = page.makeSubPageArea('Jogwheel Subpage Area')
+var subpage_JogwheelZoomMode = area_JogwheelSubPages.makeSubPage('Jogwheel Zoom Mode')
+
+if (TRACKING_MODE && AUDITION_VOLUME_WHEEL) {
+	var subpage_JogwheelVolumeMode = area_JogwheelSubPages.makeSubPage('Jogwheel Track Volume Mode')
+}
 
 function makeBankSubPages(area, name) {
     var subpages = []
@@ -683,10 +695,10 @@ function assignBankButtonControls_TrackSelect() {
 				if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)				
 
 				// enter/continue audition track select mode
-				auditionSelectedTrack(context)
+				auditionSelectedTrack(context, activeMapping)
 			} else if (isBankPressed && !stopPressed && auditionActive) {
 				// exit audition track select mode when stop button is released
-				auditionExit(context)				
+				auditionExit(context, activeMapping)				
 			}				
         }
 
@@ -703,10 +715,10 @@ function assignBankButtonControls_TrackSelect() {
 				if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)				
 
 				// enter/continue audition track select mode
-				auditionSelectedTrack(context)
+				auditionSelectedTrack(context, activeMapping)
 			} else if (isBankPressed && !stopPressed && auditionActive) {
 				// exit audition track select mode when stop button is released
-				auditionExit(context)				
+				auditionExit(context, activeMapping)				
 			}				
         }    
 }
@@ -721,7 +733,7 @@ function pulseVar(context, v) {
     v.setProcessValue(context, 0.0)
 }
 
-function auditionExit(context) {
+function auditionExit(context, activeMapping) {
 	auditionActive = false
 
 	// deactivate all solos				
@@ -729,16 +741,26 @@ function auditionExit(context) {
 
 	// reset timer to ensure any previously queued solo's are cancelled
     auditionSoloDueMs = AUDITION_SOLO_RESET
+
+	if (AUDITION_VOLUME_WHEEL) {
+		// trigger zoom wheel subpage
+		subpage_JogwheelZoomMode.mAction.mActivate.trigger(activeMapping)	
+	}
 }
 
-function auditionSelectedTrack(context) {
+function auditionSelectedTrack(context, activeMapping) {
 	auditionActive = true
-	
+
 	// deactivate all solos				
     pulseVar(context, var_auditionKillSolos)
 	
     // schedule solo slightly later during .onIdle() so Cubase has some time to finish track selection
     auditionSoloDueMs = Date.now() + AUDITION_SOLO_DELAY_MS
+
+	if (AUDITION_VOLUME_WHEEL) {
+		// trigger track volume wheel subpage
+		subpage_JogwheelVolumeMode.mAction.mActivate.trigger(activeMapping)
+	}
 }
 
 function assignSoloEnableButton(bankNum) {
@@ -1212,58 +1234,60 @@ function assignJogWheel_DualMode() {
     // bind jogweel to shuttle/zoom 
     knobJogWheel.mSurfaceValue.mOnProcessValueChange =      
         function(context, newValue, diff) {
-            if (isNullModeEnabled(context)) {
+            if (isNullModeEnabled(context)) {				
                 // trigger jog wheel controls in zoom mode
-                var newZoomValue = Math.floor(newValue * 1000);
+                var newZoomValue = Math.floor(newValue * 1000)
 
-                if(newZoomValue <= 0) {
-                    var_zoomOut.setProcessValue(context, 1000)
-                }
-                if(newZoomValue > lastZoomValue || newZoomValue >= 1000) {
-                    var_zoomIn.setProcessValue(context, 1)
-                }
-                if(newZoomValue < lastZoomValue) {
-                    var_zoomOut.setProcessValue(context, 1)
-                }
-                lastZoomValue = newZoomValue;
+				if (newZoomValue < lastZoomValue || newZoomValue <= 0) {
+					var_zoomOut.setProcessValue(context, 1)
+				} else if (newZoomValue > lastZoomValue || newZoomValue >= 1000) {
+					var_zoomIn.setProcessValue(context, 1)
+				}				
+				lastZoomValue = newZoomValue				
+				
             } else {
                 // trigger jog wheel controls in normal shuttle mode
-                var newShuttleValue = Math.floor(newValue * 1000);
+				var newShuttleValue = Math.floor(newValue * 1000)
 
-                if(newShuttleValue <= 0) {
-                    var_JogShuttleLeft.setProcessValue(context, 1000)
-                }
-                if(newShuttleValue < lastShuttleValue) {                    
-                    var_JogShuttleLeft.setProcessValue(context, 1)
-                }
-                if(newShuttleValue > lastShuttleValue || newShuttleValue >= 1000) { 
-                    var_JogShuttleRight.setProcessValue(context, 1)
-                }
-                lastShuttleValue = newShuttleValue; 
+				if (newShuttleValue < lastShuttleValue || newShuttleValue <= 0) {
+					var_JogShuttleLeft.setProcessValue(context, 1)
+				} else if (newShuttleValue > lastShuttleValue || newShuttleValue >= 1000) {
+					var_JogShuttleRight.setProcessValue(context, 1)
+				}
+				
+				lastShuttleValue = newShuttleValue			
             }
         }              
 }
 
-function assignJogWheel_ZoomOnly() {
-    // bind zoom commands
+function assignJogWheel_TrackingMode() {
+	// bind zoom commands
     page.makeCommandBinding(var_zoomIn,  'Zoom', 'Zoom In')
     page.makeCommandBinding(var_zoomOut, 'Zoom', 'Zoom Out')
 
-    knobJogWheel.mSurfaceValue.mOnProcessValueChange =
-        function(context, newValue, diff) {
+	if (AUDITION_VOLUME_WHEEL) {
+		page.makeValueBinding(knobJogWheel.mSurfaceValue, host_SelectedVolume)
+			.setValueTakeOverModeScaled()
+			.setSubPage(subpage_JogwheelVolumeMode)
+
+		subpage_JogwheelZoomMode.mOnActivate = function(context, activeMapping) {
+			knobValue = knobJogWheel.mSurfaceValue.getProcessValue(context)
+			lastZoomValue = Math.floor(knobValue * 1000)
+		}
+	}
+
+    page.makeValueBinding(knobJogWheel.mSurfaceValue, var_knobJogWheel)
+        .setSubPage(subpage_JogwheelZoomMode)
+        .mOnValueChange = function(context, activeMapping, newValue, diff) {
 
             var newZoomValue = Math.floor(newValue * 1000)
 
-            if (newZoomValue <= 0) {
-                var_zoomOut.setProcessValue(context, 1000)
-            }
-            if (newZoomValue > lastZoomValue || newZoomValue >= 1000) {
-                var_zoomIn.setProcessValue(context, 1)
-            }
-            if (newZoomValue < lastZoomValue) {
-                var_zoomOut.setProcessValue(context, 1)
-            }
-
+			if (newZoomValue < lastZoomValue || newZoomValue <= 0) {
+				var_zoomOut.setProcessValue(context, 1)
+			} else if (newZoomValue > lastZoomValue || newZoomValue >= 1000) {
+				var_zoomIn.setProcessValue(context, 1)
+			}
+			
             lastZoomValue = newZoomValue
         }
 }
@@ -1349,6 +1373,15 @@ if ((TRACKING_MODE && ENABLE_NUCLEAR_BLINK) || ENABLE_STOP_HOLD_SAVE) {
     deviceDriver.mOnIdle = function (context, activeMapping) {
         var now = Date.now()
 
+		// ---- AUDITION delayed SOLO TRACK ----
+		if (TRACKING_MODE && auditionActive) {
+			if (auditionSoloDueMs !== AUDITION_SOLO_RESET && now >= auditionSoloDueMs) {
+				// fire the delayed Solo once (after Cubase finishes changing selection)
+				auditionSoloDueMs = AUDITION_SOLO_RESET
+				pulseVar(context, var_auditionSoloSelected)
+			}
+		}
+
 		// ---- SAVE CONFIRM BLINK ----
 		if (saveBlink_isActive) {
 
@@ -1393,15 +1426,6 @@ if ((TRACKING_MODE && ENABLE_NUCLEAR_BLINK) || ENABLE_STOP_HOLD_SAVE) {
 			} else if (!ENABLE_NUCLEAR_BLINK || !nuclear_isRecording) {
 				showStopHoldProgress(context, now)
 			}				
-		}
-
-		// ---- AUDITION delayed SOLO TRACK ----
-		if (TRACKING_MODE && auditionActive) {
-			if (auditionSoloDueMs !== AUDITION_SOLO_RESET && now >= auditionSoloDueMs) {
-				// fire the delayed Solo once (after Cubase finishes changing selection)
-				auditionSoloDueMs = AUDITION_SOLO_RESET
-				pulseVar(context, var_auditionSoloSelected)
-			}
 		}
 
 		// ---- NUCLEAR RECORD LED BLINK ----
@@ -1453,8 +1477,8 @@ if (TRACKING_MODE) {
 	// bind null button to metronome
 	assignNullButton_Metronome()
 
-	// bind Jog wheel to dedicated zoom control
-	assignJogWheel_ZoomOnly() 
+	// bind Jog wheel to dedicated zoom control (with audition track volume, when enabled)
+	assignJogWheel_TrackingMode() 
 	
 	// bind bank buttons to track select (with audition logic)
 	assignBankButtonControls_TrackSelect()
@@ -1513,6 +1537,7 @@ deviceDriver.mOnActivate = function(context) {
 		// reset all record LED's to off
 		resetAllRecLEDs(context)
 	}
+		
     // reset bank LED's to off
     displayBankLeftLED(context, false)
     displayBankRightLED(context, false)    
