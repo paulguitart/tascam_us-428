@@ -13,8 +13,7 @@
 //
 // Wishlist Features
 // -----------------
-// Long press stop to SAVE
-// STOP+rew = RTZ
+// Fix stop LED
 // STOP+locator = undo/redo
 // STOP+set = ...something else cool.. makeCommandBinding('Transport', 'Recall Cycle Marker 1') .. 1 thru 9
 // Nuclear record blink? (maybe)
@@ -27,7 +26,7 @@
 const ENABLE_KUSTOM_CHANNEL = true
 
 // hold STOP button to save 
-const ENABLE_STOP_HOLD_SAVE = false
+const ENABLE_STOP_HOLD_SAVE = true
 
 /*
 ====================================================================================================
@@ -63,6 +62,19 @@ deviceDriver.makeDetectionUnit().detectPortPair(midiInput, midiOutput)
 var surface = deviceDriver.mSurface
 
 //-----------------------------------------------------------------------------
+// KORG DEVICE CONSTANTS - device codes for MIDI messages
+//-----------------------------------------------------------------------------
+
+const TRANSPORT_MIDI_CC = {
+    Rewind: 43,
+    FastForward: 44,
+    Stop: 42,
+    Play: 41,
+    Record: 45,
+    Cycle: 46
+}
+
+//-----------------------------------------------------------------------------
 // STATE VARIABLES - custom control
 //-----------------------------------------------------------------------------
 
@@ -76,8 +88,8 @@ if (ENABLE_STOP_HOLD_SAVE) {
 	
 	// save LED blink vars
 	const SAVE_BLINK_RESET = -1
-	const SAVE_BLINK_INTERVAL_MS = 150
-	const SAVE_BLINK_TOGGLES = 6                // 6 toggles = 3 full blinks
+	const SAVE_BLINK_INTERVAL_MS = 140
+	const SAVE_BLINK_TOGGLES = 10                // 10 toggles = 5 full blinks
 	var saveBlink_isActive = false
 	var saveBlink_lastMs = SAVE_BLINK_RESET
 	var saveBlink_toggleCount = 0
@@ -185,26 +197,26 @@ function makeTransport(x, y) {
 	var currX = x
 
 	transport.btnCycle = surface.makeButton(currX, y - 1.6, 2, 1)
-	bindMidiCC(transport.btnCycle, 0, 46)
+	bindMidiCC(transport.btnCycle, 0, TRANSPORT_MIDI_CC.Cycle)
 
 	transport.btnRewind = surface.makeButton(currX, y, w, h)
-	bindMidiCC(transport.btnRewind, 0, 43)
+	bindMidiCC(transport.btnRewind, 0, TRANSPORT_MIDI_CC.Rewind)
 	currX = currX + w + spacing
 
 	transport.btnFastForward = surface.makeButton(currX, y, w, h)
-	bindMidiCC(transport.btnFastForward, 0, 44)
+	bindMidiCC(transport.btnFastForward, 0, TRANSPORT_MIDI_CC.FastForward)
 	currX = currX + w + spacing
 
 	transport.btnStop = surface.makeButton(currX, y, w, h)
-	bindMidiCC(transport.btnStop, 0, 42)
+	bindMidiCC(transport.btnStop, 0, TRANSPORT_MIDI_CC.Stop)
 	currX = currX + w + spacing
 
 	transport.btnPlay = surface.makeButton(currX, y, w, h)
-	bindMidiCC(transport.btnPlay, 0, 41)
+	bindMidiCC(transport.btnPlay, 0, TRANSPORT_MIDI_CC.Play)
 	currX = currX + w + spacing
 
 	transport.btnRecord = surface.makeButton(currX, y, w, h)
-	bindMidiCC(transport.btnRecord, 0, 45)
+	bindMidiCC(transport.btnRecord, 0, TRANSPORT_MIDI_CC.Record)
 	currX = currX + w + spacing
 
 	return transport
@@ -269,7 +281,7 @@ var surfaceElements = makeSurfaceElements()
 var page = deviceDriver.mMapping.makePage('nanoKONTROL2 Remote')
 
 // Label
-page.setLabelFieldText(surfaceElements.deviceName, 'nanoKONTROL2 Kustom Remote')
+page.setLabelFieldText(surfaceElements.deviceName, 'Kustom Remote Kontrol')
 
 // create host accessing objects
 var hostTransport_Rewind = page.mHostAccess.mTransport.mValue.mRewind
@@ -313,9 +325,56 @@ if (ENABLE_KUSTOM_CHANNEL) {
 	var lastZoomValue = -1
 }
 
+if (ENABLE_STOP_HOLD_SAVE) {
+	// long press STOP to save vars
+	var var_stopPressed = surface.makeCustomValueVariable("Stop Pressed")
+	var var_savePressed = surface.makeCustomValueVariable("Save Pressed")
+}
+
 // create custom vars to intercept simultaneous button presses for STOP+REW = RTZ
-var var_rewPressed = deviceDriver.mSurface.makeCustomValueVariable("REW Pressed")
-var var_RTZPressed = deviceDriver.mSurface.makeCustomValueVariable("RTZ Pressed")
+var var_rewPressed = surface.makeCustomValueVariable("REW Pressed")
+var var_RTZPressed = surface.makeCustomValueVariable("RTZ Pressed")
+
+// Track STOP press/release (does NOT replace normal Stop binding)
+if (ENABLE_STOP_HOLD_SAVE) {
+	
+	function resetStopProgress(context) {		
+		stopSaveArmed = false
+		// reset long press timer
+		stopHoldStartMs = STOP_SAVE_RESET
+
+		// TODO
+		//if (!ENABLE_NUCLEAR_BLINK || !nuclear_isRecording) {
+		//	resetAllRecLEDs(context)
+		//}				
+	}
+	
+	surfaceElements.transport.btnStop.mSurfaceValue.mOnProcessValueChange =
+		function(context, newValue, diff) {
+			if (!saveBlink_isActive) {
+				// display normal stop LED unless we're blinking save
+				midiOutput.sendMidi(context, [0xb0, TRANSPORT_MIDI_CC.Stop, Math.round(newValue * 127)])
+			}
+
+			var stopPressed = (newValue > 0)
+			if (stopPressed) {			
+				// normal STOP behavior: fire stop var
+				var_stopPressed.setProcessValue(context, 1.0)
+			
+				// arm long press timer
+				stopHoldStartMs = Date.now()
+				stopSaveArmed = true
+			} else {                                 
+				// release stop var
+				var_stopPressed.setProcessValue(context, 0.0)
+
+				// reset "progress indicator" LED's
+				if (stopSaveArmed) {
+					resetStopProgress(context)
+				}			
+			}
+		}	
+}
 
 //-----------------------------------------------------------------------------
 // 4. ASSIGN FUNCTIONS - create host bindings
@@ -347,7 +406,7 @@ function assignTransportControls() {
 			
             if (stopPressed && rewindPressed) {
 				// reset stop longpress save until next press
-				// TODO- if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)				
+				if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)				
 				
                 var_RTZPressed.setProcessValue(context, 1.0)          // stop is also pressed.. fire an RTZ
 			} else {
@@ -405,6 +464,12 @@ function assignZoomKnob() {
         }
 }
 
+function assignSaveCommand()
+{
+	// this var is triggered by long press of STOP button (when "ENABLE_STOP_HOLD_SAVE" mode enabled)
+	page.makeCommandBinding(var_savePressed, "File", "Save")
+}
+
 //-----------------------------------------------------------------------------
 // 5. FEEDBACK EVENTS - wire DAW events to buttons/lights
 //-----------------------------------------------------------------------------
@@ -416,18 +481,102 @@ function sendFeedbackOut(button, ccNr) {
 }
 
 function setupFeedback() {
-	sendFeedbackOut(surfaceElements.transport.btnRewind, 43)
-	sendFeedbackOut(surfaceElements.transport.btnFastForward, 44)
-	sendFeedbackOut(surfaceElements.transport.btnStop, 42)
-	sendFeedbackOut(surfaceElements.transport.btnPlay, 41)
-	sendFeedbackOut(surfaceElements.transport.btnCycle, 46)
-	sendFeedbackOut(surfaceElements.transport.btnRecord, 45)
+	sendFeedbackOut(surfaceElements.transport.btnRewind, TRANSPORT_MIDI_CC.Rewind)
+	sendFeedbackOut(surfaceElements.transport.btnFastForward, TRANSPORT_MIDI_CC.FastForward)
+	sendFeedbackOut(surfaceElements.transport.btnPlay, TRANSPORT_MIDI_CC.Play)
+	sendFeedbackOut(surfaceElements.transport.btnCycle, TRANSPORT_MIDI_CC.Cycle)
+	sendFeedbackOut(surfaceElements.transport.btnRecord, TRANSPORT_MIDI_CC.Record)
+
+	if (!ENABLE_STOP_HOLD_SAVE) {
+		sendFeedbackOut(surfaceElements.transport.btnStop, TRANSPORT_MIDI_CC.Stop)
+	}
 	
 	for (var i = 0; i < 8; ++i) {
 		sendFeedbackOut(surfaceElements.faderStrips[i].btnSolo, 32 + i)
 		sendFeedbackOut(surfaceElements.faderStrips[i].btnMute, 48 + i)
 		sendFeedbackOut(surfaceElements.faderStrips[i].btnRec, 64 + i)
 	}
+}
+
+function sendMidiKorg(context, cc, isOn) {
+    // nanoKONTROL2 LEDs: 0 = off, 127 = on
+    midiOutput.sendMidi(context, [0xB0, cc, isOn ? 127 : 0])
+}
+
+function setTransportLed(context, cc, isOn) {
+    if (cc === undefined) return
+    sendMidiKorg(context, cc, isOn)
+}
+
+function setAllTransportLeds(context, isOn) {	
+    setTransportLed(context, TRANSPORT_MIDI_CC.Rewind,      isOn)
+    setTransportLed(context, TRANSPORT_MIDI_CC.FastForward, isOn)
+    setTransportLed(context, TRANSPORT_MIDI_CC.Stop,        isOn)
+    setTransportLed(context, TRANSPORT_MIDI_CC.Play,        isOn)
+    setTransportLed(context, TRANSPORT_MIDI_CC.Record,      isOn)
+}
+
+function blinkAllTransportLEDs(context) {
+    // arm the animation; actual toggling happens in mOnIdle
+    saveBlink_isActive = true
+    saveBlink_lastMs = SAVE_BLINK_RESET
+    saveBlink_toggleCount = 0
+    saveBlink_stateOn = false
+}
+
+// idle timer to handle STOP long press to save
+if (ENABLE_STOP_HOLD_SAVE) {
+	
+	// measured this at about 10 calls per second FYI (a bit less during record)
+    deviceDriver.mOnIdle = function (context, activeMapping) {
+        var now = Date.now()
+
+		// ---- SAVE CONFIRM BLINK ----
+		if (saveBlink_isActive) {
+
+			// do nothing until the next blink time interval is reached
+			if (saveBlink_lastMs !== SAVE_BLINK_RESET && (now - saveBlink_lastMs) < SAVE_BLINK_INTERVAL_MS)
+				return
+
+			// time interval reached, proceed to advancing animation blink state
+			saveBlink_lastMs = now
+			saveBlink_stateOn = !saveBlink_stateOn
+
+			// toggle LED's on/off depending on updated blink state
+			setAllTransportLeds(context, saveBlink_stateOn)
+
+			// reset saveBlink to inactive once we reach the end of the animation
+			saveBlink_toggleCount++
+			if (saveBlink_toggleCount >= SAVE_BLINK_TOGGLES) {
+				saveBlink_isActive = false
+				saveBlink_lastMs = SAVE_BLINK_RESET
+				saveBlink_toggleCount = 0
+				saveBlink_stateOn = false
+
+				// reset "progress indicator" LED's
+				//if (!ENABLE_NUCLEAR_BLINK || !nuclear_isRecording)
+				//	resetAllRecLEDs(context)				
+			}
+		}
+
+		// ---- STOP HOLD SAVE ----
+		if (ENABLE_STOP_HOLD_SAVE && stopSaveArmed && stopHoldStartMs !== STOP_SAVE_RESET) {
+			if ((now - stopHoldStartMs) >= STOP_SAVE_HOLD_MS) {
+				// fire a save trigger (pulse)
+				var_savePressed.setProcessValue(context, 1.0)
+				var_savePressed.setProcessValue(context, 0.0)
+				
+				// disarm so it fires once per hold
+				stopSaveArmed = false
+				stopHoldStartMs = STOP_SAVE_RESET
+
+				// blink transport LEDs to confirm
+				blinkAllTransportLEDs(context)				
+			//} else if (!ENABLE_NUCLEAR_BLINK || !nuclear_isRecording) {
+			//	showStopHoldProgress(context, now)
+			}				
+		}
+    }
 }
 
 //-----------------------------------------------------------------------------
@@ -439,8 +588,12 @@ setupFeedback()
 assignTransportControls()
 assignChannelControls()
 
+if (ENABLE_STOP_HOLD_SAVE) {	
+	assignSaveCommand()        // bind "save" command to STOP longpress var
+}
+
 if (ENABLE_KUSTOM_CHANNEL) {
-	assignZoomKnob()
+	assignZoomKnob()           // bind zoom in/out to knob #8
 }
 
 //-----------------------------------------------------------------------------
