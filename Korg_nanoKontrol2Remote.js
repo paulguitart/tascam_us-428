@@ -329,6 +329,8 @@ if (ENABLE_STOP_HOLD_SAVE) {
 	// long press STOP to save vars
 	var var_stopPressed = surface.makeCustomValueVariable("Stop Pressed")
 	var var_savePressed = surface.makeCustomValueVariable("Save Pressed")
+	var var_stopLed = surface.makeCustomValueVariable("Stop LED Feedback")	
+	page.makeValueBinding(var_stopLed, hostTransport_Stop).setTypeToggle()
 }
 
 // create custom vars to intercept simultaneous button presses for STOP+REW = RTZ
@@ -351,11 +353,6 @@ if (ENABLE_STOP_HOLD_SAVE) {
 	
 	surfaceElements.transport.btnStop.mSurfaceValue.mOnProcessValueChange =
 		function(context, newValue, diff) {
-			if (!saveBlink_isActive) {
-				// display normal stop LED unless we're blinking save
-				midiOutput.sendMidi(context, [0xb0, TRANSPORT_MIDI_CC.Stop, Math.round(newValue * 127)])
-			}
-
 			var stopPressed = (newValue > 0)
 			if (stopPressed) {			
 				// normal STOP behavior: fire stop var
@@ -368,12 +365,22 @@ if (ENABLE_STOP_HOLD_SAVE) {
 				// release stop var
 				var_stopPressed.setProcessValue(context, 0.0)
 
+				// keep the stop LED on since we're stopped
+				var_stopLed.setProcessValue(context, 1.0)
+								
 				// reset "progress indicator" LED's
 				if (stopSaveArmed) {
 					resetStopProgress(context)
 				}			
 			}
 		}	
+		
+		var_stopLed.mOnProcessValueChange = function (context, newValue) {
+			// If we're blinking transport LEDs for SAVE confirm, don't fight the blink.
+			if (saveBlink_isActive) return
+
+			sendMidiKorg(context, TRANSPORT_MIDI_CC.Stop, newValue > 0)
+		}		
 }
 
 //-----------------------------------------------------------------------------
