@@ -72,6 +72,7 @@ FADERS 1-4             : Volume for Tracks 1-4 (Fixed)
 MASTER FADER           : METRONOME CLICK LEVEL
 NULL BUTTON            : METRONOME ON/OFF
 SOLO BUTTON            : CYCLE (LOOP) ON/OFF
+REC MASTER BUTTON      : MASTER BUS INSERT ON/OFF
 JOG WHEEL              : [Normal] Horizontal Zoom | [Audition] Selected Track Volume
 BANK L / R             : SELECT PREV/NEXT TRACK
 STOP + BANK L / R      : AUDITION PREV/NEXT TRACK (Bank L/R again to clear solos)
@@ -90,6 +91,7 @@ FADERS 1-4             : Track Volume for Active Bank
 NULL BUTTON            : TOGGLE NULL MODE (Swaps Master Fader & Jog behavior)
 SOLO BUTTON            : TOGGLE SOLO MODE (Swaps Mute/Select behavior)
 BANK L / R             : SHIFT ACTIVE BANK (Groups of 4)
+REC MASTER BUTTON      : [Normal] Master Insert On/Off | [Null Mode] Metronome On/Off
 MASTER FADER           : [Normal] Stereo Out           | [Null Mode] FX Return 1
 JOG WHEEL              : [Normal] Shuttle/Track Select | [Null Mode] Horizontal Zoom
 MUTE BUTTONS 1-4       : [Normal] Mute                 | [Solo Mode] Solo
@@ -1108,7 +1110,7 @@ function assignTransportControls() {
     btnRewind.mSurfaceValue.mOnProcessValueChange = 
         function(context, newValue, diff) {			
 			var rewindPressed = newValue > 0
-            var stopPressed = btnStop.mSurfaceValue.getProcessValue(context)
+            var stopPressed = btnStop.mSurfaceValue.getProcessValue(context) > 0
 			
             if (stopPressed && rewindPressed) {
 				// reset stop longpress save until next press
