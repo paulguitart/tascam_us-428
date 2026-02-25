@@ -39,22 +39,22 @@ KORG NANOKONTROL2 v1.0 | Kustom Tracking Remote | COMMAND SUMMARY
 GLOBAL COMMANDS:
 ----------------------------------------------------------------------------------------------------
 STOP (Tap)             : Stop Transport
-STOP (Hold 2s)         : TRIGGER SAVE (w/ confirm transport LED blink)
-STOP + REW             : RETURN TO ZERO (RTZ)
-STOP + MARKER LEFT     : UNDO
-STOP + MARKER RIGHT    : REDO
+STOP (Hold 2s)         : Trigger Save (w/ confirm transport LED blink)
+STOP + REW             : Return To Zero (RTZ)
+STOP + MARKER LEFT     : Undo
+STOP + MARKER RIGHT    : Redo
+STOP + SET MARKER      : Master Bus Insert On/Off
 REW / FF / PLAY / REC  : Standard Transport
-TRACK L / R            : SELECT PREV/NEXT TRACK
-CYCLE BUTTON           : CYCLE (LOOP) ON/OFF
-MARKER LEFT            : LOCATE PREV MARKER
-MARKER RIGHT           : LOCATE NEXT MARKER
-MARKER SET             : INSERT MARKER
+TRACK L / R            : Select Prev/Next Track
+CYCLE BUTTON           : Cycle (Loop) On/Off
+MARKER LEFT            : Locate Prev Marker
+MARKER RIGHT           : Locate Next Marker
+MARKER SET             : Insert Marker
 
 FADER BANK COMMANDS: (Channels 1-7)
 ----------------------------------------------------------------------------------------------------
 
 FADERS 1-7             : Volume for Tracks 1-7 (Fixed)
-STOP + SET MARKER      : Master Bus Insert On/Off
 MUTE BUTTONS 1-7       : Mute On/Off for Tracks 1-7 (Fixed)
 SOLO BUTTONS 1-7       : Solo On/Off for Tracks 1-7 (Fixed)
 REC BUTTONS 1-7        : Record Enable On/Off for Tracks 1-7 (Fixed)
@@ -95,7 +95,12 @@ const TRANSPORT_MIDI_CC = {
     Stop: 42,
     Play: 41,
     Record: 45,
-    Cycle: 46
+    Cycle: 46,
+	PrevTrack: 58,
+	NextTrack: 59,
+	SetMarker: 60,
+	PrevMarker: 61,
+	NextMarker: 62
 }
 
 //-----------------------------------------------------------------------------
@@ -104,7 +109,7 @@ const TRANSPORT_MIDI_CC = {
 
 if (ENABLE_STOP_HOLD_SAVE) {
 	// long press STOP to save vars
-	const STOP_SAVE_HOLD_MS = 2000
+	const STOP_SAVE_HOLD_MS = 1500
 	const STOP_SAVE_PREDELAY_MS = 500
 	const STOP_SAVE_RESET = -1
 	var stopHoldStartMs = STOP_SAVE_RESET
@@ -261,19 +266,24 @@ function makeSurfaceElements() {
 	var y = 2.75
 
 	surfaceElements.btn_prevTrack = surface.makeButton(x, y, 2, 1)
-	surfaceElements.btn_prevTrack.mSurfaceValue.mMidiBinding.setInputPort(midiInput).setOutputPort(midiOutput).bindToControlChange(0, 58)
+	surfaceElements.btn_prevTrack.mSurfaceValue.mMidiBinding
+		.setInputPort(midiInput).setOutputPort(midiOutput).bindToControlChange(0, TRANSPORT_MIDI_CC.PrevTrack)
 
 	surfaceElements.btn_nextTrack = surface.makeButton(x + 2.5, y, 2, 1)
-	surfaceElements.btn_nextTrack.mSurfaceValue.mMidiBinding.setInputPort(midiInput).setOutputPort(midiOutput).bindToControlChange(0, 59)
+	surfaceElements.btn_nextTrack.mSurfaceValue.mMidiBinding
+		.setInputPort(midiInput).setOutputPort(midiOutput).bindToControlChange(0, TRANSPORT_MIDI_CC.NextTrack)
 
 	surfaceElements.btn_setMarker = surface.makeButton(x + 5, y + 2, 2, 1)
-	surfaceElements.btn_setMarker.mSurfaceValue.mMidiBinding.setInputPort(midiInput).setOutputPort(midiOutput).bindToControlChange(0, 60)
+	surfaceElements.btn_setMarker.mSurfaceValue.mMidiBinding
+		.setInputPort(midiInput).setOutputPort(midiOutput).bindToControlChange(0, TRANSPORT_MIDI_CC.SetMarker)
 
 	surfaceElements.btn_prevMarker = surface.makeButton(x + 7.5, y + 2, 2, 1)
-	surfaceElements.btn_prevMarker.mSurfaceValue.mMidiBinding.setInputPort(midiInput).setOutputPort(midiOutput).bindToControlChange(0, 61)
+	surfaceElements.btn_prevMarker.mSurfaceValue.mMidiBinding
+		.setInputPort(midiInput).setOutputPort(midiOutput).bindToControlChange(0, TRANSPORT_MIDI_CC.PrevMarker)
 
 	surfaceElements.btn_nextMarker = surface.makeButton(x + 10, y + 2, 2, 1)
-	surfaceElements.btn_nextMarker.mSurfaceValue.mMidiBinding.setInputPort(midiInput).setOutputPort(midiOutput).bindToControlChange(0, 62)
+	surfaceElements.btn_nextMarker.mSurfaceValue.mMidiBinding
+		.setInputPort(midiInput).setOutputPort(midiOutput).bindToControlChange(0, TRANSPORT_MIDI_CC.NextMarker)
 
 	surfaceElements.numStrips = 8
 
@@ -389,7 +399,7 @@ if (ENABLE_STOP_HOLD_SAVE) {
 				// release stop var
 				var_stopPressed.setProcessValue(context, 0.0)
 
-				// keep the stop LED on since we're stopped
+				// keep the stop LED on since we're stopped (rough fix, but it works)
 				var_stopLed.setProcessValue(context, 1.0)
 								
 				// reset "progress indicator" LED's
