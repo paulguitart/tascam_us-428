@@ -331,11 +331,6 @@ var host_SelectedTrackChannel = page.mHostAccess.mTrackSelection.mMixerChannel
 var host_SelectedMute = host_SelectedTrackChannel.mValue.mMute
 var host_SelectedVolume = host_SelectedTrackChannel.mValue.mVolume
 
-// ---- Selected track navigation/cycle ----
-page.makeActionBinding(surfaceElements.btn_prevTrack.mSurfaceValue, page.mHostAccess.mTrackSelection.mAction.mPrevTrack)
-page.makeActionBinding(surfaceElements.btn_nextTrack.mSurfaceValue, page.mHostAccess.mTrackSelection.mAction.mNextTrack)
-page.makeValueBinding(surfaceElements.transport.btnCycle.mSurfaceValue, host_CycleActive).setTypeToggle()
-
 // ---- Mixer channels ----
 var hostMixerBankZone = page.mHostAccess.mMixConsole.makeMixerBankZone()
 	.excludeInputChannels()
@@ -346,6 +341,9 @@ var hostMixerBankZone = page.mHostAccess.mMixConsole.makeMixerBankZone()
 var host_SelectedTrackChannel = page.mHostAccess.mTrackSelection.mMixerChannel
 var hostMetronomeActive = page.mHostAccess.mTransport.mValue.mMetronomeActive
 var hostMetronomeClickLevel = page.mHostAccess.mTransport.mValue.mMetronomeClickLevel
+
+// ---- Cycle On/Off direct binding ----
+page.makeValueBinding(surfaceElements.transport.btnCycle.mSurfaceValue, host_CycleActive).setTypeToggle()
 
 if (ENABLE_KUSTOM_CHANNEL) {
 	var var_knobZoom = page.mCustom.makeHostValueVariable('Zoom Knob Position')
@@ -367,14 +365,18 @@ var var_rewPressed = surface.makeCustomValueVariable("REW Pressed")
 var var_RTZPressed = surface.makeCustomValueVariable("RTZ Pressed")
 
 // marker button vars
-var var_prevMarkerPressed  = deviceDriver.mSurface.makeCustomValueVariable("Prev Marker Pressed")
-var var_nextMarkerPressed = deviceDriver.mSurface.makeCustomValueVariable("Next Marker Pressed")
-var var_setMarkerPressed = deviceDriver.mSurface.makeCustomValueVariable("Set Marker Pressed")
+var var_prevMarkerPressed  = surface.makeCustomValueVariable("Prev Marker Pressed")
+var var_nextMarkerPressed = surface.makeCustomValueVariable("Next Marker Pressed")
+var var_setMarkerPressed = surface.makeCustomValueVariable("Set Marker Pressed")
+var var_prevTrackPressed  = surface.makeCustomValueVariable("Prev Track Pressed")
+var var_nextTrackPressed = surface.makeCustomValueVariable("Next Track Pressed")
 
 // STOP chords marker button vars
-var var_undoPressed = deviceDriver.mSurface.makeCustomValueVariable("Undo Pressed")
-var var_redoPressed = deviceDriver.mSurface.makeCustomValueVariable("Redo Pressed")	
-var var_masterInsertPressed = deviceDriver.mSurface.makeCustomValueVariable("Master Insert Pressed")
+var var_undoPressed = surface.makeCustomValueVariable("Undo Pressed")
+var var_redoPressed = surface.makeCustomValueVariable("Redo Pressed")	
+var var_masterInsertPressed = surface.makeCustomValueVariable("Master Insert Pressed")
+var var_prevCyclePressed = surface.makeCustomValueVariable("Prev Cycle Pressed")
+var var_nextCyclePressed = surface.makeCustomValueVariable("Next Cycle Pressed")	
 
 // Track STOP press/release (does NOT replace normal Stop binding)
 if (ENABLE_STOP_HOLD_SAVE) {
@@ -510,8 +512,47 @@ function assignSaveCommand()
 	page.makeCommandBinding(var_savePressed, "File", "Save")
 }
 
+function assignTrackNavControls() {
+	// bind track prev/next vars to host commands
+	page.makeActionBinding(var_prevTrackPressed, page.mHostAccess.mTrackSelection.mAction.mPrevTrack)
+	page.makeActionBinding(var_nextTrackPressed, page.mHostAccess.mTrackSelection.mAction.mNextTrack)
+	page.makeCommandBinding(var_prevCyclePressed, "Transport", "Recall Cycle Marker 1")
+	page.makeCommandBinding(var_nextCyclePressed, "Transport", "Recall Cycle Marker 1")
+
+	surfaceElements.btn_prevTrack.mSurfaceValue.mOnProcessValueChange =
+		function(context, newValue, diff) {
+			var prevTrackPressed = (newValue > 0)
+			var stopPressed = surfaceElements.transport.btnStop.mSurfaceValue.getProcessValue(context) > 0
+
+			if (stopPressed && prevTrackPressed) {
+				// reset stop longpress save until next press
+				if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)
+				
+				var_prevCyclePressed.setProcessValue(context, 1.0)          // stop is also pressed.. fire a prev cycle
+			} else {
+				var_prevTrackPressed.setProcessValue(context, newValue)     // stop isn't pressed.. fire a normal prev track
+			}
+		}
+
+	surfaceElements.btn_nextTrack.mSurfaceValue.mOnProcessValueChange =
+		function(context, newValue, diff) {
+			var nextTrackPressed = (newValue > 0)
+			var stopPressed = surfaceElements.transport.btnStop.mSurfaceValue.getProcessValue(context) > 0
+			
+			if (stopPressed && nextTrackPressed) {
+				// reset stop longpress save until next press
+				if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)
+
+				var_nextCyclePressed.setProcessValue(context, 1.0)          // stop is also pressed.. fire a next cycle
+			} else {
+				var_nextTrackPressed.setProcessValue(context, newValue)     // stop isn't pressed.. fire a normal next track
+			}
+		}	
+	
+}
+
 function assignMarkerControls() {    
-    // bind marker buttons to host marker commands
+    // bind marker vars to host marker commands
     page.makeCommandBinding(var_setMarkerPressed, "Transport", "Insert Marker")
 	page.makeCommandBinding(var_prevMarkerPressed,  "Transport", "Locate Previous Marker")
 	page.makeCommandBinding(var_nextMarkerPressed, "Transport", "Locate Next Marker")
@@ -678,6 +719,7 @@ setupFeedback()
 
 assignTransportControls()
 assignChannelControls()
+assignTrackNavControls()
 assignMarkerControls()
 
 if (ENABLE_STOP_HOLD_SAVE) {	
