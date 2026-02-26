@@ -216,7 +216,7 @@ if (ENABLE_STOP_HOLD_SAVE) {
 }
 
 //-----------------------------------------------------------------------------
-// 2. SURFACE LAYOUT - create control elements and midi bindings
+// 2a. SURFACE LAYOUT - create control elements
 //-----------------------------------------------------------------------------
 
 // transport
@@ -288,6 +288,13 @@ fdrFaders[3] = deviceDriver.mSurface.makeFader(6.0, 16.0, 2.0, 3.0)
 // master fader
 var fdrMasterFader = deviceDriver.mSurface.makeFader(9.0, 16.0, 2.0, 3.0)
 
+// labels
+var lblJogWheel = deviceDriver.mSurface.makeLabelField(4.0, 10.2, 4.0, 0.8)
+
+//-----------------------------------------------------------------------------
+// 2b. SURFACE LAYOUT - midi bindings
+//-----------------------------------------------------------------------------
+
 // bind any button to MIDI
 function bindButtonToMIDI(button, midi_CC) {
     button.mSurfaceValue.mMidiBinding
@@ -357,7 +364,7 @@ for (var slot=0; slot<4; slot++) {
 bindFaderToMIDI(fdrMasterFader, 75)
 
 //-----------------------------------------------------------------------------
-// 2. FEEDBACK EVENTS - wire DAW events to buttons/lights
+// 2c. FEEDBACK EVENTS - wire DAW events to buttons/lights
 //-----------------------------------------------------------------------------
 
 function sendMidiTascam(context, message) {
@@ -512,6 +519,9 @@ var host_SelectNextTrack = page.mHostAccess.mTrackSelection.mAction.mNextTrack
 var host_SelectedTrackChannel = page.mHostAccess.mTrackSelection.mMixerChannel
 var host_SelectedMute = host_SelectedTrackChannel.mValue.mMute
 var host_SelectedVolume = host_SelectedTrackChannel.mValue.mVolume
+
+// create label texts onto the page
+page.setLabelFieldText(lblJogWheel, TRACKING_MODE ? 'Zoom' : 'Shuttle/Zoom')
 
 // create custom vars on host for NULL mode switching
 var var_nullModeOn = deviceDriver.mSurface.makeCustomValueVariable("Null Mode On")
