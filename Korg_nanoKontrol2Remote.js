@@ -37,20 +37,17 @@ KORG NANOKONTROL2 v1.0 | Kustom Tracking Remote | COMMAND SUMMARY
 
 GLOBAL COMMANDS:
 ----------------------------------------------------------------------------------------------------
+REW / FF / PLAY / REC  : Standard Transport
 STOP (Tap)             : Stop Transport
 STOP (Hold 2s)         : Trigger Save (w/ confirm transport LED blink)
 STOP + REW             : Return To Zero (RTZ)
-STOP + MARKER LEFT     : Undo
-STOP + MARKER RIGHT    : Redo
-STOP + SET MARKER      : Master Bus Insert On/Off
-STOP + TRACK LEFT      : Recall Previous Cycle Marker
-STOP + TRACK RIGHT     : Recall Next Cycle Marker
-REW / FF / PLAY / REC  : Standard Transport
-TRACK L / R            : Select Prev/Next Track
 CYCLE BUTTON           : Cycle (Loop) On/Off
-MARKER LEFT            : Locate Prev Marker
-MARKER RIGHT           : Locate Next Marker
+TRACK L / R            : Select Prev/Next Track
+STOP + TRACK L / R     : Undo/Redo
 MARKER SET             : Insert Marker
+MARKER L / R           : Locate Prev/Next Marker
+STOP + MARKER L / R    : Recall Prev/Next Cycle Marker
+STOP + SET MARKER      : Master Bus Insert On/Off
 
 FADER BANK COMMANDS: (Channels 1-7)
 ----------------------------------------------------------------------------------------------------
@@ -63,10 +60,10 @@ REC BUTTONS 1-7        : Record Enable On/Off for Tracks 1-7 (Fixed)
 KUSTOM CHANNEL COMMANDS: (Channel 8)
 ----------------------------------------------------------------------------------------------------
 FADER                  : Metronome Click Level
+PAN KNOB               : Horizontal Zoom (reverse the knob quickly to gain zoom range)
 SOLO                   : Solo On/Off for Selected Track
 MUTE                   : Mute On/Off for Selected Track
 REC ENABLE             : Metronome On/Off
-PAN KNOB               : Horizontal Zoom (reverse the knob quickly to gain zoom range)
 
 ====================================================================================================
 */
@@ -446,7 +443,7 @@ function wrapCycleNumber(n) {
 
 function fireCycleRecall(context, number) {
 	var v = var_cycleMarkers[number]
-	if (!v) return
+	if (!v) return	
 	v.setProcessValue(context, 1.0)
 	v.setProcessValue(context, 0.0)
 }
@@ -556,7 +553,7 @@ function assignSaveCommand()
 
 function assignCycleButton()
 {
-	// ---- Cycle On/Off direct binding ----
+	// cycle on/off direct binding
 	page.makeValueBinding(surfaceElements.transport.btnCycle.mSurfaceValue, host_CycleActive).setTypeToggle()		
 }
 
@@ -701,7 +698,7 @@ function setConfirmTransportLEDs(context, isOn) {
 }
 
 function blinkConfirmTransportLEDs(context) {
-    // arm the animation; actual toggling happens in mOnIdle
+    // arm the animation- actual toggling happens in mOnIdle
     saveBlink_isActive = true
     saveBlink_lastMs = SAVE_BLINK_RESET
     saveBlink_toggleCount = 0
