@@ -2,7 +2,7 @@
 // "Control your Cubase DAW like a Portastudio"    
 // v2.0.0
 //
-// By Paul Warner    (special thanks to Minas Chantzides!!)
+// By Paul Warner
 //
 // NOTE: In Cubase, pressing STOP while already stopped may jump to last start position.
 // For STOP+LOC undo/redo chords, we accept this as a feature: it brings you back to
@@ -10,10 +10,6 @@
 //
 // NOTE: If you run out of zoom wheel range, rotate the wheel quickly in the opposite direction
 // to "grab" more travel in the desired range
-//
-// Wishlist Features
-// -----------------
-// Somehow control: makeCommandBinding('Transport', 'Recall Cycle Marker 1') .. 1 thru 9
 
 //-----------------------------------------------------------------------------
 // 0. CUSTOM SETTINGS - change these CONST values to suit your own needs
@@ -40,6 +36,9 @@ const SHUTTLE_MODE = false
 // when audition is active, use jog wheel to control selected track volume
 const AUDITION_VOLUME_WHEEL = true
 
+// max number of cycle markers to toggle (cubase supports up to 9)
+const CYCLE_MARKER_MAX = 7
+
 // set this to 1 (recommended) unless you want to use multiple US-224 together on the same machine
 const MAX_TASCAM_UNITS = 1
 
@@ -59,8 +58,8 @@ TASCAM US-224 v2.0 | MODE SUMMARY
 GLOBAL COMMANDS (Both Modes):
 ----------------------------------------------------------------------------------------------------
 STOP (Tap)             : Stop Transport
-STOP (Hold 2s)         : TRIGGER SAVE (w/ red LED progress bar & confirm transport LED blink)
-STOP + REW             : RETURN TO ZERO (RTZ)
+STOP (Hold 2s)         : Trigger Save (w/ red LED progress bar & confirm transport LED blink)
+STOP + REW             : Return To Zero (RTZ)
 REW / FF / PLAY / REC  : Standard Transport
 BANK L / R             : Bank/Track Navigation
 
@@ -69,28 +68,29 @@ MODE A: TRACKING (TRACKING_MODE = true)
 Focus: Performance & Speed. Locked to Tracks 1-4.
 ----------------------------------------------------------------------------------------------------
 FADERS 1-4             : Volume for Tracks 1-4 (Fixed)
-MASTER FADER           : METRONOME CLICK LEVEL
-NULL BUTTON            : METRONOME ON/OFF
-SOLO BUTTON            : CYCLE (LOOP) ON/OFF
-REC MASTER BUTTON      : MASTER BUS INSERT ON/OFF
+MASTER FADER           : Metronome Click Level
+NULL BUTTON            : Metronome On/Off
+SOLO BUTTON            : Cycle (Loop) On/Off
+REC MASTER BUTTON      : Master Bus Insert On/Off
 JOG WHEEL              : [Normal] Horizontal Zoom | [Audition] Selected Track Volume
-BANK L / R             : SELECT PREV/NEXT TRACK
-STOP + BANK L / R      : AUDITION PREV/NEXT TRACK (Bank L/R again to clear solos)
-STOP + LOC L           : UNDO
-STOP + LOC R           : REDO
-STOP + SET             : MUTE/UNMUTE SELECTED TRACK
+STOP + LOC L           : Undo
+STOP + LOC R           : Redo
+STOP + SET             : Mute/Unmute Selected Track
+BANK L / R             : Select Prev/Next Track
+STOP + BANK L / R      : [Normal] Audition Prev/Next Track (Bank L/R again to clear solos)
+                       : [Cycle]  Recall Prev/Next Cycle Marker
 MUTE BUTTONS 1-4       : Mute On/Off for Tracks 1-4 (Fixed) (Yellow LED's)
 SELECT BUTTONS 1-4     : Solo On/Off for Tracks 1-4 (Fixed) (Green LED's)
-REC LEDS 1-4           : NUCLEAR BLINK RED (Sync to Project Tempo during Record)
+REC LEDS 1-4           : Nuclear Blink Red (Sync to Project Tempo during Record)
  
 ----------------------------------------------------------------------------------------------------
 MODE B: NORMAL (TRACKING_MODE = false)
 Focus: Full Mixer Control. Bank-aware.
 ----------------------------------------------------------------------------------------------------
 FADERS 1-4             : Track Volume for Active Bank
-NULL BUTTON            : TOGGLE NULL MODE (Swaps Master Fader & Jog behavior)
-SOLO BUTTON            : TOGGLE SOLO MODE (Swaps Mute/Select behavior)
-BANK L / R             : SHIFT ACTIVE BANK (Groups of 4)
+NULL BUTTON            : Toggle Null Mode (Swaps Master Fader & Jog behavior)
+SOLO BUTTON            : Toggle Solo Mode (Swaps Mute/Select behavior)
+BANK L / R             : Shift Active Bank (Groups of 4)
 REC MASTER BUTTON      : [Normal] Master Insert On/Off | [Null Mode] Metronome On/Off
 MASTER FADER           : [Normal] Stereo Out           | [Null Mode] FX Return 1
 JOG WHEEL              : [Normal] Shuttle/Track Select | [Null Mode] Horizontal Zoom
@@ -169,8 +169,14 @@ const MASTER_FADER_SCALE = 0.75              // 0.75 sets the max range of the f
 // STATE VARIABLES - custom control
 //-----------------------------------------------------------------------------
 
-// selected bank 
+// selected bank (normal mode)
 var selectedBank = 0
+
+// cycle markers (tracking mode)
+var activeCycleMarker = 1
+
+// mirror value to track if cycle is on/off (tracking mode)
+var cycleButtonActive = false
 
 if (TRACKING_MODE && ENABLE_NUCLEAR_BLINK) {
 	// nuclear LED tempo mode vars
@@ -408,7 +414,7 @@ function blinkAllTransportLEDs(context) {
 }
 
 function forceFaderPositionsDump(context, channelStripNum) {
-    // Forces US-224 to send current fader position messages to host 
+    // (Unused) Forces US-224 to send current fader position messages to host 
     // DUMP_FADER_POS:  F0 4E<UNIT> 12 10<STRIP #> <STATE> F7 
     // Note: <STRIP #>is a number in the range [0..3], corresponding to the
     // channel-strip #, and <STATE>is either 0x00 (LED OFF) or 0x7F (LED ON)
@@ -529,10 +535,20 @@ if (TRACKING_MODE) {
 	var var_undoPressed = deviceDriver.mSurface.makeCustomValueVariable("Undo Pressed")
 	var var_redoPressed = deviceDriver.mSurface.makeCustomValueVariable("Redo Pressed")	
 	var var_muteSelectedPressed = deviceDriver.mSurface.makeCustomValueVariable("Mute Selected Pressed")
+
+	// BANK forward triggers (tracking mode only) (we fire these to manually trigger track nav)
+	var var_selectPrevTrack  = deviceDriver.mSurface.makeCustomValueVariable("Select Prev Track")
+	var var_selectNextTrack = deviceDriver.mSurface.makeCustomValueVariable("Select Next Track")
 	
 	// create custom vars for audition actions
 	var var_auditionKillSolos = deviceDriver.mSurface.makeCustomValueVariable("Audition Kill Solos")
 	var var_auditionSoloSelected = deviceDriver.mSurface.makeCustomValueVariable("Audition Solo Selected")	
+	
+	// mirror var to hold the state of host_CycleActive
+	var var_cycleActiveMirror = deviceDriver.mSurface.makeCustomValueVariable("Cycle Active Mirror")
+
+	// cycle marker command bindings | 1-based array: var_cycleMarkers[1]..[9]
+	var var_cycleMarkers = new Array(CYCLE_MARKER_MAX + 1) 	
 }
 
 if (ENABLE_STOP_HOLD_SAVE) {
@@ -644,6 +660,40 @@ function initCustomHostVars(context) {
 }
 
 //-----------------------------------------------------------------------------
+// CYCLE FUNCTIONS - helpers for navigating cycle markers
+//-----------------------------------------------------------------------------
+
+function setupCycleMarkerCommands() {
+	for (var i = 1; i <= CYCLE_MARKER_MAX; i++) {
+		var_cycleMarkers[i] = deviceDriver.mSurface.makeCustomValueVariable("Cycle Marker " + i)
+		page.makeCommandBinding(var_cycleMarkers[i], "Transport", "Recall Cycle Marker " + i)
+	}
+}
+
+function wrapCycleNumber(n) {
+	if (n < 1) return CYCLE_MARKER_MAX
+	if (n > CYCLE_MARKER_MAX) return 1
+	return n
+}
+
+function fireCycleRecall(context, number) {
+	var v = var_cycleMarkers[number]
+	if (!v) return	
+	v.setProcessValue(context, 1.0)
+	v.setProcessValue(context, 0.0)
+}
+
+function recallPrevCycle(context) {
+	activeCycleMarker = wrapCycleNumber(activeCycleMarker - 1)
+	fireCycleRecall(context, activeCycleMarker)
+}
+
+function recallNextCycle(context) {
+	activeCycleMarker = wrapCycleNumber(activeCycleMarker + 1)
+	fireCycleRecall(context, activeCycleMarker)
+}
+
+//-----------------------------------------------------------------------------
 // 5. ASSIGN FUNCTIONS - create host bindings
 //-----------------------------------------------------------------------------
 
@@ -654,7 +704,7 @@ function assignBankButtonControls_BankSelect() {
             var isBankLeftPressed = newValue > 0              
             displayBankLeftLED(context, isBankLeftPressed)
             
-            if (isBankLeftPressed && selectedBank > 0) {
+			if (isBankLeftPressed && selectedBank > 0) {
                 selectedBank--
                 triggerBankSwitch(context, activeMapping, selectedBank)
             }
@@ -687,15 +737,27 @@ function triggerBankSwitch(context, activeMapping, bankNum) {
 }
 
 function assignBankButtonControls_TrackSelect() {
-    // bind bank left button to host prev track selection, STOP+bankLeft = audition track
-    page.makeActionBinding(btnBankLeft.mSurfaceValue, host_SelectPrevTrack).mOnValueChange = 
-        function (context, activeMapping, newValue, diff) {            
+	page.makeActionBinding(var_selectPrevTrack, host_SelectPrevTrack)
+	page.makeActionBinding(var_selectNextTrack, host_SelectNextTrack)	
+	
+    // bind bank left button to multiple possible controls
+	page.makeValueBinding(btnBankLeft.mSurfaceValue, var_bankLeftPressed).mOnValueChange =
+		function (context, activeMapping, newValue, diff) {	
             var isBankPressed = newValue > 0              
 			var stopPressed = btnStop.mSurfaceValue.getProcessValue(context) > 0			
-
+					
             displayBankLeftLED(context, isBankPressed)
-			
-			if (isBankPressed && stopPressed) {
+
+			if (isBankPressed && stopPressed && cycleButtonActive) {
+				// reset stop longpress save until next press
+				if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)
+
+				// special chord behavior when cycle light is on
+				recallPrevCycle(context)
+				
+				// exit, don't track nav during cycle recall
+				return
+			} else if (isBankPressed && stopPressed) {
 				// reset stop longpress save until next press
 				if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)				
 
@@ -704,18 +766,30 @@ function assignBankButtonControls_TrackSelect() {
 			} else if (isBankPressed && !stopPressed && auditionActive) {
 				// exit audition track select mode when stop button is released
 				auditionExit(context, activeMapping)				
-			}				
+			}
+			
+			// forward button state to normal prev-track navigation (when no cycle override occurred)
+			var_selectPrevTrack.setProcessValue(context, newValue)	
         }
 
-    // bind bank right button to host next track selection, STOP+bankRight = audition track
-    page.makeActionBinding(btnBankRight.mSurfaceValue, host_SelectNextTrack).mOnValueChange = 
-        function (context, activeMapping, newValue, diff) {            
+    // bind bank right button to multiple possible controls
+	page.makeValueBinding(btnBankRight.mSurfaceValue, var_bankRightPressed).mOnValueChange =
+		function (context, activeMapping, newValue, diff) {		
             var isBankPressed = newValue > 0              
 			var stopPressed = btnStop.mSurfaceValue.getProcessValue(context) > 0			
-
+			
             displayBankRightLED(context, isBankPressed)
 			
-			if (isBankPressed && stopPressed) {
+			if (isBankPressed && stopPressed && cycleButtonActive) {
+				// reset stop longpress save until next press
+				if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)
+
+				// special chord behavior when cycle light is on
+				recallNextCycle(context)
+				
+				// exit, don't track nav during cycle recall				
+				return
+			} else if (isBankPressed && stopPressed) {
 				// reset stop longpress save until next press
 				if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)				
 
@@ -723,8 +797,11 @@ function assignBankButtonControls_TrackSelect() {
 				auditionSelectedTrack(context, activeMapping)
 			} else if (isBankPressed && !stopPressed && auditionActive) {
 				// exit audition track select mode when stop button is released
-				auditionExit(context, activeMapping)				
-			}				
+				auditionExit(context, activeMapping)		
+			}
+
+			// forward button state to normal prev-track navigation (when no cycle override occurred)
+			var_selectNextTrack.setProcessValue(context, newValue)				
         }    
 }
 
@@ -1015,6 +1092,12 @@ function assignSoloButton_Cycle()
 {    
     // bind solo button to host cycle enable
     page.makeValueBinding(btnSoloEnable.mSurfaceValue, host_CycleActive).setTypeToggle()
+	
+    // add a silent mirror so we can query state in other command logic
+    page.makeValueBinding(var_cycleActiveMirror, host_CycleActive)
+        .mOnValueChange = function (context, activeMapping, newValue, diff) {
+            cycleButtonActive = newValue > 0
+        }	
 }
 
 function assignMasterFader_Metronome() {
@@ -1490,6 +1573,9 @@ if (TRACKING_MODE) {
 
 	// bind vars to control audition solo logic in cubase
 	assignAuditionCommands()
+	
+	// create command bindings to recall cycles (1 thru CYCLE_MARKER_MAX)
+	setupCycleMarkerCommands()
 	
 	// bind fixed mute and solo banks for tracks 1-4
 	assignMuteBank_Single() 
