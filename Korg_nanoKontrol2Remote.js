@@ -300,6 +300,12 @@ function makeSurfaceElements() {
 	for (var i = 0; i < surfaceElements.numStrips; ++i) {
 		surfaceElements.knobStrips[i] = makeKnobStrip(i, x, y, surfaceElements)
 		surfaceElements.faderStrips[i] = makeFaderStrip(i, 13, 2.5, surfaceElements)
+		
+		if (ENABLE_KUSTOM_CHANNEL && i===7) {
+			// Label for knob 8 (zoom)
+			surfaceElements.lblZoomKnob = surface.makeLabelField(13 + (7 * 4), 1.6, 4, 1) 
+			surfaceElements.lblZoomKnob.relateTo(surfaceElements.knobStrips[7].knob)
+		}		
 	}
 
 	surfaceElements.transport = makeTransport(0, 6.3)
@@ -320,6 +326,11 @@ var page = deviceDriver.mMapping.makePage('nanoKONTROL2 Remote')
 
 // Label
 page.setLabelFieldText(surfaceElements.deviceName, 'Kustom Remote Kontrol')
+
+if (ENABLE_KUSTOM_CHANNEL) {
+	page.setLabelFieldText(surfaceElements.bottomLabelFields[7], 'METRONOME')
+	page.setLabelFieldText(surfaceElements.lblZoomKnob, 'Zoom Knob')	
+}
 
 // create host accessing objects
 var hostTransport_Rewind = page.mHostAccess.mTransport.mValue.mRewind
@@ -347,7 +358,6 @@ var hostMetronomeActive = page.mHostAccess.mTransport.mValue.mMetronomeActive
 var hostMetronomeClickLevel = page.mHostAccess.mTransport.mValue.mMetronomeClickLevel
 
 if (ENABLE_KUSTOM_CHANNEL) {
-	var var_knobZoom = page.mCustom.makeHostValueVariable('Zoom Knob Position')
 	var var_zoomIn  = surface.makeCustomValueVariable('Zoom In')
 	var var_zoomOut = surface.makeCustomValueVariable('Zoom Out')
 	var lastZoomValue = -1
@@ -524,8 +534,7 @@ function assignZoomKnob() {
 
 	var knobZoom = surfaceElements.knobStrips[7].knob.mSurfaceValue
 
-    page.makeValueBinding(knobZoom, var_knobZoom)
-        .mOnValueChange = function(context, activeMapping, newValue, diff) {
+	knobZoom.mOnProcessValueChange = function (context, newValue, diff) {
 
             var newZoomValue = Math.floor(newValue * 1000)
 
