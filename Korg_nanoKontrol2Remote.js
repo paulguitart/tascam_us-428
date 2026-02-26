@@ -265,7 +265,7 @@ function makeSurfaceElements() {
 		bottomLabelFields.push(surface.makeLabelField(13 + (i * 4), 8.5, 4, 1))
 	}
 	surfaceElements.bottomLabelFields = bottomLabelFields
-
+	
 	var x = 0
 	var y = 2.75
 
@@ -346,9 +346,6 @@ var host_SelectedTrackChannel = page.mHostAccess.mTrackSelection.mMixerChannel
 var hostMetronomeActive = page.mHostAccess.mTransport.mValue.mMetronomeActive
 var hostMetronomeClickLevel = page.mHostAccess.mTransport.mValue.mMetronomeClickLevel
 
-// ---- Cycle On/Off direct binding ----
-page.makeValueBinding(surfaceElements.transport.btnCycle.mSurfaceValue, host_CycleActive).setTypeToggle()
-
 if (ENABLE_KUSTOM_CHANNEL) {
 	var var_knobZoom = page.mCustom.makeHostValueVariable('Zoom Knob Position')
 	var var_zoomIn  = surface.makeCustomValueVariable('Zoom In')
@@ -375,7 +372,7 @@ var var_setMarkerPressed = surface.makeCustomValueVariable("Set Marker Pressed")
 var var_prevTrackPressed  = surface.makeCustomValueVariable("Prev Track Pressed")
 var var_nextTrackPressed = surface.makeCustomValueVariable("Next Track Pressed")
 
-// STOP chords marker button vars
+// STOP chords vars
 var var_undoPressed = surface.makeCustomValueVariable("Undo Pressed")
 var var_redoPressed = surface.makeCustomValueVariable("Redo Pressed")	
 var var_masterInsertPressed = surface.makeCustomValueVariable("Master Insert Pressed")
@@ -424,7 +421,7 @@ if (ENABLE_STOP_HOLD_SAVE) {
 // CYCLE FUNCTIONS - helpers for navigating cycle markers
 //-----------------------------------------------------------------------------
 
-function setupCycleRecallCommandBindings() {
+function setupCycleMarkerCommands() {
 	for (var i = 1; i <= CYCLE_MARKER_MAX; i++) {
 		var_cycleMarkers[i] = surface.makeCustomValueVariable("Cycle Marker " + i)
 		page.makeCommandBinding(var_cycleMarkers[i], "Transport", "Recall Cycle Marker " + i)
@@ -548,10 +545,18 @@ function assignSaveCommand()
 	page.makeCommandBinding(var_savePressed, "File", "Save")
 }
 
+function assignCycleButton()
+{
+	// ---- Cycle On/Off direct binding ----
+	page.makeValueBinding(surfaceElements.transport.btnCycle.mSurfaceValue, host_CycleActive).setTypeToggle()		
+}
+
 function assignTrackNavControls() {
 	// bind track prev/next vars to host commands
 	page.makeActionBinding(var_prevTrackPressed, page.mHostAccess.mTrackSelection.mAction.mPrevTrack)
 	page.makeActionBinding(var_nextTrackPressed, page.mHostAccess.mTrackSelection.mAction.mNextTrack)
+	page.makeCommandBinding(var_undoPressed, "Edit", "Undo")
+	page.makeCommandBinding(var_redoPressed, "Edit", "Redo")
 
 	surfaceElements.btn_prevTrack.mSurfaceValue.mOnProcessValueChange =
 		function(context, newValue, diff) {
@@ -561,8 +566,8 @@ function assignTrackNavControls() {
 			if (stopPressed && prevTrackPressed) {
 				// reset stop longpress save until next press
 				if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)
-				
-				recallPrevCycle(context)                                    // stop is also pressed.. fire a prev cycle
+
+				var_undoPressed.setProcessValue(context, 1.0)               // stop is also pressed.. fire an undo
 			} else {
 				var_prevTrackPressed.setProcessValue(context, newValue)     // stop isn't pressed.. fire a normal prev track
 			}
@@ -577,7 +582,7 @@ function assignTrackNavControls() {
 				// reset stop longpress save until next press
 				if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)
 
-				recallNextCycle(context)                                    // stop is also pressed.. fire a next cycle
+				var_redoPressed.setProcessValue(context, 1.0)               // stop is also pressed.. fire a redo
 			} else {
 				var_nextTrackPressed.setProcessValue(context, newValue)     // stop isn't pressed.. fire a normal next track
 			}
@@ -590,8 +595,6 @@ function assignMarkerControls() {
     page.makeCommandBinding(var_setMarkerPressed, "Transport", "Insert Marker")
 	page.makeCommandBinding(var_prevMarkerPressed,  "Transport", "Locate Previous Marker")
 	page.makeCommandBinding(var_nextMarkerPressed, "Transport", "Locate Next Marker")
-	page.makeCommandBinding(var_undoPressed, "Edit", "Undo")
-	page.makeCommandBinding(var_redoPressed, "Edit", "Redo")
 	page.makeCommandBinding(var_masterInsertPressed, "Mixer", "Bypass: Inserts on Main Mix")
 
 	surfaceElements.btn_prevMarker.mSurfaceValue.mOnProcessValueChange =
@@ -602,8 +605,8 @@ function assignMarkerControls() {
 			if (stopPressed && prevMarkerPressed) {
 				// reset stop longpress save until next press
 				if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)
-				
-				var_undoPressed.setProcessValue(context, 1.0)             // stop is also pressed.. fire an undo
+
+				recallPrevCycle(context)                                  // stop is also pressed.. fire a prev cycle
 			} else {
 				var_prevMarkerPressed.setProcessValue(context, newValue)  // stop isn't pressed.. fire a normal prev marker
 			}
@@ -618,7 +621,7 @@ function assignMarkerControls() {
 				// reset stop longpress save until next press
 				if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)
 
-				var_redoPressed.setProcessValue(context, 1.0)             // stop is also pressed.. fire a redo
+				recallNextCycle(context)                                  // stop is also pressed.. fire a next cycle
 			} else {
 				var_nextMarkerPressed.setProcessValue(context, newValue)  // stop isn't pressed.. fire a normal next marker
 			}
@@ -750,12 +753,13 @@ if (ENABLE_STOP_HOLD_SAVE) {
 //-----------------------------------------------------------------------------
 
 setupFeedback()
-setupCycleRecallCommandBindings()
+setupCycleMarkerCommands()
 
 assignTransportControls()
 assignChannelControls()
 assignTrackNavControls()
 assignMarkerControls()
+assignCycleButton()
 
 if (ENABLE_STOP_HOLD_SAVE) {	
 	assignSaveCommand()        // bind "save" command to STOP longpress var
