@@ -327,6 +327,7 @@ page.setLabelFieldText(surfaceElements.deviceName, 'Kustom Remote Kontrol')
 if (ENABLE_KUSTOM_CHANNEL) {
 	page.setLabelFieldText(surfaceElements.bottomLabelFields[7], 'METRONOME')
 	page.setLabelFieldText(surfaceElements.lblZoomKnob, 'Zoom Knob')	
+	page.setLabelFieldText(surfaceElements.bottomLabelField, 'Tracks 1-7 | 8- Selected Track (mute/solo)')	
 }
 
 // create host accessing objects
