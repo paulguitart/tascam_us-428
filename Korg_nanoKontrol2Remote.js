@@ -10,10 +10,6 @@
 //
 // NOTE: If you run out of zoom knob range, twist the knob quickly in the opposite direction
 // to "grab" more travel in the desired range
-//
-// Wishlist Features
-// -----------------
-// STOP+track left/right = ...something cool.. makeCommandBinding('Transport', 'Recall Cycle Marker 1') .. 1 thru 9
 
 //-----------------------------------------------------------------------------
 // 0. CUSTOM SETTINGS - change these CONST values to suit your own needs
@@ -31,6 +27,9 @@ const FORCE_DEVICE_CC_MODE = true
 // 0.8 sets the max range of the fader closer to 0dB, 1.0 is full range (+6db)
 const TRACK_FADER_SCALE = 1.0 
 
+// max number of cycle markers to toggle (cubase supports up to 9)
+const CYCLE_MARKER_MAX = 7
+
 /*
 ====================================================================================================
 KORG NANOKONTROL2 v1.0 | Kustom Tracking Remote | COMMAND SUMMARY
@@ -44,6 +43,8 @@ STOP + REW             : Return To Zero (RTZ)
 STOP + MARKER LEFT     : Undo
 STOP + MARKER RIGHT    : Redo
 STOP + SET MARKER      : Master Bus Insert On/Off
+STOP + TRACK LEFT      : Recall Previous Cycle Marker
+STOP + TRACK RIGHT     : Recall Next Cycle Marker
 REW / FF / PLAY / REC  : Standard Transport
 TRACK L / R            : Select Prev/Next Track
 CYCLE BUTTON           : Cycle (Loop) On/Off
@@ -106,6 +107,9 @@ const TRANSPORT_MIDI_CC = {
 //-----------------------------------------------------------------------------
 // STATE VARIABLES - custom control
 //-----------------------------------------------------------------------------
+
+var activeCycleMarker = 1
+var var_cycleMarkers = new Array(CYCLE_MARKER_MAX + 1)     // 1-based array: var_cycleMarkers[1]..[9]
 
 if (ENABLE_STOP_HOLD_SAVE) {
 	// long press STOP to save vars
@@ -375,8 +379,6 @@ var var_nextTrackPressed = surface.makeCustomValueVariable("Next Track Pressed")
 var var_undoPressed = surface.makeCustomValueVariable("Undo Pressed")
 var var_redoPressed = surface.makeCustomValueVariable("Redo Pressed")	
 var var_masterInsertPressed = surface.makeCustomValueVariable("Master Insert Pressed")
-var var_prevCyclePressed = surface.makeCustomValueVariable("Prev Cycle Pressed")
-var var_nextCyclePressed = surface.makeCustomValueVariable("Next Cycle Pressed")	
 
 // Track STOP press/release (does NOT replace normal Stop binding)
 if (ENABLE_STOP_HOLD_SAVE) {
@@ -416,6 +418,40 @@ if (ENABLE_STOP_HOLD_SAVE) {
 			
 			sendMidiKorg(context, TRANSPORT_MIDI_CC.Stop, newValue > 0)
 		}		
+}
+
+//-----------------------------------------------------------------------------
+// CYCLE FUNCTIONS - helpers for navigating cycle markers
+//-----------------------------------------------------------------------------
+
+function setupCycleRecallCommandBindings() {
+	for (var i = 1; i <= CYCLE_MARKER_MAX; i++) {
+		var_cycleMarkers[i] = surface.makeCustomValueVariable("Cycle Marker " + i)
+		page.makeCommandBinding(var_cycleMarkers[i], "Transport", "Recall Cycle Marker " + i)
+	}
+}
+
+function wrapCycleNumber(n) {
+	if (n < 1) return CYCLE_MARKER_MAX
+	if (n > CYCLE_MARKER_MAX) return 1
+	return n
+}
+
+function fireCycleRecall(context, number) {
+	var v = var_cycleMarkers[number]
+	if (!v) return
+	v.setProcessValue(context, 1.0)
+	v.setProcessValue(context, 0.0)
+}
+
+function recallPrevCycle(context) {
+	activeCycleMarker = wrapCycleNumber(activeCycleMarker - 1)
+	fireCycleRecall(context, activeCycleMarker)
+}
+
+function recallNextCycle(context) {
+	activeCycleMarker = wrapCycleNumber(activeCycleMarker + 1)
+	fireCycleRecall(context, activeCycleMarker)
 }
 
 //-----------------------------------------------------------------------------
@@ -516,8 +552,6 @@ function assignTrackNavControls() {
 	// bind track prev/next vars to host commands
 	page.makeActionBinding(var_prevTrackPressed, page.mHostAccess.mTrackSelection.mAction.mPrevTrack)
 	page.makeActionBinding(var_nextTrackPressed, page.mHostAccess.mTrackSelection.mAction.mNextTrack)
-	page.makeCommandBinding(var_prevCyclePressed, "Transport", "Recall Cycle Marker 1")
-	page.makeCommandBinding(var_nextCyclePressed, "Transport", "Recall Cycle Marker 1")
 
 	surfaceElements.btn_prevTrack.mSurfaceValue.mOnProcessValueChange =
 		function(context, newValue, diff) {
@@ -528,7 +562,7 @@ function assignTrackNavControls() {
 				// reset stop longpress save until next press
 				if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)
 				
-				var_prevCyclePressed.setProcessValue(context, 1.0)          // stop is also pressed.. fire a prev cycle
+				recallPrevCycle(context)                                    // stop is also pressed.. fire a prev cycle
 			} else {
 				var_prevTrackPressed.setProcessValue(context, newValue)     // stop isn't pressed.. fire a normal prev track
 			}
@@ -543,7 +577,7 @@ function assignTrackNavControls() {
 				// reset stop longpress save until next press
 				if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)
 
-				var_nextCyclePressed.setProcessValue(context, 1.0)          // stop is also pressed.. fire a next cycle
+				recallNextCycle(context)                                    // stop is also pressed.. fire a next cycle
 			} else {
 				var_nextTrackPressed.setProcessValue(context, newValue)     // stop isn't pressed.. fire a normal next track
 			}
@@ -716,6 +750,7 @@ if (ENABLE_STOP_HOLD_SAVE) {
 //-----------------------------------------------------------------------------
 
 setupFeedback()
+setupCycleRecallCommandBindings()
 
 assignTransportControls()
 assignChannelControls()
