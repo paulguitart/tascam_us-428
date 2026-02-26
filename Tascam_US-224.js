@@ -671,7 +671,7 @@ function setupCycleMarkerCommands() {
 }
 
 function wrapCycleNumber(n) {
-	if (n < 1) return CYCLE_MARKER_MAX
+	if (n < 1) return CYCLE_MARKER_MAX     // (Cubase cycle markers are 1-based)
 	if (n > CYCLE_MARKER_MAX) return 1
 	return n
 }
@@ -800,7 +800,7 @@ function assignBankButtonControls_TrackSelect() {
 				auditionExit(context, activeMapping)		
 			}
 
-			// forward button state to normal prev-track navigation (when no cycle override occurred)
+			// forward button state to normal next-track navigation (when no cycle override occurred)
 			var_selectNextTrack.setProcessValue(context, newValue)				
         }    
 }
@@ -1565,6 +1565,9 @@ if (TRACKING_MODE) {
 	// bind null button to metronome
 	assignNullButton_Metronome()
 
+	// create command bindings to recall cycles (1 thru CYCLE_MARKER_MAX)
+	setupCycleMarkerCommands()
+	
 	// bind Jog wheel to dedicated zoom control (with audition track volume, when enabled)
 	assignJogWheel_TrackingMode() 
 	
@@ -1573,9 +1576,6 @@ if (TRACKING_MODE) {
 
 	// bind vars to control audition solo logic in cubase
 	assignAuditionCommands()
-	
-	// create command bindings to recall cycles (1 thru CYCLE_MARKER_MAX)
-	setupCycleMarkerCommands()
 	
 	// bind fixed mute and solo banks for tracks 1-4
 	assignMuteBank_Single() 
