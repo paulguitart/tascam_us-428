@@ -10,6 +10,9 @@
 //
 // NOTE: If you run out of zoom wheel range, rotate the wheel quickly in the opposite direction
 // to "grab" more travel in the desired range
+//
+// TODO? (tracking mode)-  STOP+REC MASTER BUTTON : Master Bus Insert On/Off
+
 
 //-----------------------------------------------------------------------------
 // 0. CUSTOM SETTINGS - change these CONST values to suit your own needs
@@ -33,11 +36,14 @@ const ENABLE_STOP_HOLD_SAVE = true
 // if we want the normal jog wheel behavior to shuttle playhead instead of track select up/down
 const SHUTTLE_MODE = false
 
+// rec master button toggles selected track rec enable (tracking mode only)
+const REC_ENABLE_MODE = true
+
 // when audition is active, use jog wheel to control selected track volume
 const AUDITION_VOLUME_WHEEL = true
 
 // max number of cycle markers to toggle (cubase supports up to 9)
-const CYCLE_MARKER_MAX = 7
+const CYCLE_MARKER_MAX = 8
 
 // set this to 1 (recommended) unless you want to use multiple US-224 together on the same machine
 const MAX_TASCAM_UNITS = 1
@@ -71,7 +77,7 @@ FADERS 1-4             : Volume for Tracks 1-4 (Fixed)
 MASTER FADER           : Metronome Click Level
 NULL BUTTON            : Metronome On/Off
 SOLO BUTTON            : Cycle (Loop) On/Off
-REC MASTER BUTTON      : Master Bus Insert On/Off
+REC MASTER BUTTON      : Rec Enable Selected Track (REC_ENABLE_MODE) | Master Bus Insert On/Off
 JOG WHEEL              : [Normal] Horizontal Zoom | [Audition] Selected Track Volume
 STOP + LOC L           : Undo
 STOP + LOC R           : Redo
@@ -276,6 +282,9 @@ if (! TRACKING_MODE) {
 
 	// dummy button to control selected track mute/unmute
 	var btnDummySelectedMute = deviceDriver.mSurface.makeButton(2.0, 6.0, 2.0, 1.0)
+	
+	// dummy button to control selected track rec enable
+	var btnDummySelectedRecEnable = deviceDriver.mSurface.makeButton(2.0, 7.0, 2.0, 1.0)
 }
 
 // channel faders
@@ -518,6 +527,7 @@ var host_SelectPrevTrack = page.mHostAccess.mTrackSelection.mAction.mPrevTrack
 var host_SelectNextTrack = page.mHostAccess.mTrackSelection.mAction.mNextTrack
 var host_SelectedTrackChannel = page.mHostAccess.mTrackSelection.mMixerChannel
 var host_SelectedMute = host_SelectedTrackChannel.mValue.mMute
+var host_SelectedRecEnable = host_SelectedTrackChannel.mValue.mRecordEnable
 var host_SelectedVolume = host_SelectedTrackChannel.mValue.mVolume
 
 // create label texts onto the page
@@ -1308,6 +1318,32 @@ function assignRecMasterButtonBusOnly()
     page.makeCommandBinding(btnRecMaster.mSurfaceValue, "Mixer", "Bypass: Inserts on Main Mix")
 }
 
+function assignRecMasterButtonRecEnable()
+{
+	// bind dummy button to host selected track record enable (*note- can't use .setTypeToggle() here)
+	page.makeValueBinding(btnDummySelectedRecEnable.mSurfaceValue, host_SelectedRecEnable)	
+
+	btnRecMaster.mSurfaceValue.mOnProcessValueChange =
+		function(context, newValue, diff) {
+			var recEnablePressed = (newValue > 0)
+			var stopPressed = btnStop.mSurfaceValue.getProcessValue(context) > 0
+
+			if (stopPressed && recEnablePressed) {
+				// reset stop longpress save until next press
+				if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)
+				
+				// stop is also pressed.. fire a master bus insert toggle
+				// TODO-  page.makeCommandBinding(btnRecMaster.mSurfaceValue, "Mixer", "Bypass: Inserts on Main Mix")
+			} else if (recEnablePressed) {
+				// Read current rec enable from dummy button
+				var isRecEnabled = btnDummySelectedRecEnable.mSurfaceValue.getProcessValue(context)
+				
+				// stop isn't pressed.. fire a rec enable selected track toggle (via dummy button)				
+				btnDummySelectedRecEnable.mSurfaceValue.setProcessValue(context, isRecEnabled > 0 ? 0.0 : 1.0)
+			}
+		}	
+}
+
 function assignSaveCommand()
 {
 	// this var is triggered by long press of STOP button (when "ENABLE_STOP_HOLD_SAVE" mode enabled)
@@ -1599,9 +1635,14 @@ if (TRACKING_MODE) {
 	
 	// bind solo button to host cycle on/off
 	assignSoloButton_Cycle()
-	
-	// bind rec master button to decicated master bus inserts bypass
-	assignRecMasterButtonBusOnly()
+
+	if ( REC_ENABLE_MODE ) {
+		// bind rec master button to record enable selected track
+		assignRecMasterButtonRecEnable()		
+	} else {
+		// bind rec master button to decicated master bus inserts bypass
+		assignRecMasterButtonBusOnly()
+	}
 			
 } else {                                        // NORMAL MODE
 	// bind master fader in normal mode
