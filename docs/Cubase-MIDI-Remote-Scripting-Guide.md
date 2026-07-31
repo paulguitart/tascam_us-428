@@ -1,5 +1,7 @@
 # Cubase MIDI Remote scripting: a practical, code-backed guide
 
+If this is your first MIDI Remote script, begin with the shorter [friendly quick-start primer](Cubase-MIDI-Remote-Scripting-Primer.md), build its two-control example, and return here when you are ready for the deeper architecture.
+
 This guide explains how to design a Steinberg Cubase/Nuendo MIDI Remote script by working backward from three real controllers:
 
 - [Tascam US-428](../Tascam_US-428.js) — the richest example of coordinated subpages, mode layers, manual channel banks, EQ/send selection, and device-specific SysEx feedback.
