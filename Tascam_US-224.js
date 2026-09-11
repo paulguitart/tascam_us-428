@@ -168,7 +168,9 @@ const TASCAM_BANK_RIGHT_LED = 0x08
 
 // device constants
 const BANK_SIZE = 4
-const TOTAL_TRACK_COUNT = BANK_SIZE * MAX_BANK_COUNT     
+// tracking mode only needs one fixed bank of 4 channels
+const BANK_COUNT = TRACKING_MODE ? 1 : MAX_BANK_COUNT
+const TOTAL_TRACK_COUNT = BANK_SIZE * BANK_COUNT
 const MASTER_FADER_SCALE = 0.75              // 0.75 sets the max range of the fader to 0dB, 1.0 is full range
 
 //-----------------------------------------------------------------------------
@@ -653,7 +655,7 @@ if (TRACKING_MODE && AUDITION_VOLUME_WHEEL) {
 function makeBankSubPages(area, name) {
     var subpages = []
 
-    for (var bankNum=0; bankNum<MAX_BANK_COUNT; bankNum++) {
+    for (var bankNum=0; bankNum<BANK_COUNT; bankNum++) {
         subpages[bankNum] = area.makeSubPage('Bank_' + bankNum + '_' + name)
     }
 
