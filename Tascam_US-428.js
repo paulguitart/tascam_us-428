@@ -7,7 +7,6 @@
 //
 // Wishlist Features
 // -----------------
-// Long Press Stop - Save (with transport blink to confirm)
 // Stop+Loc - undo/redo
 // Stop+Wheel - fine adjust FX send level
 
@@ -17,6 +16,9 @@
 
 // if we just want to use the main controls & ignore faders.. set to true or false
 const DISABLE_FADERS = true   
+
+// hold STOP to save (transport LED progress and confirmation)
+const ENABLE_STOP_HOLD_SAVE = true
 
 // hold SET for finer pan knob movement (pan or selected track volume)
 const PAN_FINE_SCALE = 0.1
@@ -78,12 +80,12 @@ SET BUTTON RELEASE     : Insert Marker                | (All Modes)
 STOP (Tap)             : Stop Transport               | (All Modes)
 STOP + REW             : RETURN TO ZERO (RTZ)         | (All Modes)
 STOP + SET             : Cycle On/Off                 | (All Modes)
+STOP (Hold 2s)         : TRIGGER SAVE (Transport LED progress, then blink to confirm)
 
 5. WISH LIST
 ----------------------------------------------------------------------------------------------------
 STOP + LOC L           : UNDO                         | (All Modes)
 STOP + LOC R           : REDO                         | (All Modes)
-STOP (Hold 2s)         : TRIGGER SAVE (Progress shown on F1-F3, transport LED blink to confirm)
 ----------------------------------------------------------------------------------------------------
 */
 
@@ -410,9 +412,28 @@ function sendMidiTascam(context, message) {
     }
 }
 
+// save animation timing and transport feedback state
+const STOP_SAVE_HOLD_MS = 2000
+const STOP_SAVE_FIRST_MS = 500
+const STOP_SAVE_SECOND_MS = 1250
+const STOP_SAVE_THIRD_MS = 1650
+const SAVE_BLINK_INTERVAL_MS = 150
+const SAVE_BLINK_TOGGLES = 6
+var stopButtonHeld = false
+var stopSaveArmed = false
+var stopHoldStartMs = -1
+var stopProgressStage = -1
+var saveBlink_isActive = false
+var saveBlink_lastMs = -1
+var saveBlink_toggleCount = 0
+var saveBlink_stateOn = false
+var transportLedStates = {}
+
 function makeTransportDisplayFeedback(buttonSurfaceValue, commandID) {    
     buttonSurfaceValue.mOnProcessValueChange = function (context, newValue) {
         var ledState = newValue > 0 ? LED_STATES.On : LED_STATES.Off;
+        transportLedStates[commandID] = ledState
+        if (commandID !== TRANSPORT_LED_COMMANDS.Stop && (stopSaveArmed || saveBlink_isActive)) return
         sendMidiTascam(context, [TASCAM_TRANSPORT_LED, commandID, ledState])
     }
 }
@@ -607,6 +628,10 @@ var var_assignModeOff = deviceDriver.mSurface.makeCustomValueVariable("Assign Mo
 // create custom vars on host for SOLO mode switching
 var var_soloModeOn = deviceDriver.mSurface.makeCustomValueVariable("Solo Mode On")
 var var_soloModeOff = deviceDriver.mSurface.makeCustomValueVariable("Solo Mode Off")
+
+// custom vars for STOP and long press save
+var var_stopPressed = deviceDriver.mSurface.makeCustomValueVariable("Stop Pressed")
+var var_savePressed = deviceDriver.mSurface.makeCustomValueVariable("Save Pressed")
 
 // create custom vars to intercept simultaneous button presses for STOP+REW = RTZ
 var var_rewPressed = deviceDriver.mSurface.makeCustomValueVariable("REW Pressed")
@@ -1173,7 +1198,7 @@ function assignTransportControls() {
     page.makeValueBinding(btnRecord.mSurfaceValue, hostTransport_Record).setTypeToggle()     
     page.makeValueBinding(btnFastForward.mSurfaceValue, hostTransport_FastForward)    
     page.makeValueBinding(var_rewPressed, hostTransport_Rewind)
-    page.makeCommandBinding(btnStop.mSurfaceValue, "Transport", "Stop")    // use transport command, because mStop causes playhead to jump back
+    page.makeCommandBinding(var_stopPressed, "Transport", "Stop")    // use transport command, because mStop causes playhead to jump back
     page.makeCommandBinding(var_RTZPressed, "Transport", "Return to Zero")    
     
     // catch STOP+REW buttons to send RTZ command, or forward single REW button command, thru custom variable
@@ -1183,6 +1208,7 @@ function assignTransportControls() {
             var stopPressed = btnStop.mSurfaceValue.getProcessValue(context)
 			
             if (stopPressed && rewindPressed) {
+                cancelStopSave(context)
                 var_RTZPressed.setProcessValue(context, 1.0)          // stop is also pressed.. fire an RTZ
 			} else {
 				var_rewPressed.setProcessValue(context, newValue)     // stop isn't pressed.. fire a normal rewind
@@ -1231,6 +1257,7 @@ function assignLocatorControls() {
             setButtonUsed = false
             var stopPressed = btnStop.mSurfaceValue.getProcessValue(context) > 0
             if (stopPressed) {
+                cancelStopSave(context)
                 setButtonUsed = true
                 var_cyclePressed.setProcessValue(context, 1.0)
                 var_cyclePressed.setProcessValue(context, 0.0)
@@ -1326,12 +1353,95 @@ function assignZoomToJogWheel() {
             }    
 }
 
+// hold STOP progress uses only transport LED's, never channel REC LED's
+function setSaveTransportLEDs(context, stage) {
+    var commands = [TRANSPORT_LED_COMMANDS.FastForward, TRANSPORT_LED_COMMANDS.Play,
+        TRANSPORT_LED_COMMANDS.Rewind, TRANSPORT_LED_COMMANDS.Record]
+    var lit = [stage >= 1, stage >= 1, stage >= 2, stage >= 3]
+    for (var i = 0; i < commands.length; i++) {
+        sendMidiTascam(context, [TASCAM_TRANSPORT_LED, commands[i], lit[i] ? LED_STATES.On : LED_STATES.Off])
+    }
+}
+
+function restoreSaveTransportLEDs(context) {
+    var commands = [TRANSPORT_LED_COMMANDS.FastForward, TRANSPORT_LED_COMMANDS.Play,
+        TRANSPORT_LED_COMMANDS.Rewind, TRANSPORT_LED_COMMANDS.Record]
+    for (var i = 0; i < commands.length; i++) {
+        sendMidiTascam(context, [TASCAM_TRANSPORT_LED, commands[i], transportLedStates[commands[i]] || LED_STATES.Off])
+    }
+}
+
+function cancelStopSave(context) {
+    var wasArmed = stopSaveArmed
+    stopSaveArmed = false
+    stopHoldStartMs = -1
+    stopProgressStage = -1
+    if (wasArmed && !saveBlink_isActive) restoreSaveTransportLEDs(context)
+}
+
+function assignStopHoldSave() {
+    if (ENABLE_STOP_HOLD_SAVE) page.makeCommandBinding(var_savePressed, "File", "Save")
+
+    btnStop.mSurfaceValue.mOnProcessValueChange = function(context, newValue, diff) {
+        var isPressed = newValue > 0
+        if (isPressed === stopButtonHeld) return
+        stopButtonHeld = isPressed
+        var_stopPressed.setProcessValue(context, newValue)
+
+        if (!isPressed) {
+            cancelStopSave(context)
+        } else if (ENABLE_STOP_HOLD_SAVE && !saveBlink_isActive) {
+            stopHoldStartMs = Date.now()
+            stopSaveArmed = true
+            stopProgressStage = 0
+            setSaveTransportLEDs(context, 0)
+        }
+    }
+}
+
+if (ENABLE_STOP_HOLD_SAVE) {
+    deviceDriver.mOnIdle = function(context, activeMapping) {
+        var now = Date.now()
+        if (saveBlink_isActive) {
+            if (saveBlink_lastMs !== -1 && now - saveBlink_lastMs < SAVE_BLINK_INTERVAL_MS) return
+            saveBlink_lastMs = now
+            saveBlink_stateOn = !saveBlink_stateOn
+            setSaveTransportLEDs(context, saveBlink_stateOn ? 3 : 0)
+            saveBlink_toggleCount++
+            if (saveBlink_toggleCount >= SAVE_BLINK_TOGGLES) {
+                saveBlink_isActive = false
+                restoreSaveTransportLEDs(context)
+            }
+            return
+        }
+
+        if (!stopSaveArmed) return
+        var elapsed = now - stopHoldStartMs
+        if (elapsed >= STOP_SAVE_HOLD_MS) {
+            stopSaveArmed = false
+            stopHoldStartMs = -1
+            saveBlink_isActive = true
+            saveBlink_lastMs = now
+            saveBlink_toggleCount = 0
+            saveBlink_stateOn = false
+            setSaveTransportLEDs(context, 0)     // separate the full progress display from the first blink
+            var_savePressed.setProcessValue(context, 1.0)
+            var_savePressed.setProcessValue(context, 0.0)
+        } else {
+            var stage = elapsed >= STOP_SAVE_THIRD_MS ? 3 : elapsed >= STOP_SAVE_SECOND_MS ? 2 : elapsed >= STOP_SAVE_FIRST_MS ? 1 : 0
+            if (stage === stopProgressStage) return
+            stopProgressStage = stage
+            setSaveTransportLEDs(context, stage)
+        }
+    }
+}
+
 //-----------------------------------------------------------------------------
 // 6. MAIN SECTION - call surface/host bindings
 //-----------------------------------------------------------------------------
 
 // bind transport LED's
-makeTransportDisplayFeedback(btnStop.mSurfaceValue, TRANSPORT_LED_COMMANDS.Stop)
+makeTransportDisplayFeedback(var_stopPressed, TRANSPORT_LED_COMMANDS.Stop)
 makeTransportDisplayFeedback(btnPlay.mSurfaceValue, TRANSPORT_LED_COMMANDS.Play)
 makeTransportDisplayFeedback(btnRecord.mSurfaceValue, TRANSPORT_LED_COMMANDS.Record)
 makeTransportDisplayFeedback(btnFastForward.mSurfaceValue, TRANSPORT_LED_COMMANDS.FastForward)
@@ -1348,6 +1458,7 @@ makeNullDisplayFeedback(btnNull)
 
 // wire up bindings from surface controls to host events
 assignTransportControls()
+assignStopHoldSave()
 assignRecMasterButton()
 assignLocatorControls()
 assignBankButtonControls()
