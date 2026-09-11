@@ -7,7 +7,6 @@
 //
 // Wishlist Features
 // -----------------
-// Stop+Loc - undo/redo
 // Stop+Wheel - fine adjust FX send level
 
 //-----------------------------------------------------------------------------
@@ -55,7 +54,7 @@ BANK L / R             : SELECT PREVIOUS/NEXT TRACK
 2. MIXING & CHANNEL STRIP (ASGN & SOLO Toggles)
 ----------------------------------------------------------------------------------------------------
 PAN KNOB               : [Normal] Pan Selected Track  | [ASGN] Selected Track Volume.
-SET BUTTON + PAN KNOB  : [Normal] Pan (+Fine Adjust)  | [ASGN] Volume (+Fine Adjust).
+SET + PAN KNOB         : [Normal] Pan (+Fine Adjust)  | [ASGN] Volume (+Fine Adjust).
 MASTER FADER           : [Normal] Stereo Out Volume   | [ASGN] FX Send Slot 1 Level.
 EQ BAND (HI->LOW)      : Gain/Freq/Q knobs            | (All Modes) 
 EQ BUTTONS (1-4)       : [Normal] Select EQ Band      | [ASGN] EQ Band On/Off.
@@ -80,12 +79,9 @@ SET BUTTON RELEASE     : Insert Marker                | (All Modes)
 STOP (Tap)             : Stop Transport               | (All Modes)
 STOP + REW             : RETURN TO ZERO (RTZ)         | (All Modes)
 STOP + SET             : Cycle On/Off                 | (All Modes)
-STOP (Hold 2s)         : TRIGGER SAVE (Transport LED progress, then blink to confirm)
-
-5. WISH LIST
-----------------------------------------------------------------------------------------------------
 STOP + LOC L           : UNDO                         | (All Modes)
 STOP + LOC R           : REDO                         | (All Modes)
+STOP (Hold 2s)         : TRIGGER SAVE (Transport LED progress, then blink to confirm)
 ----------------------------------------------------------------------------------------------------
 */
 
@@ -638,6 +634,8 @@ var var_rewPressed = deviceDriver.mSurface.makeCustomValueVariable("REW Pressed"
 var var_RTZPressed = deviceDriver.mSurface.makeCustomValueVariable("RTZ Pressed")
 
 // custom vars for SET commands and fine pan control
+var var_undoPressed = deviceDriver.mSurface.makeCustomValueVariable("Undo Pressed")
+var var_redoPressed = deviceDriver.mSurface.makeCustomValueVariable("Redo Pressed")
 var var_prevMarkerPressed = deviceDriver.mSurface.makeCustomValueVariable("Previous Marker Pressed")
 var var_nextMarkerPressed = deviceDriver.mSurface.makeCustomValueVariable("Next Marker Pressed")
 var var_setLeftLocatorPressed = deviceDriver.mSurface.makeCustomValueVariable("Set Left Locator Pressed")
@@ -1216,7 +1214,7 @@ function assignTransportControls() {
         }  		
 }
 
-function assignLocatorButton(button, markerCommand, locatorCommand) {
+function assignLocatorButton(button, markerCommand, locatorCommand, editCommand) {
     var buttonHeld = false
     button.mSurfaceValue.mOnProcessValueChange = function(context, newValue, diff) {
         var isPressed = newValue > 0
@@ -1225,7 +1223,12 @@ function assignLocatorButton(button, markerCommand, locatorCommand) {
         if (!isPressed) return
 
         var command = markerCommand
-        if (setButtonHeld) {
+        var stopPressed = btnStop.mSurfaceValue.getProcessValue(context) > 0
+        if (stopPressed) {
+            cancelStopSave(context)     // STOP chord cancels pending long press save
+            if (setButtonHeld) setButtonUsed = true
+            command = editCommand
+        } else if (setButtonHeld) {
             setButtonUsed = true        // do not insert a marker when SET is released
             command = locatorCommand
         }
@@ -1241,8 +1244,12 @@ function assignLocatorControls() {
     page.makeCommandBinding(var_setLeftLocatorPressed, "Transport", "Set Left Locator")
     page.makeCommandBinding(var_setRightLocatorPressed, "Transport", "Set Right Locator")
 
-    assignLocatorButton(btnLocateLeft, var_prevMarkerPressed, var_setLeftLocatorPressed)
-    assignLocatorButton(btnLocateRight, var_nextMarkerPressed, var_setRightLocatorPressed)
+    // STOP+locator buttons trigger undo/redo in both modes
+    page.makeCommandBinding(var_undoPressed, "Edit", "Undo")
+    page.makeCommandBinding(var_redoPressed, "Edit", "Redo")
+
+    assignLocatorButton(btnLocateLeft, var_prevMarkerPressed, var_setLeftLocatorPressed, var_undoPressed)
+    assignLocatorButton(btnLocateRight, var_nextMarkerPressed, var_setRightLocatorPressed, var_redoPressed)
 
     // SET inserts a marker on release, unless used for a chord or fine adjustment
     page.makeCommandBinding(var_insertMarkerPressed, "Transport", "Insert Marker")
