@@ -395,6 +395,9 @@ function sendMidiTascam(context, message) {
 
 function makeTransportDisplayFeedback(buttonSurfaceValue, commandID) {    
     buttonSurfaceValue.mOnProcessValueChange = function (context, newValue) {
+        // let save confirmation control the transport LED's until the animation finishes
+        if (ENABLE_STOP_HOLD_SAVE && saveBlink_isActive) return
+
         var ledState = newValue > 0 ? LED_STATES.On : LED_STATES.Off;
         sendMidiTascam(context, [TASCAM_TRANSPORT_LED, commandID, ledState])
 				
@@ -421,6 +424,13 @@ function setAllTransportLeds(context, isOn) {
     setTransportLed(context, TRANSPORT_LED_COMMANDS.FastForward, isOn)
     setTransportLed(context, TRANSPORT_LED_COMMANDS.Play,        isOn)
     setTransportLed(context, TRANSPORT_LED_COMMANDS.Record,      isOn)
+}
+
+function restoreTransportLEDs(context) {
+    setTransportLed(context, TRANSPORT_LED_COMMANDS.Rewind,      var_rewPressed.getProcessValue(context) > 0)
+    setTransportLed(context, TRANSPORT_LED_COMMANDS.FastForward, btnFastForward.mSurfaceValue.getProcessValue(context) > 0)
+    setTransportLed(context, TRANSPORT_LED_COMMANDS.Play,        btnPlay.mSurfaceValue.getProcessValue(context) > 0)
+    setTransportLed(context, TRANSPORT_LED_COMMANDS.Record,      btnRecord.mSurfaceValue.getProcessValue(context) > 0)
 }
 
 function blinkAllTransportLEDs(context) {
@@ -1475,7 +1485,12 @@ hostTimeDisplay.mOnChangeTempoBPM = function (activeDevice, activeMapping, tempo
 
 // record listener to handle rec LED's in nuclear mode
 hostTransport_Record.mOnProcessValueChange = function (context, activeMapping, value) {
-    nuclear_isRecording = value > 0
+    if (!TRACKING_MODE || !ENABLE_NUCLEAR_BLINK) return
+
+    // only reset animation on a recording state change, not repeated host feedback
+    var isRecording = value > 0
+    if (isRecording === nuclear_isRecording) return
+    nuclear_isRecording = isRecording
 
     // when recording stops, reset rec LED's to off
     if (!nuclear_isRecording) {
@@ -1567,6 +1582,9 @@ if ((TRACKING_MODE && ENABLE_NUCLEAR_BLINK) || ENABLE_STOP_HOLD_SAVE) {
 				saveBlink_lastMs = SAVE_BLINK_RESET
 				saveBlink_toggleCount = 0
 				saveBlink_stateOn = false
+
+				// restore normal transport feedback after the last blink
+				restoreTransportLEDs(context)
 
 				// reset "progress indicator" LED's
 				if (!ENABLE_NUCLEAR_BLINK || !nuclear_isRecording)
