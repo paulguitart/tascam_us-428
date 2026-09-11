@@ -7,7 +7,6 @@
 //
 // Wishlist Features
 // -----------------
-// Stop+Wheel - fine adjust FX send level
 
 //-----------------------------------------------------------------------------
 // 0. CUSTOM SETTINGS - change these CONST values to suit your own needs
@@ -21,6 +20,9 @@ const ENABLE_STOP_HOLD_SAVE = true
 
 // hold SET for finer pan knob movement (pan or selected track volume)
 const PAN_FINE_SCALE = 0.1
+
+// hold SET in normal mode for finer FX send movement
+const FX_SEND_FINE_SCALE = 0.1
 
 // master fader is fixed to cubase metronome level
 const ENABLE_METRONOME_FADER = true
@@ -73,6 +75,7 @@ NOTE: ASGN is the “ON/OFF + LED state” layer (EQ/AUX). Normal mode is the �
 4. TRANSPORT & JOGWHEEL
 ----------------------------------------------------------------------------------------------------
 JOG WHEEL              : [Normal] FX Send (AUX 1-4)   | [ASGN] Horizontal Zoom.
+SET + JOG WHEEL        : Fine FX Send Level (Normal Mode).
 LOCATE LEFT / RIGHT    : Prev/Next Marker             | (All Modes)
 SET + LOCATE L / R     : Set Left/Right Locators      | (All Modes)
 SET BUTTON RELEASE     : Insert Marker                | (All Modes)
@@ -1055,14 +1058,34 @@ function makeFXSendSubpage(AUX) {
     // create subpage
     var subpage = area_JogwheelFXSendSubPages.makeSubPage('AUX' + AUX + ' FX Send Jogwheel')
     
-    // bind jogweel to the corresponding FX send, per subpage    
-    page.makeValueBinding(knobJogWheel.mSurfaceValue, host_SelectedTrackChannel.mSends.getByIndex(AUX).mLevel)
-        .setValueTakeOverModeScaled()
+    // mirror current send level so each movement starts from the host value
+    var sendLevel = deviceDriver.mSurface.makeCustomValueVariable('AUX' + AUX + ' Send Level')
+    var sendInput = page.mCustom.makeHostValueVariable('AUX' + AUX + ' Send Movement')
+    page.makeValueBinding(sendLevel, host_SelectedTrackChannel.mSends.getByIndex(AUX).mLevel)
+
+    // bind jogwheel movement to this send, with SET held for fine adjustment
+    page.makeValueBinding(knobJogWheel.mSurfaceValue, sendInput)
         .setSubPage(subpage)
-    
-    // bind LED updates to subpage switches
-    subpage.mOnActivate = function(context, activeMapping) { displaySelectedAuxLED(context, AUX) }
-    
+        .mOnValueChange = function(context, activeMapping, newValue, diff) {
+            if (newValue === 0.5) return     // ignore our own recenter feedback
+
+            var movement = newValue - 0.5
+            knobJogWheel.mSurfaceValue.setProcessValue(context, 0.5)
+            if (setButtonHeld) {
+                setButtonUsed = true        // do not insert a marker when SET is released
+                movement *= FX_SEND_FINE_SCALE
+            }
+
+            var newSendLevel = sendLevel.getProcessValue(context) + movement
+            sendLevel.setProcessValue(context, Math.max(0, Math.min(1, newSendLevel)))
+        }
+
+    // update AUX LED's and center relative input when switching sends
+    subpage.mOnActivate = function(context, activeMapping) {
+        knobJogWheel.mSurfaceValue.setProcessValue(context, 0.5)
+        displaySelectedAuxLED(context, AUX)
+    }
+
     return subpage
 }
 
