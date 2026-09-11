@@ -15,7 +15,7 @@
 // 0. CUSTOM SETTINGS - change these CONST values to suit your own needs
 //-----------------------------------------------------------------------------
 
-// kustom channel for metronome fader, zoom knob, and selected track solo/mute
+// kustom channel for stereo out/metronome fader, zoom knob, and selected track solo/mute
 const ENABLE_KUSTOM_CHANNEL = true
 
 // hold STOP button to save 
@@ -26,6 +26,9 @@ const FORCE_DEVICE_CC_MODE = true
 
 // 0.8 sets the max range of the fader closer to 0dB, 1.0 is full range (+6db)
 const TRACK_FADER_SCALE = 1.0 
+
+// 0.75 sets the max range of the master fader to 0dB, 1.0 is full range
+const MASTER_FADER_SCALE = 0.75
 
 // max number of cycle markers to toggle (cubase supports up to 9)
 const CYCLE_MARKER_MAX = 7
@@ -59,7 +62,7 @@ REC BUTTONS 1-7        : Record Enable On/Off for Tracks 1-7 (Fixed)
 
 KUSTOM CHANNEL COMMANDS: (Channel 8)
 ----------------------------------------------------------------------------------------------------
-FADER                  : Metronome Click Level
+FADER                  : [Metronome Off] Stereo Out | [Metronome On] Metronome Click Level
 PAN KNOB               : Horizontal Zoom (reverse the knob quickly to gain zoom range)
 SOLO                   : Solo On/Off for Selected Track
 MUTE                   : Mute On/Off for Selected Track
@@ -325,7 +328,7 @@ var page = deviceDriver.mMapping.makePage('nanoKONTROL2 Remote')
 page.setLabelFieldText(surfaceElements.deviceName, 'Kustom Remote Kontrol')
 
 if (ENABLE_KUSTOM_CHANNEL) {
-	page.setLabelFieldText(surfaceElements.bottomLabelFields[7], 'METRONOME')
+	page.setLabelFieldText(surfaceElements.bottomLabelFields[7], 'MASTER / CLICK')
 	page.setLabelFieldText(surfaceElements.lblZoomKnob, 'Zoom Knob')	
 	page.setLabelFieldText(surfaceElements.bottomLabelField, 'Tracks 1-7 | 8- Selected Track (mute/solo)')	
 }
@@ -356,6 +359,11 @@ var hostMetronomeActive = page.mHostAccess.mTransport.mValue.mMetronomeActive
 var hostMetronomeClickLevel = page.mHostAccess.mTransport.mValue.mMetronomeClickLevel
 
 if (ENABLE_KUSTOM_CHANNEL) {
+	// create fader stereo out/metronome subpages (stereo out is open by default)
+	var area_KustomFaderSubPages = page.makeSubPageArea('Kustom Fader Subpage Area')
+	var subpage_KustomFaderStereoOut = area_KustomFaderSubPages.makeSubPage('Kustom Fader Stereo Out')
+	var subpage_KustomFaderMetronome = area_KustomFaderSubPages.makeSubPage('Kustom Fader Metronome')
+
 	var var_zoomIn  = surface.makeCustomValueVariable('Zoom In')
 	var var_zoomOut = surface.makeCustomValueVariable('Zoom Out')
 	var lastZoomValue = -1
@@ -510,7 +518,7 @@ function assignChannelControls() {
 
 		if (ENABLE_KUSTOM_CHANNEL && i === 7) {
 			// Strip 8 special behavior
-			page.makeValueBinding(fader, hostMetronomeClickLevel).setValueTakeOverModeScaled()
+			assignKustomFader(fader)
 			page.makeValueBinding(rec,   hostMetronomeActive).setTypeToggle()
 			page.makeValueBinding(solo,  host_SelectedTrackChannel.mValue.mSolo).setTypeToggle()
 			page.makeValueBinding(mute,  host_SelectedTrackChannel.mValue.mMute).setTypeToggle()
@@ -521,6 +529,32 @@ function assignChannelControls() {
 			page.makeValueBinding(mute,  channel.mValue.mMute).setTypeToggle()
 			page.makeValueBinding(solo,  channel.mValue.mSolo).setTypeToggle()
 			page.makeValueBinding(rec,   channel.mValue.mRecordEnable).setTypeToggle()
+		}
+	}
+}
+
+function assignKustomFader(fader) {
+	// create host master stereo out channel
+	var hostMixerZoneStereoOut = page.mHostAccess.mMixConsole.makeMixerBankZone().includeOutputChannels()
+	var stereoOutChannel = hostMixerZoneStereoOut.makeMixerBankChannel()
+
+	// bind fader to main stereo out channel, when metronome is off
+	page.makeValueBinding(fader, stereoOutChannel.mValue.mVolume)
+		.setValueTakeOverModeScaled()
+		.setSubPage(subpage_KustomFaderStereoOut)
+		.mapToValueRange(0, MASTER_FADER_SCALE)
+
+	// bind fader to click level, when metronome is on
+	page.makeValueBinding(fader, hostMetronomeClickLevel)
+		.setValueTakeOverModeScaled()
+		.setSubPage(subpage_KustomFaderMetronome)
+
+	// follow host metronome state to switch fader assignment
+	hostMetronomeActive.mOnProcessValueChange = function (context, activeMapping, newValue) {
+		if (newValue > 0) {
+			subpage_KustomFaderMetronome.mAction.mActivate.trigger(activeMapping)
+		} else {
+			subpage_KustomFaderStereoOut.mAction.mActivate.trigger(activeMapping)
 		}
 	}
 }
@@ -658,6 +692,12 @@ function assignMarkerControls() {
 
 function sendFeedbackOut(button, ccNr) {
 	button.mSurfaceValue.mOnProcessValueChange = function (context, newValue) {
+		// let save confirmation control its four transport LED's until it finishes
+		if (ENABLE_STOP_HOLD_SAVE && saveBlink_isActive && (
+			ccNr === TRANSPORT_MIDI_CC.Rewind || ccNr === TRANSPORT_MIDI_CC.FastForward ||
+			ccNr === TRANSPORT_MIDI_CC.Play || ccNr === TRANSPORT_MIDI_CC.Record
+		)) return
+
 		midiOutput.sendMidi(context, [0xb0, ccNr, Math.round(newValue * 127)])
 	}
 }
@@ -698,6 +738,13 @@ function setConfirmTransportLEDs(context, isOn) {
     setTransportLed(context, TRANSPORT_MIDI_CC.Record,      isOn)
 }
 
+function restoreTransportLEDs(context) {
+    setTransportLed(context, TRANSPORT_MIDI_CC.Rewind,      var_rewPressed.getProcessValue(context) > 0)
+    setTransportLed(context, TRANSPORT_MIDI_CC.FastForward, surfaceElements.transport.btnFastForward.mSurfaceValue.getProcessValue(context) > 0)
+    setTransportLed(context, TRANSPORT_MIDI_CC.Play,        surfaceElements.transport.btnPlay.mSurfaceValue.getProcessValue(context) > 0)
+    setTransportLed(context, TRANSPORT_MIDI_CC.Record,      surfaceElements.transport.btnRecord.mSurfaceValue.getProcessValue(context) > 0)
+}
+
 function blinkConfirmTransportLEDs(context) {
     // arm the animation- actual toggling happens in mOnIdle
     saveBlink_isActive = true
@@ -733,7 +780,10 @@ if (ENABLE_STOP_HOLD_SAVE) {
 				saveBlink_isActive = false
 				saveBlink_lastMs = SAVE_BLINK_RESET
 				saveBlink_toggleCount = 0
-				saveBlink_stateOn = false			
+				saveBlink_stateOn = false
+
+				// restore normal transport feedback after the last blink
+				restoreTransportLEDs(context)
 			}
 		}
 
