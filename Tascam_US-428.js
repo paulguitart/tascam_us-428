@@ -9,7 +9,7 @@
 // -----------------
 // Long Press Stop - Save (with transport blink to confirm)
 // Stop+Loc - undo/redo
-// Stop+Wheel / Stop+Pan - fine adjust dB
+// Stop+Wheel - fine adjust FX send level
 
 //-----------------------------------------------------------------------------
 // 0. CUSTOM SETTINGS - change these CONST values to suit your own needs
@@ -17,6 +17,9 @@
 
 // if we just want to use the main controls & ignore faders.. set to true or false
 const DISABLE_FADERS = true   
+
+// hold SET for finer pan knob movement (pan or selected track volume)
+const PAN_FINE_SCALE = 0.1
 
 // master fader is fixed to cubase metronome level
 const ENABLE_METRONOME_FADER = true
@@ -50,6 +53,7 @@ BANK L / R             : SELECT PREVIOUS/NEXT TRACK
 2. MIXING & CHANNEL STRIP (ASGN & SOLO Toggles)
 ----------------------------------------------------------------------------------------------------
 PAN KNOB               : [Normal] Pan Selected Track.  | [ASGN] Selected Track Volume.
+SET BUTTON + PAN KNOB  : [Normal] Pan (+Fine Adjust).  | [ASGN] Volume (+Fine Adjust).
 MASTER FADER           : [Normal] Stereo Out Volume.   | [ASGN] FX Send Slot 1 Level.
 EQ BAND (HI->LOW)      : Gain/Freq/Q knobs.            | (All Modes) 
 EQ BUTTONS (1-4)       : [Normal] Select EQ Band.      | [ASGN] EQ Band On/Off.
@@ -67,11 +71,12 @@ NOTE: ASGN is the “ON/OFF + LED state” layer (EQ/AUX). Normal mode is the �
 
 4. TRANSPORT & JOGWHEEL
 ----------------------------------------------------------------------------------------------------
-JOG WHEEL              : [Normal] FX Send (AUX 1-4).   | [ASGN] Horizontal Zoom.
-LOCATE LEFT / RIGHT    : [Normal] Prev/Next Marker.    | [ASGN] Set Left/Right Locators.
-SET BUTTON             : [Normal] Insert Marker.       | [ASGN] Cycle On/Off (loop record).
+JOG WHEEL              : [Normal] FX Send (AUX 1-4).        | [ASGN] Horizontal Zoom.
+LOCATE LEFT / RIGHT    : [Normal] Prev/Next Marker.         | [ASGN] Set Left/Right Locators.
+SET BUTTON RELEASE     : Insert Marker                      | (All Modes)
 STOP (Tap)             : Stop Transport
 STOP (Hold 2s)         : TRIGGER SAVE (Progress shown on F1-F3, transport LED blink to confirm)
+STOP + SET             : Cycle On/Off (All Modes).
 STOP + LOC L           : UNDO
 STOP + LOC R           : REDO
 STOP + REW             : RETURN TO ZERO (RTZ)
@@ -602,6 +607,15 @@ var var_soloModeOff = deviceDriver.mSurface.makeCustomValueVariable("Solo Mode O
 // create custom vars to intercept simultaneous button presses for STOP+REW = RTZ
 var var_rewPressed = deviceDriver.mSurface.makeCustomValueVariable("REW Pressed")
 var var_RTZPressed = deviceDriver.mSurface.makeCustomValueVariable("RTZ Pressed")
+
+// custom vars for SET commands and fine pan control
+var var_insertMarkerPressed = deviceDriver.mSurface.makeCustomValueVariable("Insert Marker Pressed")
+var var_cyclePressed = deviceDriver.mSurface.makeCustomValueVariable("Cycle Pressed")
+var setButtonHeld = false
+var setButtonUsed = false
+var var_selectedVolume = deviceDriver.mSurface.makeCustomValueVariable("Selected Track Volume")
+var var_selectedPan = deviceDriver.mSurface.makeCustomValueVariable("Selected Track Pan")
+var var_panInput = page.mCustom.makeHostValueVariable("Pan Knob Movement")
 
 // create custom var to intercept jogwheel value
 var var_knobJogWheel = page.mCustom.makeHostValueVariable("JogWheel Position")
@@ -1172,25 +1186,68 @@ function assignLocatorControls() {
     // bind locator buttons to host marker commands, in regular non-"ASGN" mode
     page.makeCommandBinding(btnLocateLeft.mSurfaceValue, "Transport", "Locate Previous Marker").setSubPage(subpage_LocatorsNormalMode)
     page.makeCommandBinding(btnLocateRight.mSurfaceValue, "Transport", "Locate Next Marker").setSubPage(subpage_LocatorsNormalMode)
-    page.makeCommandBinding(btnLocateSet.mSurfaceValue, "Transport", "Insert Marker").setSubPage(subpage_LocatorsNormalMode)
 
     // bind locator buttons to host cycle commands, in "ASGN" mode
     page.makeCommandBinding(btnLocateLeft.mSurfaceValue, "Transport", "Set Left Locator").setSubPage(subpage_LocatorsAssignMode)
     page.makeCommandBinding(btnLocateRight.mSurfaceValue, "Transport", "Set Right Locator").setSubPage(subpage_LocatorsAssignMode)
-    page.makeCommandBinding(btnLocateSet.mSurfaceValue, "Transport", "Cycle").setSubPage(subpage_LocatorsAssignMode)
+    // SET inserts a marker on release, unless used for fine adjustment or cycle
+    page.makeCommandBinding(var_insertMarkerPressed, "Transport", "Insert Marker")
+    page.makeCommandBinding(var_cyclePressed, "Transport", "Cycle")
+
+    btnLocateSet.mSurfaceValue.mOnProcessValueChange = function(context, newValue, diff) {
+        var isPressed = newValue > 0
+        if (isPressed === setButtonHeld) return
+        setButtonHeld = isPressed
+
+        if (isPressed) {
+            setButtonUsed = false
+            var stopPressed = btnStop.mSurfaceValue.getProcessValue(context) > 0
+            if (stopPressed) {
+                setButtonUsed = true
+                var_cyclePressed.setProcessValue(context, 1.0)
+                var_cyclePressed.setProcessValue(context, 0.0)
+            }
+        } else {
+            if (!setButtonUsed) {
+                var_insertMarkerPressed.setProcessValue(context, 1.0)
+                var_insertMarkerPressed.setProcessValue(context, 0.0)
+            }
+            setButtonUsed = false
+        }
+    }
 }
 
 function assignPanControl()
 {
-    // bind pan knob to host selected track panning, in normal mode
-    page.makeValueBinding(knobPan.mSurfaceValue, host_SelectedTrackChannel.mValue.mPan)
-        .setValueTakeOverModeScaled()
-        .setSubPage(subpage_PanNormalMode)
+    // mirror current selected track values so each movement starts from the host value
+    page.makeValueBinding(var_selectedPan, host_SelectedTrackChannel.mValue.mPan)
+    page.makeValueBinding(var_selectedVolume, host_SelectedTrackChannel.mValue.mVolume)
 
-    // bind pan knob to host selected track volume, in "ASGN" mode 
-    page.makeValueBinding(knobPan.mSurfaceValue, host_SelectedTrackChannel.mValue.mVolume)  // host_FirstQuickControl
-        .setValueTakeOverModeScaled()
-        .setSubPage(subpage_PanAssignMode)
+    // keep relative input centered so the knob never runs out of travel
+    subpage_PanNormalMode.mOnActivate = function(context, activeMapping) {
+        knobPan.mSurfaceValue.setProcessValue(context, 0.5)
+    }
+    subpage_PanAssignMode.mOnActivate = function(context, activeMapping) {
+        knobPan.mSurfaceValue.setProcessValue(context, 0.5)
+    }
+
+    // ASGN selects volume instead of pan; SET gives finer movement in either mode
+    page.makeValueBinding(knobPan.mSurfaceValue, var_panInput)
+        .mOnValueChange = function(context, activeMapping, newValue, diff) {
+            if (newValue === 0.5) return     // ignore our own recenter feedback
+
+            var movement = newValue - 0.5
+            knobPan.mSurfaceValue.setProcessValue(context, 0.5)
+
+            if (setButtonHeld) {
+                setButtonUsed = true        // do not insert a marker when SET is released
+                movement *= PAN_FINE_SCALE
+            }
+
+            var target = isAssignModeEnabled(context) ? var_selectedVolume : var_selectedPan
+            var newTargetValue = target.getProcessValue(context) + movement
+            target.setProcessValue(context, Math.max(0, Math.min(1, newTargetValue)))
+        }
 }
 
 function assignMetronomeButton()
