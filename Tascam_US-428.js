@@ -52,17 +52,17 @@ BANK L / R             : SELECT PREVIOUS/NEXT TRACK
 
 2. MIXING & CHANNEL STRIP (ASGN & SOLO Toggles)
 ----------------------------------------------------------------------------------------------------
-PAN KNOB               : [Normal] Pan Selected Track.  | [ASGN] Selected Track Volume.
-SET BUTTON + PAN KNOB  : [Normal] Pan (+Fine Adjust).  | [ASGN] Volume (+Fine Adjust).
-MASTER FADER           : [Normal] Stereo Out Volume.   | [ASGN] FX Send Slot 1 Level.
-EQ BAND (HI->LOW)      : Gain/Freq/Q knobs.            | (All Modes) 
-EQ BUTTONS (1-4)       : [Normal] Select EQ Band.      | [ASGN] EQ Band On/Off.
-AUX BUTTONS (1-4)      : [Normal] Select AUX Send.     | [ASGN] Aux Send On/Off.
-MUTE BUTTONS (1-8)     : [Normal] Mute On/Off.         | [SOLO] Solo On/Off.
-MUTE LEDS (Yellow)     : [Normal] Mute State.          | [SOLO] Solo State.
-SELECT BUTTONS (1-8)   : [Normal] Single Track Focus.  | [SOLO] Record Enable.
-SELECT LEDS (Green)    : Track Focus (all)             | (All Modes)
-REC LEDS (Red)         : Record Enable                 | (All Modes)
+PAN KNOB               : [Normal] Pan Selected Track  | [ASGN] Selected Track Volume.
+SET BUTTON + PAN KNOB  : [Normal] Pan (+Fine Adjust)  | [ASGN] Volume (+Fine Adjust).
+MASTER FADER           : [Normal] Stereo Out Volume   | [ASGN] FX Send Slot 1 Level.
+EQ BAND (HI->LOW)      : Gain/Freq/Q knobs            | (All Modes) 
+EQ BUTTONS (1-4)       : [Normal] Select EQ Band      | [ASGN] EQ Band On/Off.
+AUX BUTTONS (1-4)      : [Normal] Select AUX Send     | [ASGN] Aux Send On/Off.
+MUTE BUTTONS (1-8)     : [Normal] Mute On/Off         | [SOLO] Solo On/Off.
+MUTE LEDS (Yellow)     : [Normal] Mute State          | [SOLO] Solo State.
+SELECT BUTTONS (1-8)   : [Normal] Single Track Focus  | [SOLO] Record Enable.
+SELECT LEDS (Green)    : Track Focus (all)            | (All Modes)
+REC LEDS (Red)         : Record Enable                | (All Modes)
 
 *LOW EQ MODE (Const)   : If PREFILTER_MODE = true, Low Band controls Pre-Filter Low Cut.
 *METRONOME MODE (Const): If ENABLE_METRONOME_FADER = true, Master fader controls Cubase click level
@@ -71,15 +71,19 @@ NOTE: ASGN is the “ON/OFF + LED state” layer (EQ/AUX). Normal mode is the �
 
 4. TRANSPORT & JOGWHEEL
 ----------------------------------------------------------------------------------------------------
-JOG WHEEL              : [Normal] FX Send (AUX 1-4).        | [ASGN] Horizontal Zoom.
-LOCATE LEFT / RIGHT    : [Normal] Prev/Next Marker.         | [ASGN] Set Left/Right Locators.
-SET BUTTON RELEASE     : Insert Marker                      | (All Modes)
-STOP (Tap)             : Stop Transport
+JOG WHEEL              : [Normal] FX Send (AUX 1-4)   | [ASGN] Horizontal Zoom.
+LOCATE LEFT / RIGHT    : Prev/Next Marker             | (All Modes)
+SET + LOCATE L / R     : Set Left/Right Locators      | (All Modes)
+SET BUTTON RELEASE     : Insert Marker                | (All Modes)
+STOP (Tap)             : Stop Transport               | (All Modes)
+STOP + REW             : RETURN TO ZERO (RTZ)         | (All Modes)
+STOP + SET             : Cycle On/Off                 | (All Modes)
+
+5. WISH LIST
+----------------------------------------------------------------------------------------------------
+STOP + LOC L           : UNDO                         | (All Modes)
+STOP + LOC R           : REDO                         | (All Modes)
 STOP (Hold 2s)         : TRIGGER SAVE (Progress shown on F1-F3, transport LED blink to confirm)
-STOP + SET             : Cycle On/Off (All Modes).
-STOP + LOC L           : UNDO
-STOP + LOC R           : REDO
-STOP + REW             : RETURN TO ZERO (RTZ)
 ----------------------------------------------------------------------------------------------------
 */
 
@@ -609,6 +613,10 @@ var var_rewPressed = deviceDriver.mSurface.makeCustomValueVariable("REW Pressed"
 var var_RTZPressed = deviceDriver.mSurface.makeCustomValueVariable("RTZ Pressed")
 
 // custom vars for SET commands and fine pan control
+var var_prevMarkerPressed = deviceDriver.mSurface.makeCustomValueVariable("Previous Marker Pressed")
+var var_nextMarkerPressed = deviceDriver.mSurface.makeCustomValueVariable("Next Marker Pressed")
+var var_setLeftLocatorPressed = deviceDriver.mSurface.makeCustomValueVariable("Set Left Locator Pressed")
+var var_setRightLocatorPressed = deviceDriver.mSurface.makeCustomValueVariable("Set Right Locator Pressed")
 var var_insertMarkerPressed = deviceDriver.mSurface.makeCustomValueVariable("Insert Marker Pressed")
 var var_cyclePressed = deviceDriver.mSurface.makeCustomValueVariable("Cycle Pressed")
 var setButtonHeld = false
@@ -1182,15 +1190,35 @@ function assignTransportControls() {
         }  		
 }
 
-function assignLocatorControls() {    
-    // bind locator buttons to host marker commands, in regular non-"ASGN" mode
-    page.makeCommandBinding(btnLocateLeft.mSurfaceValue, "Transport", "Locate Previous Marker").setSubPage(subpage_LocatorsNormalMode)
-    page.makeCommandBinding(btnLocateRight.mSurfaceValue, "Transport", "Locate Next Marker").setSubPage(subpage_LocatorsNormalMode)
+function assignLocatorButton(button, markerCommand, locatorCommand) {
+    var buttonHeld = false
+    button.mSurfaceValue.mOnProcessValueChange = function(context, newValue, diff) {
+        var isPressed = newValue > 0
+        if (isPressed === buttonHeld) return
+        buttonHeld = isPressed
+        if (!isPressed) return
 
-    // bind locator buttons to host cycle commands, in "ASGN" mode
-    page.makeCommandBinding(btnLocateLeft.mSurfaceValue, "Transport", "Set Left Locator").setSubPage(subpage_LocatorsAssignMode)
-    page.makeCommandBinding(btnLocateRight.mSurfaceValue, "Transport", "Set Right Locator").setSubPage(subpage_LocatorsAssignMode)
-    // SET inserts a marker on release, unless used for fine adjustment or cycle
+        var command = markerCommand
+        if (setButtonHeld) {
+            setButtonUsed = true        // do not insert a marker when SET is released
+            command = locatorCommand
+        }
+        command.setProcessValue(context, 1.0)
+        command.setProcessValue(context, 0.0)
+    }
+}
+
+function assignLocatorControls() {    
+    // bind marker navigation and SET+locator commands in both modes
+    page.makeCommandBinding(var_prevMarkerPressed, "Transport", "Locate Previous Marker")
+    page.makeCommandBinding(var_nextMarkerPressed, "Transport", "Locate Next Marker")
+    page.makeCommandBinding(var_setLeftLocatorPressed, "Transport", "Set Left Locator")
+    page.makeCommandBinding(var_setRightLocatorPressed, "Transport", "Set Right Locator")
+
+    assignLocatorButton(btnLocateLeft, var_prevMarkerPressed, var_setLeftLocatorPressed)
+    assignLocatorButton(btnLocateRight, var_nextMarkerPressed, var_setRightLocatorPressed)
+
+    // SET inserts a marker on release, unless used for a chord or fine adjustment
     page.makeCommandBinding(var_insertMarkerPressed, "Transport", "Insert Marker")
     page.makeCommandBinding(var_cyclePressed, "Transport", "Cycle")
 
