@@ -24,6 +24,9 @@ const PAN_FINE_SCALE = 0.1
 // hold SET in normal mode for finer FX send movement
 const FX_SEND_FINE_SCALE = 0.1
 
+// hold SET in ASGN mode for faster zoom (commands per wheel movement)
+const ZOOM_FAST_STEPS = 3
+
 // master fader is fixed to cubase metronome level
 const ENABLE_METRONOME_FADER = true
 
@@ -75,7 +78,7 @@ NOTE: ASGN is the “ON/OFF + LED state” layer (EQ/AUX). Normal mode is the �
 4. TRANSPORT & JOGWHEEL
 ----------------------------------------------------------------------------------------------------
 JOG WHEEL              : [Normal] FX Send (AUX 1-4)   | [ASGN] Horizontal Zoom.
-SET + JOG WHEEL        : Fine FX Send Level (Normal Mode).
+SET + JOG WHEEL        : [Normal] Fine FX Send Level  | [ASGN] Horizontal Zoom (x ZOOM_FAST_STEPS).
 LOCATE LEFT / RIGHT    : Prev/Next Marker             | (All Modes)
 SET + LOCATE L / R     : Set Left/Right Locators      | (All Modes)
 SET BUTTON RELEASE     : Insert Marker                | (All Modes)
@@ -1353,34 +1356,45 @@ function assignRecMasterButton()
         .setSubPage(subpage_RecMasterNormalMode)
 }
 
-function assignZoomToJogWheel() {    
+function assignZoomToJogWheel() {
     // bind custom vars to zoom
     page.makeCommandBinding(var_zoomIn, 'Zoom', 'Zoom In')
     page.makeCommandBinding(var_zoomOut, 'Zoom', 'Zoom Out')
-   
+
+    // start direction tracking from the current wheel value when entering zoom mode
+    subpage_JogwheelZoomMode.mOnActivate = function(context, activeMapping) {
+        lastZoomValue = Math.floor(knobJogWheel.mSurfaceValue.getProcessValue(context) * 100)
+    }
+
     page.makeValueBinding(knobJogWheel.mSurfaceValue, var_knobJogWheel)
         .setSubPage(subpage_JogwheelZoomMode)
         .mOnValueChange =
-            function(context, activeMapping, newValue, diff) {            
-
-                // only allow zoom if we are in assign mode       
+            function(context, activeMapping, newValue, diff) {
                 if (!isAssignModeEnabled(context)) return
 
                 // zoom wheel magic courtesy of Ryan C Knaggs!
-                var newZoomValue = Math.floor(newValue * 100);
-                if(newZoomValue <= 0) {
-                    var_zoomOut.setProcessValue(context, 1000)
+                var newZoomValue = Math.floor(newValue * 100)
+                var zoomCommand
+                if (newZoomValue < lastZoomValue || newZoomValue <= 0) {
+                    zoomCommand = var_zoomOut
+                } else if (newZoomValue > lastZoomValue || newZoomValue >= 100) {
+                    zoomCommand = var_zoomIn
                 }
-                if(newZoomValue > lastZoomValue) {
-                    // Increase
-                    var_zoomIn.setProcessValue(context, 1)
+                lastZoomValue = newZoomValue
+                if (!zoomCommand) return
+
+                var steps = 1
+                if (setButtonHeld) {
+                    setButtonUsed = true        // do not insert a marker when SET is released
+                    steps = ZOOM_FAST_STEPS
                 }
-                if(newZoomValue < lastZoomValue) {
-                    // Decrease
-                    var_zoomOut.setProcessValue(context, 1)
+
+                // each command gets its own press/release pulse
+                for (var i = 0; i < steps; i++) {
+                    zoomCommand.setProcessValue(context, 1.0)
+                    zoomCommand.setProcessValue(context, 0.0)
                 }
-                lastZoomValue = newZoomValue;
-            }    
+            }
 }
 
 // hold STOP progress uses only transport LED's, never channel REC LED's
