@@ -74,7 +74,7 @@ MODE A: TRACKING (TRACKING_MODE = true)
 Focus: Performance & Speed. Locked to Tracks 1-4.
 ----------------------------------------------------------------------------------------------------
 FADERS 1-4             : Volume for Tracks 1-4 (Fixed)
-MASTER FADER           : Metronome Click Level
+MASTER FADER           : [Metronome Off] Stereo Out | [Metronome On] Metronome Click Level
 NULL BUTTON            : Metronome On/Off
 SOLO BUTTON            : Cycle (Loop) On/Off
 REC MASTER BUTTON      : Rec Enable Selected Track (REC_ENABLE_MODE) | Master Bus Insert On/Off
@@ -635,6 +635,13 @@ var area_MuteSoloBankSubPages = page.makeSubPageArea('Mute/Solo Subpage Area')
 var subpage_MuteBank = makeBankSubPages(area_MuteSoloBankSubPages, 'Mute Bank')
 var subpage_SoloEnableBank = makeBankSubPages(area_MuteSoloBankSubPages, 'Solo Enable Bank')
 
+if (TRACKING_MODE) {
+    // create master fader stereo out/metronome mode subpages
+    var area_MasterFaderSubPages = page.makeSubPageArea('Master Fader Subpage Area')
+    var subpage_MasterFaderStereoOut = area_MasterFaderSubPages.makeSubPage('Master Fader Stereo Out')
+    var subpage_MasterFaderMetronome = area_MasterFaderSubPages.makeSubPage('Master Fader Metronome')
+}
+
 // create jogwheel zoom/volume mode subpages
 var area_JogwheelSubPages = page.makeSubPageArea('Jogwheel Subpage Area')
 var subpage_JogwheelZoomMode = area_JogwheelSubPages.makeSubPage('Jogwheel Zoom Mode')
@@ -1120,9 +1127,30 @@ function assignSoloButton_Cycle()
         }	
 }
 
-function assignMasterFader_Metronome() {
+function assignMasterFader_TrackingMode() {
+    // create host master stereo out channel
+    var hostMixerZoneStereoOut = page.mHostAccess.mMixConsole.makeMixerBankZone().includeOutputChannels()
+    var stereoOutChannel = hostMixerZoneStereoOut.makeMixerBankChannel()
+
+    // bind master fader to main stereo out channel, when metronome is off
+    page.makeValueBinding(fdrMasterFader.mSurfaceValue, stereoOutChannel.mValue.mVolume)
+        .setValueTakeOverModeScaled()
+        .setSubPage(subpage_MasterFaderStereoOut)
+        .mapToValueRange(0, MASTER_FADER_SCALE)
+
+    // bind master fader to click level, when metronome is on
     var clickLevel = page.mHostAccess.mTransport.mValue.mMetronomeClickLevel
     page.makeValueBinding(fdrMasterFader.mSurfaceValue, clickLevel)
+        .setSubPage(subpage_MasterFaderMetronome)
+
+    // follow host metronome state to switch master fader assignment
+    host_MetronomeActive.mOnProcessValueChange = function (context, activeMapping, newValue) {
+        if (newValue > 0) {
+            subpage_MasterFaderMetronome.mAction.mActivate.trigger(activeMapping)
+        } else {
+            subpage_MasterFaderStereoOut.mAction.mActivate.trigger(activeMapping)
+        }
+    }
 }
 
 // UNUSED for reference- binds master fader to last clicked group channel
@@ -1602,8 +1630,8 @@ if (ENABLE_STOP_HOLD_SAVE) {
 }
 
 if (TRACKING_MODE) {
-	// bind master fader to click level
-    assignMasterFader_Metronome()
+	// bind master fader to stereo out or click level, depending on metronome state
+    assignMasterFader_TrackingMode()
 
 	// bind null LED to metronome button
 	makeNullDisplayMetronomeFeedback(btnNull)
