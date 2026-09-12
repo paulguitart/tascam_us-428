@@ -75,6 +75,7 @@ FADERS 1-4             : Volume for Tracks 1-4 (Fixed)
 MASTER FADER           : [Metronome Off] Stereo Out | [Metronome On] Metronome Click Level
 NULL BUTTON            : Metronome On/Off
 SOLO BUTTON            : Cycle (Loop) On/Off
+STOP + SOLO            : Clear Solos / Exit Audition (Keep Track Selection)
 REC MASTER BUTTON      : Rec Enable Selected Track (REC_ENABLE_MODE) | Master Bus Insert On/Off
 STOP + REC MASTER      : Master Bus Insert On/Off
 JOG WHEEL              : [Normal] Horizontal Zoom | [Audition] Selected Track Volume
@@ -580,6 +581,8 @@ if (TRACKING_MODE) {
 	
 	// mirror var to hold the state of host_CycleActive
 	var var_cycleActiveMirror = deviceDriver.mSurface.makeCustomValueVariable("Cycle Active Mirror")
+	var var_soloButtonInput = page.mCustom.makeHostValueVariable("Solo Button Input")
+	var var_cyclePressed = deviceDriver.mSurface.makeCustomValueVariable("Cycle Pressed")
 
 	// cycle marker command bindings | 1-based array: var_cycleMarkers[1]..[9]
 	var var_cycleMarkers = new Array(CYCLE_MARKER_MAX + 1) 	
@@ -1130,15 +1133,32 @@ function assignNullButton_Metronome()
 }
 
 function assignSoloButton_Cycle()
-{    
-    // bind solo button to host cycle enable
-    page.makeValueBinding(btnSoloEnable.mSurfaceValue, host_CycleActive).setTypeToggle()
-	
-    // add a silent mirror so we can query state in other command logic
+{
+    // SOLO alone toggles cycle; STOP+SOLO exits audition without moving selection
+    page.makeCommandBinding(var_cyclePressed, "Transport", "Cycle")
+    var soloButtonHeld = false
+    page.makeValueBinding(btnSoloEnable.mSurfaceValue, var_soloButtonInput)
+        .mOnValueChange = function(context, activeMapping, newValue, diff) {
+            var isPressed = newValue > 0
+            if (isPressed === soloButtonHeld) return
+            soloButtonHeld = isPressed
+            if (!isPressed) return
+
+            var stopPressed = btnStop.mSurfaceValue.getProcessValue(context) > 0
+            if (stopPressed) {
+                if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)
+                auditionExit(context, activeMapping)
+            } else {
+                pulseVar(context, var_cyclePressed)
+            }
+        }
+
+    // host cycle state owns the SOLO LED, including changes made in Cubase
     page.makeValueBinding(var_cycleActiveMirror, host_CycleActive)
-        .mOnValueChange = function (context, activeMapping, newValue, diff) {
+        .mOnValueChange = function(context, activeMapping, newValue, diff) {
             cycleButtonActive = newValue > 0
-        }	
+            displayCycleOnSoloLED(context, cycleButtonActive)
+        }
 }
 
 function assignMasterFader_TrackingMode() {
@@ -1690,10 +1710,7 @@ if (TRACKING_MODE) {
 	// bind locator controls to markers and undo/redo/mute "STOP" chords
 	assignLocatorControls_TrackingMode()
 	
-	// bind solo LED to host cycle state
-	makeSoloDisplayCycleFeedback(btnSoloEnable)
-	
-	// bind solo button to host cycle on/off
+	// bind SOLO to cycle on/off, with STOP+SOLO to exit audition
 	assignSoloButton_Cycle()
 
 	// REC MASTER follows REC_ENABLE_MODE; STOP+REC MASTER always toggles master inserts
