@@ -18,16 +18,18 @@ const DISABLE_FADERS = true
 // hold STOP to save (transport LED progress and confirmation)
 const ENABLE_STOP_HOLD_SAVE = true
 
-// hold SET for finer pan knob movement (pan or selected track volume)
+// pan knob uses fine movement by default; hold SET for faster pan or volume adjustment
 const PAN_FINE_SCALE = 0.1
+const PAN_FAST_SCALE = 2.0
 
-// hold SET in normal mode for finer FX send movement
+// hold SET in ASGN mode for finer FX send movement
 const FX_SEND_FINE_SCALE = 0.1
 
-// hold SET in ASGN mode for faster zoom (commands per wheel movement)
-const ZOOM_FAST_STEPS = 3
+// hold SET in normal mode for faster zoom (commands per wheel movement)
+const ZOOM_FAST_STEPS = 6
+const ZOOM_REPEAT_MS = 50
 
-// master fader is fixed to cubase metronome level
+// master fader follows metronome state (or always when DISABLE_FADERS is true)
 const ENABLE_METRONOME_FADER = true
 
  // if we want to use the "LOW" EQ knobs for Low Cut PreFilter.. set to true or false
@@ -59,11 +61,11 @@ BANK L / R             : SELECT PREVIOUS/NEXT TRACK
 2. MIXING & CHANNEL STRIP (ASGN & SOLO Toggles)
 ----------------------------------------------------------------------------------------------------
 PAN KNOB               : [Normal] Pan Selected Track  | [ASGN] Selected Track Volume.
-SET + PAN KNOB         : [Normal] Pan (+Fine Adjust)  | [ASGN] Volume (+Fine Adjust).
-MASTER FADER           : [Normal] Stereo Out Volume   | [ASGN] FX Send Slot 1 Level.
+SET + PAN KNOB         : [Normal] Fast Pan (2x)       | [ASGN] Fast Volume (2x).
+MASTER FADER           : [Normal] Stereo Out Volume   | [ASGN] FX Return 1 Volume (when metronome mode is disabled).
 EQ BAND (HI->LOW)      : Gain/Freq/Q knobs            | (All Modes) 
 EQ BUTTONS (1-4)       : [Normal] Select EQ Band      | [ASGN] EQ Band On/Off.
-AUX BUTTONS (1-4)      : [Normal] Select AUX Send     | [ASGN] Aux Send On/Off.
+AUX BUTTONS (1-4)      : [Normal] Aux Send On/Off     | [ASGN] Select AUX Send.
 MUTE BUTTONS (1-8)     : [Normal] Mute On/Off         | [SOLO] Solo On/Off.
 MUTE LEDS (Yellow)     : [Normal] Mute State          | [SOLO] Solo State.
 SELECT BUTTONS (1-8)   : [Normal] Single Track Focus  | [SOLO] Record Enable.
@@ -71,20 +73,20 @@ SELECT LEDS (Green)    : Track Focus (all)            | (All Modes)
 REC LEDS (Red)         : Record Enable                | (All Modes)
 
 *LOW EQ MODE (Const)   : If PREFILTER_MODE = true, Low Band controls Pre-Filter Low Cut.
-*METRONOME MODE (Const): If ENABLE_METRONOME_FADER = true, Master fader controls Cubase click level
+*METRONOME MODE (Const): If enabled: Metronome On = Click Level; Off = Stereo Out (Normal) / FX Return 1 (ASGN).
+                       With DISABLE_FADERS = true: Always Click Level.
 
 NOTE: ASGN is the “ON/OFF + LED state” layer (EQ/AUX). Normal mode is the “select/adjust” layer.
 
 4. TRANSPORT & JOGWHEEL
 ----------------------------------------------------------------------------------------------------
-JOG WHEEL              : [Normal] FX Send (AUX 1-4)   | [ASGN] Horizontal Zoom.
-SET + JOG WHEEL        : [Normal] Fine FX Send Level  | [ASGN] Horizontal Zoom (x ZOOM_FAST_STEPS).
+JOG WHEEL              : [Normal] Horizontal Zoom    | [ASGN] FX Send (AUX 1-4).
+SET + JOG WHEEL        : [Normal] Horizontal Zoom (x ZOOM_FAST_STEPS) | [ASGN] Fine FX Send Level.
 LOCATE LEFT / RIGHT    : Prev/Next Marker             | (All Modes)
 SET + LOCATE L / R     : Set Left/Right Locators      | (All Modes)
-SET BUTTON RELEASE     : Insert Marker                | (All Modes)
 STOP (Tap)             : Stop Transport               | (All Modes)
 STOP + REW             : RETURN TO ZERO (RTZ)         | (All Modes)
-STOP + SET             : Cycle On/Off                 | (All Modes)
+STOP + SET             : [Normal] Insert Marker       | [ASGN] Cycle On/Off
 STOP + LOC L           : UNDO                         | (All Modes)
 STOP + LOC R           : REDO                         | (All Modes)
 STOP (Hold 2s)         : TRIGGER SAVE (Transport LED progress, then blink to confirm)
@@ -649,7 +651,6 @@ var var_setRightLocatorPressed = deviceDriver.mSurface.makeCustomValueVariable("
 var var_insertMarkerPressed = deviceDriver.mSurface.makeCustomValueVariable("Insert Marker Pressed")
 var var_cyclePressed = deviceDriver.mSurface.makeCustomValueVariable("Cycle Pressed")
 var setButtonHeld = false
-var setButtonUsed = false
 var var_selectedVolume = deviceDriver.mSurface.makeCustomValueVariable("Selected Track Volume")
 var var_selectedPan = deviceDriver.mSurface.makeCustomValueVariable("Selected Track Pan")
 var var_panInput = page.mCustom.makeHostValueVariable("Pan Knob Movement")
@@ -661,6 +662,9 @@ var var_knobJogWheel = page.mCustom.makeHostValueVariable("JogWheel Position")
 var var_zoomIn = deviceDriver.mSurface.makeCustomValueVariable('ZoomIn')
 var var_zoomOut = deviceDriver.mSurface.makeCustomValueVariable('ZoomOut')
 var lastZoomValue = -1;
+var zoomRepeatCommand
+var zoomRepeatRemaining = 0
+var zoomRepeatLastMs = 0
 
 //-----------------------------------------------------------------------------
 // 4. SUBPAGES - *note! the order created matters- first one is open by default
@@ -696,6 +700,7 @@ var subpage_AuxAssignMode = area_AuxButtonsSubPages.makeSubPage('AUX Assign Mode
 
 // create aux mode buttons subpage area
 var area_JogwheelFXSendSubPages = page.makeSubPageArea('Jogwheel FX Send Subpage Area')
+var subpage_JogwheelZoomMode = area_JogwheelFXSendSubPages.makeSubPage('Jogwheel Zoom Mode')
 
 // create and assign subpages for each aux button
 var subpage_JogwheelFXSendMode = []
@@ -705,7 +710,6 @@ subpage_JogwheelFXSendMode[AUX3] = makeFXSendSubpage(AUX3)
 subpage_JogwheelFXSendMode[AUX4] = makeFXSendSubpage(AUX4)
 
 // create extra subpage for jogwheel zoom mode
-var subpage_JogwheelZoomMode = area_JogwheelFXSendSubPages.makeSubPage('Jogwheel Zoom Mode')
 
 // create EQ Assign Modes Subpage area
 var area_eqButtonsSubPages = page.makeSubPageArea('EQ Buttons Subpage Area')
@@ -1008,12 +1012,63 @@ function assignMasterFader_DualMode() {
 function assignMasterFader_Metronome() {
 	// cubase metronome level is non-destructive to the mix, so we ignore DISABLE_FADERS here
     var clickLevel = page.mHostAccess.mTransport.mValue.mMetronomeClickLevel
+    if (DISABLE_FADERS) {
+        page.makeValueBinding(fdrMasterFader.mSurfaceValue, clickLevel)
+        return
+    }
+
+    // create independent master fader modes (stereo out is open by default)
+    var area_MasterFaderSubPages = page.makeSubPageArea('Master Fader Subpage Area')
+    var subpage_MasterFaderStereoOut = area_MasterFaderSubPages.makeSubPage('Master Fader Stereo Out')
+    var subpage_MasterFaderFX = area_MasterFaderSubPages.makeSubPage('Master Fader FX Return 1')
+    var subpage_MasterFaderMetronome = area_MasterFaderSubPages.makeSubPage('Master Fader Metronome')
+
+    // create host master stereo out channel
+    var hostMixerZoneStereoOut = page.mHostAccess.mMixConsole.makeMixerBankZone().includeOutputChannels()
+    var stereoOutChannel = hostMixerZoneStereoOut.makeMixerBankChannel()
+
+    // create host first FX return channel
+    var hostMixerZoneFX = page.mHostAccess.mMixConsole.makeMixerBankZone().includeFXChannels()
+    var fxChannel = hostMixerZoneFX.makeMixerBankChannel()
+
+    // bind master fader to stereo out when metronome is off, in normal mode
+    page.makeValueBinding(fdrMasterFader.mSurfaceValue, stereoOutChannel.mValue.mVolume)
+        .setValueTakeOverModeScaled()
+        .setSubPage(subpage_MasterFaderStereoOut)
+        .mapToValueRange(0, MASTER_FADER_SCALE)
+
+    // bind master fader to first FX return when metronome is off, in ASGN mode
+    page.makeValueBinding(fdrMasterFader.mSurfaceValue, fxChannel.mValue.mVolume)
+        .setValueTakeOverModeScaled()
+        .setSubPage(subpage_MasterFaderFX)
+
+    // bind master fader to click level when metronome is on
     page.makeValueBinding(fdrMasterFader.mSurfaceValue, clickLevel)
+        .setSubPage(subpage_MasterFaderMetronome)
+
+    var metronomeIsEnabled = false
+    var activeMasterFaderMode
+
+    function updateMasterFaderMode(context, activeMapping) {
+        var subpage = metronomeIsEnabled ? subpage_MasterFaderMetronome :
+            isAssignModeEnabled(context) ? subpage_MasterFaderFX : subpage_MasterFaderStereoOut
+        if (subpage === activeMasterFaderMode) return
+        activeMasterFaderMode = subpage
+        subpage.mAction.mActivate.trigger(activeMapping)
+    }
+
+    // metronome takes priority; otherwise follow the current ASGN mode
+    host_MetronomeActive.mOnProcessValueChange = function(context, activeMapping, newValue) {
+        metronomeIsEnabled = newValue > 0
+        updateMasterFaderMode(context, activeMapping)
+    }
+    subpage_RecMasterNormalMode.mOnActivate = updateMasterFaderMode
+    subpage_RecMasterAssignMode.mOnActivate = updateMasterFaderMode
 }
 
 function assignASGNVarsToModes() {
-    // bind assign mode variable ON state, (trigger aux assign mode subpage first)
-    page.makeActionBinding(var_assignModeOn, subpage_AuxAssignMode.mAction.mActivate).mOnValueChange =
+    // bind assign mode variable ON state, (trigger aux select mode subpage first)
+    page.makeActionBinding(var_assignModeOn, subpage_AuxSelectMode.mAction.mActivate).mOnValueChange =
         function(context, activeMapping, newValue, diff) {
             if (newValue > 0) {   
                 // then trigger remaining assign mode subpages             
@@ -1021,12 +1076,12 @@ function assignASGNVarsToModes() {
                 subpage_RecMasterAssignMode.mAction.mActivate.trigger(activeMapping)                                
                 subpage_PanAssignMode.mAction.mActivate.trigger(activeMapping)                                
                 subpage_LocatorsAssignMode.mAction.mActivate.trigger(activeMapping)                                     
-                subpage_JogwheelZoomMode.mAction.mActivate.trigger(activeMapping)
+                subpage_JogwheelFXSendMode[lastSelectedAux].mAction.mActivate.trigger(activeMapping)
             }    
         }
 
-    // bind assign mode variable OFF state, (trigger aux select mode subpage first)
-    page.makeActionBinding(var_assignModeOff, subpage_AuxSelectMode.mAction.mActivate).mOnValueChange =
+    // bind assign mode variable OFF state, (trigger aux assign mode subpage first)
+    page.makeActionBinding(var_assignModeOff, subpage_AuxAssignMode.mAction.mActivate).mOnValueChange =
         function(context, activeMapping, newValue, diff) {
             if (newValue > 0) {                
                 // then trigger remaining normal mode subpages
@@ -1034,7 +1089,7 @@ function assignASGNVarsToModes() {
                 subpage_RecMasterNormalMode.mAction.mActivate.trigger(activeMapping)                                
                 subpage_PanNormalMode.mAction.mActivate.trigger(activeMapping)                                
                 subpage_LocatorsNormalMode.mAction.mActivate.trigger(activeMapping)     
-                subpage_JogwheelFXSendMode[lastSelectedAux].mAction.mActivate.trigger(activeMapping)
+                subpage_JogwheelZoomMode.mAction.mActivate.trigger(activeMapping)
             }    
         }    
 }
@@ -1075,7 +1130,6 @@ function makeFXSendSubpage(AUX) {
             var movement = newValue - 0.5
             knobJogWheel.mSurfaceValue.setProcessValue(context, 0.5)
             if (setButtonHeld) {
-                setButtonUsed = true        // do not insert a marker when SET is released
                 movement *= FX_SEND_FINE_SCALE
             }
 
@@ -1093,6 +1147,13 @@ function makeFXSendSubpage(AUX) {
 }
 
 function makeAUXLEDsDisplayFeedback() {
+    // restore send on/off LED's when returning to normal mode
+    subpage_AuxAssignMode.mOnActivate = function(context) {
+        for (var AUX = AUX1; AUX <= AUX4; AUX++) {
+            displayAssignedAuxLED(context, AUX, btnAuxes[AUX].mSurfaceValue.getProcessValue(context) > 0)
+        }
+    }
+
     // display the last selected AUX led when select subpage is activated
     subpage_AuxSelectMode.mOnActivate = function(context) { displaySelectedAuxLED(context, lastSelectedAux) } 
 
@@ -1104,10 +1165,10 @@ function makeAUXLEDsDisplayFeedback() {
 }
 
 function assignAuxAssignLED(AUX) {
-    // bind aux LED display to button value in assign mode
+    // bind aux LED display to button value in normal mode
     btnAuxes[AUX].mSurfaceValue.mOnProcessValueChange = function(context, newValue, diff) {
-        if (isAssignModeEnabled(context)) {
-            // display LED's based on host band state, only within assign mode
+        if (!isAssignModeEnabled(context)) {
+            // display LED's based on host band state, only within normal mode
             var isEnabled = newValue > 0        
             displayAssignedAuxLED(context, AUX, isEnabled)        
         }
@@ -1252,10 +1313,8 @@ function assignLocatorButton(button, markerCommand, locatorCommand, editCommand)
         var stopPressed = btnStop.mSurfaceValue.getProcessValue(context) > 0
         if (stopPressed) {
             cancelStopSave(context)     // STOP chord cancels pending long press save
-            if (setButtonHeld) setButtonUsed = true
             command = editCommand
         } else if (setButtonHeld) {
-            setButtonUsed = true        // do not insert a marker when SET is released
             command = locatorCommand
         }
         command.setProcessValue(context, 1.0)
@@ -1277,7 +1336,7 @@ function assignLocatorControls() {
     assignLocatorButton(btnLocateLeft, var_prevMarkerPressed, var_setLeftLocatorPressed, var_undoPressed)
     assignLocatorButton(btnLocateRight, var_nextMarkerPressed, var_setRightLocatorPressed, var_redoPressed)
 
-    // SET inserts a marker on release, unless used for a chord or fine adjustment
+    // STOP+SET inserts a marker in normal mode, or toggles cycle in ASGN mode
     page.makeCommandBinding(var_insertMarkerPressed, "Transport", "Insert Marker")
     page.makeCommandBinding(var_cyclePressed, "Transport", "Cycle")
 
@@ -1285,23 +1344,18 @@ function assignLocatorControls() {
         var isPressed = newValue > 0
         if (isPressed === setButtonHeld) return
         setButtonHeld = isPressed
-
-        if (isPressed) {
-            setButtonUsed = false
-            var stopPressed = btnStop.mSurfaceValue.getProcessValue(context) > 0
-            if (stopPressed) {
-                cancelStopSave(context)
-                setButtonUsed = true
-                var_cyclePressed.setProcessValue(context, 1.0)
-                var_cyclePressed.setProcessValue(context, 0.0)
-            }
-        } else {
-            if (!setButtonUsed) {
-                var_insertMarkerPressed.setProcessValue(context, 1.0)
-                var_insertMarkerPressed.setProcessValue(context, 0.0)
-            }
-            setButtonUsed = false
+        if (!isPressed) {
+            zoomRepeatRemaining = 0
+            return
         }
+
+        var stopPressed = btnStop.mSurfaceValue.getProcessValue(context) > 0
+        if (!stopPressed) return
+
+        cancelStopSave(context)
+        var command = isAssignModeEnabled(context) ? var_cyclePressed : var_insertMarkerPressed
+        command.setProcessValue(context, 1.0)
+        command.setProcessValue(context, 0.0)
     }
 }
 
@@ -1319,7 +1373,7 @@ function assignPanControl()
         knobPan.mSurfaceValue.setProcessValue(context, 0.5)
     }
 
-    // ASGN selects volume instead of pan; SET gives finer movement in either mode
+    // ASGN selects volume instead of pan; fine by default, SET boosts movement in either mode
     page.makeValueBinding(knobPan.mSurfaceValue, var_panInput)
         .mOnValueChange = function(context, activeMapping, newValue, diff) {
             if (newValue === 0.5) return     // ignore our own recenter feedback
@@ -1328,7 +1382,8 @@ function assignPanControl()
             knobPan.mSurfaceValue.setProcessValue(context, 0.5)
 
             if (setButtonHeld) {
-                setButtonUsed = true        // do not insert a marker when SET is released
+                movement *= PAN_FAST_SCALE
+            } else {
                 movement *= PAN_FINE_SCALE
             }
 
@@ -1363,6 +1418,7 @@ function assignZoomToJogWheel() {
 
     // start direction tracking from the current wheel value when entering zoom mode
     subpage_JogwheelZoomMode.mOnActivate = function(context, activeMapping) {
+        zoomRepeatRemaining = 0
         lastZoomValue = Math.floor(knobJogWheel.mSurfaceValue.getProcessValue(context) * 100)
     }
 
@@ -1370,7 +1426,7 @@ function assignZoomToJogWheel() {
         .setSubPage(subpage_JogwheelZoomMode)
         .mOnValueChange =
             function(context, activeMapping, newValue, diff) {
-                if (!isAssignModeEnabled(context)) return
+                if (isAssignModeEnabled(context)) return
 
                 // zoom wheel magic courtesy of Ryan C Knaggs!
                 var newZoomValue = Math.floor(newValue * 100)
@@ -1385,16 +1441,29 @@ function assignZoomToJogWheel() {
 
                 var steps = 1
                 if (setButtonHeld) {
-                    setButtonUsed = true        // do not insert a marker when SET is released
                     steps = ZOOM_FAST_STEPS
                 }
 
-                // each command gets its own press/release pulse
-                for (var i = 0; i < steps; i++) {
-                    zoomCommand.setProcessValue(context, 1.0)
-                    zoomCommand.setProcessValue(context, 0.0)
-                }
+                // first step is immediate; spread the extra steps across idle callbacks
+                zoomCommand.setProcessValue(context, 1.0)
+                zoomCommand.setProcessValue(context, 0.0)
+                zoomRepeatCommand = zoomCommand
+                zoomRepeatRemaining = Math.max(0, steps - 1)   // replace pending steps, never build a backlog
+                zoomRepeatLastMs = Date.now()
             }
+}
+
+function processZoomRepeat(context, now) {
+    if (!setButtonHeld || isAssignModeEnabled(context)) {
+        zoomRepeatRemaining = 0
+        return
+    }
+    if (zoomRepeatRemaining <= 0 || now - zoomRepeatLastMs < ZOOM_REPEAT_MS) return
+
+    zoomRepeatLastMs = now
+    zoomRepeatRemaining--
+    zoomRepeatCommand.setProcessValue(context, 1.0)
+    zoomRepeatCommand.setProcessValue(context, 0.0)
 }
 
 // hold STOP progress uses only transport LED's, never channel REC LED's
@@ -1443,9 +1512,11 @@ function assignStopHoldSave() {
     }
 }
 
-if (ENABLE_STOP_HOLD_SAVE) {
+if (ENABLE_STOP_HOLD_SAVE || ZOOM_FAST_STEPS > 1) {
     deviceDriver.mOnIdle = function(context, activeMapping) {
         var now = Date.now()
+        processZoomRepeat(context, now)
+        if (!ENABLE_STOP_HOLD_SAVE) return
         if (saveBlink_isActive) {
             if (saveBlink_lastMs !== -1 && now - saveBlink_lastMs < SAVE_BLINK_INTERVAL_MS) return
             saveBlink_lastMs = now
@@ -1516,7 +1587,7 @@ assignEQBandControls()
 assignZoomToJogWheel() 
 
 if (ENABLE_METRONOME_FADER) {
-	// bind master fader to click level
+	// bind master fader to click level, or stereo out/FX return when metronome is off and faders are enabled
     assignMasterFader_Metronome()
 } else {
 	// bind master fader to dual mode Stereo Out level and FX channel 1 level
