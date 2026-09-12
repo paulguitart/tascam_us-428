@@ -12,8 +12,22 @@
 // 0. CUSTOM SETTINGS - change these CONST values to suit your own needs
 //-----------------------------------------------------------------------------
 
-// if we just want to use the main controls & ignore faders.. set to true or false
+// set this to 1 (recommended) unless you want to use multiple US-428 together on the same machine
+const MAX_TASCAM_UNITS = 1
+
+// exact port names (add/remove based on whatever MIDI device names show up on your system)
+const EXACT_PORT_NAMES = [
+    'US-428 Control',
+    '2- US-428 Control',
+    '3- US-428 Control',
+    '4- US-428 Control'
+]
+
+// disable faders 1-8 and master fader (ENABLE_METRONOME_FADER restores master fader as click-only).
 const DISABLE_FADERS = true   
+
+// master fader controls click volume (when metronome is on).
+const ENABLE_METRONOME_FADER = true
 
 // hold STOP to save (transport LED progress and confirmation)
 const ENABLE_STOP_HOLD_SAVE = true
@@ -29,22 +43,8 @@ const FX_SEND_FINE_SCALE = 0.1
 const ZOOM_FAST_STEPS = 6
 const ZOOM_REPEAT_MS = 50
 
-// master fader follows metronome state (or always when DISABLE_FADERS is true)
-const ENABLE_METRONOME_FADER = true
-
  // if we want to use the "LOW" EQ knobs for Low Cut PreFilter.. set to true or false
 const LOW_EQ_PREFILTER_MODE = true   
-
-// set this to 1 (recommended) unless you want to use multiple US-428 together on the same machine
-const MAX_TASCAM_UNITS = 1
-
-// exact port names (add/remove based on whatever MIDI device names show up on your system)
-const EXACT_PORT_NAMES = [
-    'US-428 Control',
-    '2- US-428 Control',
-    '3- US-428 Control',
-    '4- US-428 Control'
-]
 
 /*
 ====================================================================================================
@@ -62,7 +62,6 @@ BANK L / R             : SELECT PREVIOUS/NEXT TRACK
 ----------------------------------------------------------------------------------------------------
 PAN KNOB               : [Normal] Pan Selected Track  | [ASGN] Selected Track Volume.
 SET + PAN KNOB         : [Normal] Fast Pan (2x)       | [ASGN] Fast Volume (2x).
-MASTER FADER           : [Normal] Stereo Out Volume   | [ASGN] FX Return 1 Volume (when metronome mode is disabled).
 EQ BAND (HI->LOW)      : Gain/Freq/Q knobs            | (All Modes) 
 EQ BUTTONS (1-4)       : [Normal] Select EQ Band      | [ASGN] EQ Band On/Off.
 AUX BUTTONS (1-4)      : [Normal] Aux Send On/Off     | [ASGN] Select AUX Send.
@@ -71,6 +70,8 @@ MUTE LEDS (Yellow)     : [Normal] Mute State          | [SOLO] Solo State.
 SELECT BUTTONS (1-8)   : [Normal] Single Track Focus  | [SOLO] Record Enable.
 SELECT LEDS (Green)    : Track Focus (all)            | (All Modes)
 REC LEDS (Red)         : Record Enable                | (All Modes)
+MASTER FADER           : [Normal] Stereo Out          | [ASGN] FX Return 1 
+                                                      | [MET ON] Click Level (ENABLE_METRONOME_FADER = true)
 
 *LOW EQ MODE (Const)   : If PREFILTER_MODE = true, Low Band controls Pre-Filter Low Cut.
 *METRONOME MODE (Const): If enabled: Metronome On = Click Level; Off = Stereo Out (Normal) / FX Return 1 (ASGN).
