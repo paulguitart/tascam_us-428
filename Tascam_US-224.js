@@ -11,8 +11,6 @@
 // NOTE: If you run out of zoom wheel range, rotate the wheel quickly in the opposite direction
 // to "grab" more travel in the desired range
 //
-// TODO? (tracking mode)-  STOP+REC MASTER BUTTON : Master Bus Insert On/Off
-
 
 //-----------------------------------------------------------------------------
 // 0. CUSTOM SETTINGS - change these CONST values to suit your own needs
@@ -78,6 +76,7 @@ MASTER FADER           : [Metronome Off] Stereo Out | [Metronome On] Metronome C
 NULL BUTTON            : Metronome On/Off
 SOLO BUTTON            : Cycle (Loop) On/Off
 REC MASTER BUTTON      : Rec Enable Selected Track (REC_ENABLE_MODE) | Master Bus Insert On/Off
+STOP + REC MASTER      : Master Bus Insert On/Off
 JOG WHEEL              : [Normal] Horizontal Zoom | [Audition] Selected Track Volume
 STOP + LOC L           : Undo
 STOP + LOC R           : Redo
@@ -99,7 +98,7 @@ SOLO BUTTON            : Toggle Solo Mode (Swaps Mute/Select behavior)
 BANK L / R             : Shift Active Bank (Groups of 4)
 REC MASTER BUTTON      : [Normal] Master Insert On/Off | [Null Mode] Metronome On/Off
 MASTER FADER           : [Normal] Stereo Out           | [Null Mode] FX Return 1
-JOG WHEEL              : [Normal] Shuttle/Track Select | [Null Mode] Horizontal Zoom
+JOG WHEEL              : [Normal] Horizontal Zoom | [Null Mode] Shuttle/Track Select
 MUTE BUTTONS 1-4       : [Normal] Mute                 | [Solo Mode] Solo
 MUTE LEDS 1-4          : [Normal] Mute                 | [Solo Mode] Solo
 SELECT BUTTONS 1-4     : [Normal] Record Enable        | [Solo Mode] Select/Focus
@@ -558,6 +557,9 @@ var var_rewPressed = deviceDriver.mSurface.makeCustomValueVariable("REW Pressed"
 var var_RTZPressed = deviceDriver.mSurface.makeCustomValueVariable("RTZ Pressed")
 
 if (TRACKING_MODE) {
+	// STOP+REC MASTER insert bypass (tracking mode only)
+	var var_masterInsertPressed = deviceDriver.mSurface.makeCustomValueVariable("Master Insert Pressed")
+
 	// locator button vars (tracking mode only)
 	var var_locLeftPressed  = deviceDriver.mSurface.makeCustomValueVariable("LOC Left Pressed")
 	var var_locRightPressed = deviceDriver.mSurface.makeCustomValueVariable("LOC Right Pressed")
@@ -1340,7 +1342,7 @@ function assignLocatorControls_TrackingMode() {
 		}		
 }
 
-function assignRecMasterButtonDualMode()
+function assignRecMasterButton_DualMode()
 {
     // bind rec master button to metronome in "NULL" mode
     page.makeValueBinding(btnRecMaster.mSurfaceValue, host_MetronomeActive)
@@ -1358,10 +1360,15 @@ function assignRecMasterButtonBusOnly()
     page.makeCommandBinding(btnRecMaster.mSurfaceValue, "Mixer", "Bypass: Inserts on Main Mix")
 }
 
-function assignRecMasterButtonRecEnable()
+function assignRecMasterButton_TrackingMode()
 {
+	// bind STOP+REC MASTER to main mix insert bypass
+	page.makeCommandBinding(var_masterInsertPressed, "Mixer", "Bypass: Inserts on Main Mix")
+
 	// bind dummy button to host selected track record enable (*note- can't use .setTypeToggle() here)
-	page.makeValueBinding(btnDummySelectedRecEnable.mSurfaceValue, host_SelectedRecEnable)	
+	if (REC_ENABLE_MODE) {
+		page.makeValueBinding(btnDummySelectedRecEnable.mSurfaceValue, host_SelectedRecEnable)	
+	}
 
 	btnRecMaster.mSurfaceValue.mOnProcessValueChange =
 		function(context, newValue, diff) {
@@ -1373,7 +1380,12 @@ function assignRecMasterButtonRecEnable()
 				if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)
 				
 				// stop is also pressed.. fire a master bus insert toggle
-				// TODO-  page.makeCommandBinding(btnRecMaster.mSurfaceValue, "Mixer", "Bypass: Inserts on Main Mix")
+				var_masterInsertPressed.setProcessValue(context, 1.0)
+				var_masterInsertPressed.setProcessValue(context, 0.0)
+			} else if (recEnablePressed && !REC_ENABLE_MODE) {
+				// preserve dedicated insert bypass when selected track rec enable is disabled
+				var_masterInsertPressed.setProcessValue(context, 1.0)
+				var_masterInsertPressed.setProcessValue(context, 0.0)
 			} else if (recEnablePressed) {
 				// Read current rec enable from dummy button
 				var isRecEnabled = btnDummySelectedRecEnable.mSurfaceValue.getProcessValue(context)
@@ -1408,8 +1420,8 @@ function assignJogWheel_DualMode() {
     // bind jogweel to shuttle/zoom 
     knobJogWheel.mSurfaceValue.mOnProcessValueChange =      
         function(context, newValue, diff) {
-            if (isNullModeEnabled(context)) {				
-                // trigger jog wheel controls in zoom mode
+            if (!isNullModeEnabled(context)) {
+                // trigger jog wheel controls in normal zoom mode
                 var newZoomValue = Math.floor(newValue * 1000)
 
 				if (newZoomValue < lastZoomValue || newZoomValue <= 0) {
@@ -1420,7 +1432,7 @@ function assignJogWheel_DualMode() {
 				lastZoomValue = newZoomValue				
 				
             } else {
-                // trigger jog wheel controls in normal shuttle mode
+                // trigger jog wheel controls in NULL shuttle/track select mode
 				var newShuttleValue = Math.floor(newValue * 1000)
 
 				if (newShuttleValue < lastShuttleValue || newShuttleValue <= 0) {
@@ -1684,13 +1696,8 @@ if (TRACKING_MODE) {
 	// bind solo button to host cycle on/off
 	assignSoloButton_Cycle()
 
-	if ( REC_ENABLE_MODE ) {
-		// bind rec master button to record enable selected track
-		assignRecMasterButtonRecEnable()		
-	} else {
-		// bind rec master button to decicated master bus inserts bypass
-		assignRecMasterButtonBusOnly()
-	}
+	// REC MASTER follows REC_ENABLE_MODE; STOP+REC MASTER always toggles master inserts
+	assignRecMasterButton_TrackingMode()
 			
 } else {                                        // NORMAL MODE
 	// bind master fader in normal mode
