@@ -27,6 +27,7 @@ const FOOTSWITCH_IS_TOGGLE = false         // false: press/release; true: pulse 
 const ENABLE_HIGH_PASS_COLOR_GRADIENT = true // false: solid red when enabled
 const FULL_BRIGHTNESS = 1
 const HALF_BRIGHTNESS = 0.5
+const GREEN = [0, 127, 0]
 
 var deviceDriver = require('midiremote_api_v1')
     .makeDeviceDriver('PreSonus', 'FaderPortBasic', 'Paul Warner; based on Christian & Werner')
@@ -267,11 +268,14 @@ function midi7(value) { return Math.max(0, Math.min(127, Math.round(value))) }
 function clampFader(value) { return Math.max(0, Math.min(1, value)) }
 
 // RGB color and on/off/flash state are separate hardware messages.
-function setRGBLED(context, note, r, g, b, brightness) {
+function setRGBLED(context, note, r, g, b, brightness = FULL_BRIGHTNESS) {
     brightness = Math.max(0, Math.min(1, brightness))
     sendHardwareMidi(context, 0x91, note, midi7(midi7(r) * brightness))
     sendHardwareMidi(context, 0x92, note, midi7(midi7(g) * brightness))
     sendHardwareMidi(context, 0x93, note, midi7(midi7(b) * brightness))
+}
+function setRGBLED_color(context, note, color, brightness = FULL_BRIGHTNESS) {
+    setRGBLED(context, note, color[0], color[1], color[2], brightness)
 }
 
 // Two straight segments preserve both endpoints and align the two unity marks.
@@ -377,7 +381,7 @@ deviceDriver.mOnActivate = function(context) {
     allLEDsOff(context)
     // Predictable neutral color until our mappings choose their own colors.
     for (var i = 0; i < rgbNotes.length; i++) {
-        setRGBLED(context, rgbNotes[i], 127, 127, 127, FULL_BRIGHTNESS)
+        setRGBLED(context, rgbNotes[i], 127, 127, 127)
     }
 }
 deviceDriver.mOnDeactivate = function(context) {
@@ -646,10 +650,10 @@ function updateHighPassLED(context) {
         return
     }
     if (context.getState('highPassEnabled') !== '1') {
-        setRGBLED(context, cChannel, 0, 127, 0, FULL_BRIGHTNESS)
+        setRGBLED_color(context, cChannel, GREEN)
     } else {
         var color = getHighPassColor(Number(context.getState('highPassHz')))
-        setRGBLED(context, cChannel, color.red, color.green, color.blue, FULL_BRIGHTNESS)
+        setRGBLED(context, cChannel, color.red, color.green, color.blue)
     }
     onLED(context, cChannel)
 }
