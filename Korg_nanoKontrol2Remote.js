@@ -47,7 +47,8 @@ STOP + REW             : Return To Zero (RTZ)
 CYCLE BUTTON           : Cycle (Loop) On/Off
 TRACK L / R            : Select Prev/Next Track
 STOP + TRACK L / R     : Undo/Redo
-MARKER SET             : Insert Marker
+MARKER SET             : [Cycle Off] Insert Marker | [Cycle On] Locator Modifier
+SET + MARKER L / R     : [Cycle On] Set Left/Right Locators
 MARKER L / R           : Locate Prev/Next Marker
 STOP + MARKER L / R    : Recall Prev/Next Cycle Marker
 STOP + SET MARKER      : Master Bus Insert On/Off
@@ -385,6 +386,8 @@ var var_RTZPressed = surface.makeCustomValueVariable("RTZ Pressed")
 var var_prevMarkerPressed  = surface.makeCustomValueVariable("Prev Marker Pressed")
 var var_nextMarkerPressed = surface.makeCustomValueVariable("Next Marker Pressed")
 var var_setMarkerPressed = surface.makeCustomValueVariable("Set Marker Pressed")
+var var_setLeftLocatorPressed = surface.makeCustomValueVariable("Set Left Locator Pressed")
+var var_setRightLocatorPressed = surface.makeCustomValueVariable("Set Right Locator Pressed")
 var var_prevTrackPressed  = surface.makeCustomValueVariable("Prev Track Pressed")
 var var_nextTrackPressed = surface.makeCustomValueVariable("Next Track Pressed")
 
@@ -633,6 +636,8 @@ function assignTrackNavControls() {
 
 function assignMarkerControls() {    
     // bind marker vars to host marker commands
+    page.makeCommandBinding(var_setLeftLocatorPressed, "Transport", "Set Left Locator")
+    page.makeCommandBinding(var_setRightLocatorPressed, "Transport", "Set Right Locator")
     page.makeCommandBinding(var_setMarkerPressed, "Transport", "Insert Marker")
 	page.makeCommandBinding(var_prevMarkerPressed,  "Transport", "Locate Previous Marker")
 	page.makeCommandBinding(var_nextMarkerPressed, "Transport", "Locate Next Marker")
@@ -648,6 +653,11 @@ function assignMarkerControls() {
 				if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)
 
 				recallPrevCycle(context)                                  // stop is also pressed.. fire a prev cycle
+			} else if (prevMarkerPressed && surfaceElements.transport.btnCycle.mSurfaceValue.getProcessValue(context) > 0 &&
+				surfaceElements.btn_setMarker.mSurfaceValue.getProcessValue(context) > 0) {
+				// SET+MARKER sets the locator while cycle is on
+				var_setLeftLocatorPressed.setProcessValue(context, 1.0)
+				var_setLeftLocatorPressed.setProcessValue(context, 0.0)
 			} else {
 				var_prevMarkerPressed.setProcessValue(context, newValue)  // stop isn't pressed.. fire a normal prev marker
 			}
@@ -663,6 +673,11 @@ function assignMarkerControls() {
 				if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)
 
 				recallNextCycle(context)                                  // stop is also pressed.. fire a next cycle
+			} else if (nextMarkerPressed && surfaceElements.transport.btnCycle.mSurfaceValue.getProcessValue(context) > 0 &&
+				surfaceElements.btn_setMarker.mSurfaceValue.getProcessValue(context) > 0) {
+				// SET+MARKER sets the locator while cycle is on
+				var_setRightLocatorPressed.setProcessValue(context, 1.0)
+				var_setRightLocatorPressed.setProcessValue(context, 0.0)
 			} else {
 				var_nextMarkerPressed.setProcessValue(context, newValue)  // stop isn't pressed.. fire a normal next marker
 			}
@@ -680,8 +695,9 @@ function assignMarkerControls() {
 				// stop is also pressed.. fire a master bus insert
 				var_masterInsertPressed.setProcessValue(context, 1.0) 
 			} else {
-				// stop isn't pressed.. fire a normal set marker
-				var_setMarkerPressed.setProcessValue(context, newValue)
+				// cycle on reserves SET for locator chords; always reset the marker var on release
+				var cycleActive = surfaceElements.transport.btnCycle.mSurfaceValue.getProcessValue(context) > 0
+				var_setMarkerPressed.setProcessValue(context, cycleActive ? 0.0 : newValue)
 			}
 		}		
 }

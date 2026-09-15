@@ -45,7 +45,8 @@ Current default: `TRACKING_MODE = true`. Tracking mode allocates one four-channe
 | STOP + BANK L/R, cycle OFF | Audition previous/next track |
 | STOP + BANK L/R, cycle ON | Recall previous/next cycle marker |
 | LOC L/R | Locate previous/next marker |
-| SET | Insert marker |
+| SET | Cycle OFF: Insert marker. Cycle ON: locator modifier only |
+| SET + LOC L/R | Cycle ON: set left/right locator; LOC alone still navigates markers |
 | STOP + LOC L/R | Undo/redo |
 | STOP + SET | Toggle selected-track mute |
 | STOP + REW | Return to zero |
@@ -201,7 +202,8 @@ With `ENABLE_KUSTOM_CHANNEL = false`, **all eight strips** use the regular fixed
 | TRACK L/R | Select previous/next track |
 | STOP + TRACK L/R | Undo/redo |
 | MARKER L/R | Previous/next marker |
-| MARKER SET | Insert marker |
+| MARKER SET | Cycle OFF: Insert marker. Cycle ON: locator modifier only |
+| SET + MARKER L/R | Cycle ON: set left/right locator; MARKER L/R alone still navigate regular markers |
 | STOP + MARKER L/R | Previous/next cycle marker, wrapping through 1–7 by default |
 | STOP + MARKER SET | Master insert bypass |
 

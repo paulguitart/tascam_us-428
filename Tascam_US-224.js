@@ -82,6 +82,8 @@ JOG WHEEL              : [Normal] Horizontal Zoom | [Audition] Selected Track Vo
 STOP + LOC L           : Undo
 STOP + LOC R           : Redo
 STOP + SET             : Mute/Unmute Selected Track
+SET                    : [Cycle Off] Insert Marker | [Cycle On] Locator Modifier
+SET + LOC L / R        : [Cycle On] Set Left/Right Locators
 BANK L / R             : Select Prev/Next Track
 STOP + BANK L / R      : [Normal] Audition Prev/Next Track (Bank L/R again to clear solos)
                        : [Cycle]  Recall Prev/Next Cycle Marker
@@ -565,6 +567,8 @@ if (TRACKING_MODE) {
 	var var_locLeftPressed  = deviceDriver.mSurface.makeCustomValueVariable("LOC Left Pressed")
 	var var_locRightPressed = deviceDriver.mSurface.makeCustomValueVariable("LOC Right Pressed")
 	var var_locSetPressed = deviceDriver.mSurface.makeCustomValueVariable("LOC Set Pressed")
+	var var_setLeftLocatorPressed = deviceDriver.mSurface.makeCustomValueVariable("Set Left Locator Pressed")
+	var var_setRightLocatorPressed = deviceDriver.mSurface.makeCustomValueVariable("Set Right Locator Pressed")
 
 	// STOP chords locator button vars (tracking mode only)
 	var var_undoPressed = deviceDriver.mSurface.makeCustomValueVariable("Undo Pressed")
@@ -1302,6 +1306,8 @@ function assignLocatorControls_DualMode() {
 
 function assignLocatorControls_TrackingMode() {    
     // bind locator buttons to host marker commands
+    page.makeCommandBinding(var_setLeftLocatorPressed, "Transport", "Set Left Locator")
+    page.makeCommandBinding(var_setRightLocatorPressed, "Transport", "Set Right Locator")
     page.makeCommandBinding(var_locSetPressed, "Transport", "Insert Marker")
 	page.makeCommandBinding(var_locLeftPressed,  "Transport", "Locate Previous Marker")
 	page.makeCommandBinding(var_locRightPressed, "Transport", "Locate Next Marker")
@@ -1321,6 +1327,9 @@ function assignLocatorControls_TrackingMode() {
 				if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)
 				
 				var_undoPressed.setProcessValue(context, 1.0)          // stop is also pressed.. fire an undo
+			} else if (cycleButtonActive && locLeftPressed && btnLocateSet.mSurfaceValue.getProcessValue(context) > 0) {
+				// SET+LOC sets the locator while cycle is on
+				pulseVar(context, var_setLeftLocatorPressed)
 			} else {
 				var_locLeftPressed.setProcessValue(context, newValue)  // stop isn't pressed.. fire a normal locLeft
 			}
@@ -1336,6 +1345,9 @@ function assignLocatorControls_TrackingMode() {
 				if (ENABLE_STOP_HOLD_SAVE) resetStopProgress(context)
 
 				var_redoPressed.setProcessValue(context, 1.0)           // stop is also pressed.. fire a redo
+			} else if (cycleButtonActive && locRightPressed && btnLocateSet.mSurfaceValue.getProcessValue(context) > 0) {
+				// SET+LOC sets the locator while cycle is on
+				pulseVar(context, var_setRightLocatorPressed)
 			} else {
 				var_locRightPressed.setProcessValue(context, newValue)  // stop isn't pressed.. fire a normal locRight
 			}
@@ -1356,8 +1368,8 @@ function assignLocatorControls_TrackingMode() {
 				// stop is also pressed.. fire a mute selected track toggle (via dummy button)
 				btnDummySelectedMute.mSurfaceValue.setProcessValue(context, isMuted > 0 ? 0.0 : 1.0)		
 			} else {
-				// stop isn't pressed.. fire a normal locSet
-				var_locSetPressed.setProcessValue(context, newValue)
+				// cycle on reserves SET for locator chords; always forward release to reset the marker var
+				var_locSetPressed.setProcessValue(context, cycleButtonActive ? 0.0 : newValue)
 			}
 		}		
 }
