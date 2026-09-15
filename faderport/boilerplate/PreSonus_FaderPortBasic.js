@@ -1,4 +1,4 @@
-// PreSonus FaderPort v2 - hardware boilerplate (Cubase MIDI Remote, ES5).
+// PreSonus FaderPort v2 - hardware boilerplate (Cubase MIDI Remote).
 // Hardware definitions and surface geometry adapted from fp-wizard,
 // September 10, 2026, by Christian & Werner. Simplified by Paul Warner.
 // Original preserved at ../PreSonus_FaderPort.js.
@@ -11,6 +11,19 @@ var ENABLE_STOP_HOLD_SAVE = true
 var STOP_SAVE_HOLD_MS = 1500
 var SAVE_BLINK_INTERVAL_MS = 140
 var SAVE_BLINK_TOGGLES = 10             // 5 full blinks, like the Korg
+
+// Hardware refinements. Volume-specific options stay off until we need them.
+const ENABLE_FADER_TOUCH_INPUT = true       // ignore motor-generated input when not touched
+const ENABLE_FADER_TOUCH_PROTECTION = true // don't drive the motor under your finger
+const ENABLE_MIDI_OUTPUT_CACHE = true      // skip identical LED/motor messages
+const ENABLE_FADER_LOW_END_SNAP = false
+const FADER_LOW_END_THRESHOLD = 0.012       // inherited from fp-wizard; normalized travel
+const ENABLE_FADER_UNITY_CALIBRATION = false
+const FADER_HOST_UNITY = 0.789087           // original +6 dB setting; +12 dB uses 0.748222
+const FADER_HARDWARE_UNITY = 0.789087       // measure your unit's U position before enabling
+const ENABLE_FOOTSWITCH_NORMALIZATION = true
+const FOOTSWITCH_NORMALLY_CLOSED = true
+const FOOTSWITCH_IS_TOGGLE = false         // false: press/release; true: pulse on each edge
 
 var deviceDriver = require('midiremote_api_v1')
     .makeDeviceDriver('PreSonus', 'FaderPortBasic', 'Paul Warner; based on Christian & Werner')
@@ -43,11 +56,11 @@ var cl_fsSection = surface.makeControlLayerZone('Z5').makeControlLayer('Footswit
 // One page: transport assignments plus named paths for future workflows.
 var page = deviceDriver.mMapping.makePage('Hardware')
 
-// Physical fader: direct 14-bit pitch bend, without calibration or scaling.
+// Physical fader layout is unchanged. Raw MIDI passes through the helpers below.
 var fader = surface.makeFader(0.11, 0, 1.1, 5.728).setTypeVertical()
     .setControlLayer(cl_fader)
-fader.mSurfaceValue.mMidiBinding.setInputPort(midiIn).setOutputPort(midiOut)
-    .bindToPitchBend(0)
+var var_faderInput = surface.makeCustomValueVariable('Raw Fader Input')
+var_faderInput.mMidiBinding.setInputPort(midiIn).bindToPitchBend(0)
 var faderTouch = surface.makeCustomValueVariable('Fader Touch')
 faderTouch.mMidiBinding.setInputPort(midiIn).bindToNote(0, cFaderTouch)
 if (fader.mSurfaceValue.mTouchState) {
@@ -233,28 +246,117 @@ function resetButtonRouting(context) {
 // Transport, encoder push/rotation, fader and footswitch retain their direct
 // paths in both layers. The printed RTZ transport chord is not a SHIFT label.
 
-// Hardware output helpers. Pass the active device context from a callback.
-// LEDs: note-on velocity 0 = off, 127 = on, 1 = hardware flashing.
-function offLED(context, note) { midiOut.sendMidi(context, [0x90, note, 0x00]) }
-function onLED(context, note) { midiOut.sendMidi(context, [0x90, note, 0x7F]) }
-function flashingLED(context, note) { midiOut.sendMidi(context, [0x90, note, 0x01]) }
+//-----------------------------------------------------------------------------
+// HARDWARE HELPERS - one output path for LED and motor protection/caching
+//-----------------------------------------------------------------------------
 
-function midi7(value) { return Math.max(0, Math.min(127, Math.round(value))) }
-
-// RGB-capable buttons: Touch, Write, Read, Link, Pan, Channel and Scroll.
-// Set the color, then call onLED() or flashingLED() to choose the LED state.
-function setRGBLED(context, note, r, g, b) {
-    midiOut.sendMidi(context, [0x91, note, midi7(r)])
-    midiOut.sendMidi(context, [0x92, note, midi7(g)])
-    midiOut.sendMidi(context, [0x93, note, midi7(b)])
+function sendHardwareMidi(context, status, address, value) {
+    var cacheKey = 'midi.' + status + '.' + address
+    if (ENABLE_MIDI_OUTPUT_CACHE && context.getState(cacheKey) === String(value)) return
+    midiOut.sendMidi(context, [status, address, value])
+    context.setState(cacheKey, String(value))
 }
 
-// Optional direct motor command: normalized position 0..1.
-// Normal host mappings use the fader's output binding automatically instead.
+function offLED(context, note) { sendHardwareMidi(context, 0x90, note, 0) }
+function onLED(context, note) { sendHardwareMidi(context, 0x90, note, 127) }
+function flashingLED(context, note) { sendHardwareMidi(context, 0x90, note, 1) }
+function midi7(value) { return Math.max(0, Math.min(127, Math.round(value))) }
+function clampFader(value) { return Math.max(0, Math.min(1, value)) }
+
+// RGB color and on/off/flash state are separate hardware messages.
+function setRGBLED(context, note, r, g, b) {
+    sendHardwareMidi(context, 0x91, note, midi7(r))
+    sendHardwareMidi(context, 0x92, note, midi7(g))
+    sendHardwareMidi(context, 0x93, note, midi7(b))
+}
+
+// Two straight segments preserve both endpoints and align the two unity marks.
+// Swapping the marks gives the exact inverse for hardware-to-host input.
+function scaleFaderUnity(value, sourceUnity, targetUnity) {
+    if (!ENABLE_FADER_UNITY_CALIBRATION) return value
+    if (sourceUnity <= 0 || sourceUnity >= 1 || targetUnity <= 0 || targetUnity >= 1) return value
+    if (value <= sourceUnity) return value * targetUnity / sourceUnity
+    return targetUnity + (value - sourceUnity) * (1 - targetUnity) / (1 - sourceUnity)
+}
+
+function snapFaderBottom(value) {
+    return ENABLE_FADER_LOW_END_SNAP && value < FADER_LOW_END_THRESHOLD ? 0 : value
+}
+
+// Raw physical position 0..1. All motor commands, including mapped feedback,
+// pass here. Cache the complete 14-bit position, not its individual MIDI bytes.
 function setMotorFader(context, position) {
-    if (faderTouch.getProcessValue(context) > 0) { return }
-    var value = Math.round(Math.max(0, Math.min(1, position)) * 16383)
+    if (typeof position !== 'number' || !isFinite(position)) return
+    position = clampFader(position)
+    if (ENABLE_FADER_TOUCH_PROTECTION && faderTouch.getProcessValue(context) > 0) {
+        context.setState('pendingMotorPosition', String(position))
+        return
+    }
+    context.setState('pendingMotorPosition', '')
+    var value = Math.round(position * 16383)
+    if (ENABLE_MIDI_OUTPUT_CACHE && context.getState('lastMotorPosition') === String(value)) return
     midiOut.sendMidi(context, [0xE0, value & 0x7F, (value >> 7) & 0x7F])
+    context.setState('lastMotorPosition', String(value))
+}
+
+var_faderInput.mOnProcessValueChange = function(context, value) {
+    if (ENABLE_FADER_TOUCH_INPUT && faderTouch.getProcessValue(context) <= 0) return
+    // Manual motion invalidates the last motor target and any older deferred move.
+    context.setState('lastMotorPosition', '')
+    context.setState('pendingMotorPosition', '')
+    value = snapFaderBottom(clampFader(value))
+    value = scaleFaderUnity(value, FADER_HARDWARE_UNITY, FADER_HOST_UNITY)
+    context.setState('processingFaderInput', '1')
+    fader.mSurfaceValue.setProcessValue(context, value)
+    context.setState('processingFaderInput', '')
+}
+
+fader.mSurfaceValue.mOnProcessValueChange = function(context, value) {
+    if (context.getState('processingFaderInput') === '1') return
+    value = scaleFaderUnity(clampFader(value), FADER_HOST_UNITY, FADER_HARDWARE_UNITY)
+    setMotorFader(context, snapFaderBottom(value))
+}
+
+faderTouch.mOnProcessValueChange = function(context, value) {
+    if (value > 0) return
+    var pendingPosition = context.getState('pendingMotorPosition')
+    if (pendingPosition !== '') setMotorFader(context, Number(pendingPosition))
+}
+
+// Future footswitch assignments use this logical value, not the raw button.
+var var_footswitchPressed = surface.makeCustomValueVariable('Footswitch Pressed')
+fsSection.btn_Footswitch.mSurfaceValue.mOnProcessValueChange = function(context, value) {
+    var isOn = value > 0
+    if (!ENABLE_FOOTSWITCH_NORMALIZATION) {
+        var_footswitchPressed.setProcessValue(context, isOn ? 1 : 0)
+        return
+    }
+    if (FOOTSWITCH_IS_TOGGLE) {
+        var previousState = context.getState('footswitchLastState')
+        var currentState = isOn ? '1' : '0'
+        context.setState('footswitchLastState', currentState)
+        // First message establishes the pedal's state; it is not a press.
+        if (previousState === '' || previousState === currentState) return
+        var_footswitchPressed.setProcessValue(context, 1)
+        var_footswitchPressed.setProcessValue(context, 0)
+    } else {
+        var isPressed = FOOTSWITCH_NORMALLY_CLOSED ? !isOn : isOn
+        var_footswitchPressed.setProcessValue(context, isPressed ? 1 : 0)
+    }
+}
+
+function resetHardwareState(context) {
+    context.setState('lastMotorPosition', '')
+    context.setState('pendingMotorPosition', '')
+    context.setState('processingFaderInput', '')
+    context.setState('footswitchLastState', '')
+    var_footswitchPressed.setProcessValue(context, 0)
+    // Clear cached output so reconnect/reload always refreshes the hardware.
+    for (var i = 0; i < ledNotes.length; i++) {
+        for (var status = 0x90; status <= 0x93; status++) {
+            context.setState('midi.' + status + '.' + ledNotes[i], '')
+        }
+    }
 }
 
 var ledNotes = [cSolo, cMute, cArm, cShift, cBypass, cTouch, cWrite, cRead,
@@ -265,6 +367,7 @@ function allLEDsOff(context) {
     for (var i = 0; i < ledNotes.length; i++) { offLED(context, ledNotes[i]) }
 }
 deviceDriver.mOnActivate = function(context) {
+    resetHardwareState(context)
     resetButtonRouting(context)
     resetTransport(context)
     allLEDsOff(context)
@@ -274,6 +377,7 @@ deviceDriver.mOnActivate = function(context) {
     }
 }
 deviceDriver.mOnDeactivate = function(context) {
+    resetHardwareState(context)
     resetTransport(context)
     var_rewPressed.setProcessValue(context, 0)
     var_stopPressed.setProcessValue(context, 0)
