@@ -65,3 +65,40 @@ assert.strictEqual(bindings[3].host, scope.hostTransport.mForward);
 assert.strictEqual(bindings[4].host, scope.hostTransport.mRewind);
 assert.deepStrictEqual(commands.map(c => c.slice(1)), [['Transport','Stop'],['Transport','Return to Zero'],['File','Save']]);
 console.log('PASS: host transport bindings, toggle modes and command targets');
+// Utility actions use the named SHIFT paths; Cycle retains its existing binding.
+bindings.length = 0; commands.length = 0;
+scope.assignUtilityControls();
+assert.strictEqual(commands[0][0], scope.buttons.Undo);
+assert.strictEqual(commands[1][0], scope.buttons.Redo);
+assert.deepStrictEqual(commands.map(c => c.slice(1)), [['Edit','Undo'],['Edit','Redo']]);
+assert.equal(bindings.length, 1);
+assert.strictEqual(bindings[0].input, scope.buttons.Click);
+assert.strictEqual(bindings[0].host, scope.hostTransport.mMetronomeActive);
+assert.equal(bindings[0].toggle, true);
+const metronome = scope.transportFeedback.find(f => f.note === scope.cClick);
+assert(metronome);
+context.setState('saveBlinkCount','0');
+for (const feedback of [cycle, metronome]) {
+    context.setState('midi.144.' + feedback.note, '');
+    midi.length = 0;
+    feedback.value.mOnProcessValueChange(context,0);
+    feedback.value.mOnProcessValueChange(context,1);
+    assert.deepStrictEqual(midi,[[144,feedback.note,0],[144,feedback.note,127]]);
+}
+console.log('PASS: Undo/Redo paths, Click toggle, and Cycle/Click LED feedback during save animation');
+// Selected-track navigation and motor-fader volume use the existing logical paths.
+const actions = [];
+bindings.length = 0;
+scope.page.makeActionBinding = (input, action) => actions.push({ input, action });
+scope.assignSelectedTrackControls();
+const selection = scope.page.mHostAccess.mTrackSelection;
+assert.equal(actions.length, 2);
+assert.strictEqual(actions[0].input, scope.buttons.Prev);
+assert.strictEqual(actions[0].action, selection.mAction.mPrevTrack);
+assert.strictEqual(actions[1].input, scope.buttons.Next);
+assert.strictEqual(actions[1].action, selection.mAction.mNextTrack);
+assert.equal(bindings.length, 1);
+assert.strictEqual(bindings[0].input, scope.fader.mSurfaceValue);
+assert.strictEqual(bindings[0].host, selection.mMixerChannel.mValue.mVolume);
+assert.equal(bindings[0].toggle, false);
+console.log('PASS: selected-track Prev/Next actions and fader volume binding');

@@ -24,6 +24,7 @@ const FADER_HARDWARE_UNITY = 0.789087       // measure your unit's U position be
 const ENABLE_FOOTSWITCH_NORMALIZATION = true
 const FOOTSWITCH_NORMALLY_CLOSED = true
 const FOOTSWITCH_IS_TOGGLE = false         // false: press/release; true: pulse on each edge
+const ENABLE_HIGH_PASS_COLOR_GRADIENT = true // false: solid red when enabled
 
 var deviceDriver = require('midiremote_api_v1')
     .makeDeviceDriver('PreSonus', 'FaderPortBasic', 'Paul Warner; based on Christian & Werner')
@@ -462,6 +463,22 @@ function assignTransportControls() {
 	}
 }
 
+// Printed functions use the logical button paths, so SHIFT routing stays in one place.
+function assignUtilityControls() {
+	page.makeCommandBinding(buttons.Undo, 'Edit', 'Undo')
+	page.makeCommandBinding(buttons.Redo, 'Edit', 'Redo')
+	page.makeValueBinding(buttons.Click, hostTransport.mMetronomeActive).setTypeToggle()
+}
+
+function assignSelectedTrackControls() {
+	var hostTrackSelection = page.mHostAccess.mTrackSelection
+	var hostSelectedTrack = hostTrackSelection.mMixerChannel
+
+	page.makeActionBinding(buttons.Prev, hostTrackSelection.mAction.mPrevTrack)
+	page.makeActionBinding(buttons.Next, hostTrackSelection.mAction.mNextTrack)
+	page.makeValueBinding(fader.mSurfaceValue, hostSelectedTrack.mValue.mVolume)
+}
+
 //-----------------------------------------------------------------------------
 // FEEDBACK EVENTS - host state drives LEDs, separately from physical presses
 //-----------------------------------------------------------------------------
@@ -488,6 +505,8 @@ function setupTransportFeedback() {
 	sendTransportFeedback(hostTransport.mStart, cPlay, 'Play')
 	sendTransportFeedback(hostTransport.mRecord, cRecord, 'Record')
 	sendTransportFeedback(hostTransport.mCycleActive, cCycle, 'Cycle')
+	// CLICK shows metronome state in either SHIFT layer; F2 remains unassigned.
+	sendTransportFeedback(hostTransport.mMetronomeActive, cClick, 'Metronome')
 }
 
 function setConfirmTransportLEDs(context, isOn) {
@@ -534,13 +553,183 @@ deviceDriver.mOnIdle = function(context) {
 	}
 }
 
+//-----------------------------------------------------------------------------
+// KNOB MODES - one assignment at a time, selected by the printed buttons
+//-----------------------------------------------------------------------------
+
+var knob = mSection.knob_vis.mSurfaceValue
+var knobModeArea = page.makeSubPageArea('Knob Mode')
+var knobModes = {
+    Pan: knobModeArea.makeSubPage('Pan'),
+    Zoom: knobModeArea.makeSubPage('Zoom'),
+    Master: knobModeArea.makeSubPage('Master'),
+    Click: knobModeArea.makeSubPage('Click'),
+    HighPass: knobModeArea.makeSubPage('High Pass')
+}
+var knobModeButtons = [
+    { button: buttons.Pan, mode: knobModes.Pan },
+    { button: buttons.Scroll, mode: knobModes.Zoom },
+    { button: buttons.Zoom, mode: knobModes.Zoom },
+    { button: buttons.Master, mode: knobModes.Master },
+    { button: buttons.Click, mode: knobModes.Click },
+    { button: buttons.Channel, mode: knobModes.HighPass }
+]
+var var_zoomIn = surface.makeCustomValueVariable('Zoom In')
+var var_zoomOut = surface.makeCustomValueVariable('Zoom Out')
+
+// Same output-bank approach as the Korg: the FIRST output channel is Stereo Out.
+// Projects with multiple output buses must place the intended master first.
+var hostStereoOutZone = page.mHostAccess.mMixConsole.makeMixerBankZone().includeOutputChannels()
+var hostStereoOut = hostStereoOutZone.makeMixerBankChannel()
+
+function updateKnobModeLEDs(context) {
+    var mode = context.getState('knobMode')
+    setTransportLed(context, cPan, mode === 'Pan')
+    setTransportLed(context, cScroll, mode === 'Zoom')
+    setTransportLed(context, cMaster, mode === 'Master')
+    updateHighPassLED(context)
+    // CLICK continues to indicate metronome on/off. Cubase displays the Click subpage.
+}
+
+function activateKnobMode(context, mode) {
+    context.setState('knobMode', mode)
+    // Seed zoom from the current knob value so switching modes doesn't zoom.
+    context.setState('lastZoomValue', String(Math.floor((knob.getProcessValue(context) || 0) * 1000)))
+    updateKnobModeLEDs(context)
+}
+
+// More color landmarks below 300 Hz, where we normally use the high-pass.
+// Enabled colors never pass through green; green means selected but disabled.
+var highPassColors = [
+    { hz: 20,   red: 127, green: 0,  blue: 0 },   // red
+    { hz: 80,   red: 127, green: 40, blue: 0 },   // orange
+    { hz: 150,  red: 127, green: 0,  blue: 45 },  // pink
+    { hz: 300,  red: 127, green: 0,  blue: 127 }, // magenta
+    { hz: 1000, red: 48,  green: 0,  blue: 127 } // violet; clamp above this
+]
+
+function getHighPassColor(hz) {
+    if (!ENABLE_HIGH_PASS_COLOR_GRADIENT || !isFinite(hz) || hz <= highPassColors[0].hz) {
+        return highPassColors[0]
+    }
+    for (var i = 1; i < highPassColors.length; i++) {
+        var upper = highPassColors[i]
+        var lower = highPassColors[i - 1]
+        if (hz <= upper.hz) {
+            // Log frequency spacing gives more detail at the low end.
+            var blend = Math.log(hz / lower.hz) / Math.log(upper.hz / lower.hz)
+            return {
+                red: lower.red + blend * (upper.red - lower.red),
+                green: lower.green + blend * (upper.green - lower.green),
+                blue: lower.blue + blend * (upper.blue - lower.blue)
+            }
+        }
+    }
+    return highPassColors[highPassColors.length - 1]
+}
+
+function parseFrequencyHz(value, units) {
+    var text = String(value).replace(/\s/g, '').replace(',', '.')
+    var match = text.match(/^([0-9]+(?:\.[0-9]+)?)(k?hz)?$/i)
+    if (!match) return NaN
+    var unit = String(units || match[2] || 'Hz').replace(/\s/g, '').toLowerCase()
+    if (unit !== 'hz' && unit !== 'khz') return NaN
+    return Number(match[1]) * (unit === 'khz' ? 1000 : 1)
+}
+
+function updateHighPassLED(context) {
+    if (context.getState('knobMode') !== 'HighPass') {
+        offLED(context, cChannel)
+        return
+    }
+    if (context.getState('highPassEnabled') !== '1') {
+        setRGBLED(context, cChannel, 0, 127, 0)
+    } else {
+        var color = getHighPassColor(Number(context.getState('highPassHz')))
+        setRGBLED(context, cChannel, color.red, color.green, color.blue)
+    }
+    onLED(context, cChannel)
+}
+
+function setupHighPassFeedback() {
+    var preFilter = page.mHostAccess.mTrackSelection.mMixerChannel.mPreFilter
+    var enabled = surface.makeCustomValueVariable('High Pass Enabled Feedback')
+    var frequency = surface.makeCustomValueVariable('High Pass Frequency Feedback')
+    // Always follow the selected track, including when another knob mode is active.
+    page.makeValueBinding(enabled, preFilter.mLowCutOn)
+    page.makeValueBinding(frequency, preFilter.mLowCutFreq)
+    enabled.mOnProcessValueChange = function(context, value) {
+        context.setState('highPassEnabled', value > 0 ? '1' : '0')
+        updateHighPassLED(context)
+    }
+    // Read Cubase's displayed Hz rather than guessing its normalized frequency curve.
+    frequency.mOnDisplayValueChange = function(context, value, units) {
+        var hz = parseFrequencyHz(value, units)
+        context.setState('highPassHz', isFinite(hz) ? String(hz) : '')
+        updateHighPassLED(context)
+    }
+}
+
+function assignKnobControls() {
+    for (var i = 0; i < knobModeButtons.length; i++) {
+        var mapping = knobModeButtons[i]
+        page.makeActionBinding(mapping.button, mapping.mode.mAction.mActivate)
+    }
+    page.makeValueBinding(knob, page.mHostAccess.mTrackSelection.mMixerChannel.mValue.mPan)
+        .setSubPage(knobModes.Pan)
+    page.makeValueBinding(knob, hostStereoOut.mValue.mVolume)
+        .setSubPage(knobModes.Master)
+    page.makeValueBinding(knob, hostTransport.mMetronomeClickLevel)
+        .setSubPage(knobModes.Click)
+    // Cubase calls its high-pass filter "Low Cut" in the Pre section.
+    var hostPreFilter = page.mHostAccess.mTrackSelection.mMixerChannel.mPreFilter
+    page.makeValueBinding(knob, hostPreFilter.mLowCutFreq)
+        .setSubPage(knobModes.HighPass)
+    page.makeValueBinding(mSection.knob_Press.mSurfaceValue, hostPreFilter.mLowCutOn)
+        .setTypeToggle().setSubPage(knobModes.HighPass)
+    page.makeCommandBinding(var_zoomIn, 'Zoom', 'Zoom In').setSubPage(knobModes.Zoom)
+    page.makeCommandBinding(var_zoomOut, 'Zoom', 'Zoom Out').setSubPage(knobModes.Zoom)
+
+    knobModes.Pan.mOnActivate = function(context) { activateKnobMode(context, 'Pan') }
+    knobModes.Zoom.mOnActivate = function(context) { activateKnobMode(context, 'Zoom') }
+    knobModes.Master.mOnActivate = function(context) { activateKnobMode(context, 'Master') }
+    knobModes.Click.mOnActivate = function(context) { activateKnobMode(context, 'Click') }
+    knobModes.HighPass.mOnActivate = function(context) { activateKnobMode(context, 'HighPass') }
+
+    // Korg zoom pattern: compare successive knob positions and fire zoom commands.
+    // Pulse each command so consecutive detents in the same direction retrigger.
+    knob.mOnProcessValueChange = function(context, newValue, diff) {
+        if (context.getState('knobMode') !== 'Zoom') return
+        var newZoomValue = Math.floor(newValue * 1000)
+        var lastZoomValue = Number(context.getState('lastZoomValue'))
+        var zoomCommand
+        if (newZoomValue < lastZoomValue || (newZoomValue <= 0 && diff < 0)) {
+            zoomCommand = var_zoomOut
+        } else if (newZoomValue > lastZoomValue || (newZoomValue >= 1000 && diff > 0)) {
+            zoomCommand = var_zoomIn
+        }
+        context.setState('lastZoomValue', String(newZoomValue))
+        if (zoomCommand) {
+            zoomCommand.setProcessValue(context, 1)
+            zoomCommand.setProcessValue(context, 0)
+        }
+    }
+}
+
+page.mOnActivate = function(context, activeMapping) {
+    knobModes.Pan.mAction.mActivate.trigger(activeMapping)
+    activateKnobMode(context, 'Pan')
+    restoreTransportLEDs(context)
+}
+
 assignTransportControls()
+assignUtilityControls()
+assignSelectedTrackControls()
+assignKnobControls()
 setupTransportFeedback()
+setupHighPassFeedback()
 
 // Future mappings go here. Examples (inactive):
-// page.makeValueBinding(fader.mSurfaceValue,
-//     page.mHostAccess.mTrackSelection.mMixerChannel.mValue.mVolume)
-// page.makeCommandBinding(buttons.Undo, 'Edit', 'Undo')
 // buttons.F1.mOnProcessValueChange = function(context, value) {
 //     if (value > 0) { /* Future F1 action. */ }
 // }
