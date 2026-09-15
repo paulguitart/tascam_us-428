@@ -16,18 +16,18 @@ for (const name of Object.keys(scope.buttons)) {
 }
 scope.midiOut.sendMidi = (context, bytes) => midi.push(Array.from(bytes));
 const shift = value => scope.uSection.btn_Shift.mSurfaceValue.mOnProcessValueChange(a, value);
-const press = (row, value, context = a) => row[0].mSurfaceValue.mOnProcessValueChange(context, value);
+const press = (mapping, value, context = a) => mapping.physicalButton.mSurfaceValue.mOnProcessValueChange(context, value);
 // Every printed pair routes independently, with SHIFT remaining on after release.
-for (const row of scope.buttonFunctions) {
+for (const mapping of scope.buttonMappings) {
     scope.resetButtonRouting(a); events.length = 0;
-    press(row, 1); press(row, 0);
+    press(mapping, 1); press(mapping, 0);
     shift(1); shift(1); shift(0); // Duplicate press cannot toggle back off.
-    press(row, 1); press(row, 1); press(row, 0);
-    assert.deepStrictEqual(events, [[row[1], 1], [row[1], 0], [row[2], 1], [row[2], 0]]);
+    press(mapping, 1); press(mapping, 1); press(mapping, 0);
+    assert.deepStrictEqual(events, [[mapping.normalName, 1], [mapping.normalName, 0], [mapping.shiftedName, 1], [mapping.shiftedName, 0]]);
     assert.equal(a.getState('shiftEnabled'), '1');
 }
 // Held shifted button releases its original path after SHIFT toggles off.
-const master = scope.buttonFunctions.find(row => row[1] === 'Master');
+const master = scope.buttonMappings.find(mapping => mapping.normalName === 'Master');
 events.length = 0;
 press(master, 1); shift(1); shift(0); press(master, 0); press(master, 1); press(master, 0);
 assert.deepStrictEqual(events, [['F1',1],['F1',0],['Master',1],['Master',0]]);

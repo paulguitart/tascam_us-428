@@ -29,7 +29,7 @@ LED feedback follows Cubase transport state independently of physical button pre
 
 ## Printed SHIFT functions
 
-Press SHIFT once to enable the secondary paths and again to return to normal. This is the script's chosen behavior; hardware MIDI behavior still needs a live check. The `buttonFunctions` table names every printed pair:
+Press SHIFT once to enable the secondary paths and again to return to normal. This is the script's chosen behavior; hardware MIDI behavior still needs a live check. The `buttonMappings` table names every printed pair:
 
 | Normal | SHIFT path |
 |---|---|

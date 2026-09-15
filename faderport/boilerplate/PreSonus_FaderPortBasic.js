@@ -157,34 +157,36 @@ mSection.knob_vis.mSurfaceValue.mMidiBinding.setInputPort(midiIn)
 // Printed button functions. SHIFT is a software latch: press once to enable,
 // press again to disable. This is our routing policy, not a firmware mode change.
 // The two printed "Lock" labels have distinct names so they can be assigned separately.
-var buttonFunctions = [
-    [uSection.btn_Solo, 'Solo', 'SoloClear'],
-    [uSection.btn_Mute, 'Mute', 'MuteClear'],
-    [uSection.btn_Arm, 'Arm', 'ArmAll'],
-    [uSection.btn_Bypass, 'Bypass', 'BypassAll'],
-    [uSection.btn_Touch, 'Touch', 'Latch'],
-    [uSection.btn_Write, 'Write', 'Trim'],
-    [uSection.btn_Read, 'Read', 'Off'],
-    [mSection.btn_Prev, 'Prev', 'Undo'],
-    [mSection.btn_Next, 'Next', 'Redo'],
-    [mSection.btn_Link, 'Link', 'LinkLock'],
-    [mSection.btn_Pan, 'Pan', 'Flip'],
-    [mSection.btn_Channel, 'Channel', 'ChannelLock'],
-    [mSection.btn_Scroll, 'Scroll', 'Zoom'],
-    [mSection.btn_Master, 'Master', 'F1'],
-    [mSection.btn_Click, 'Click', 'F2'],
-    [mSection.btn_Section, 'Section', 'F3'],
-    [mSection.btn_Marker, 'Marker', 'F4']
+var buttonMappings = [
+    { physicalButton: uSection.btn_Solo, normalName: 'Solo', shiftedName: 'SoloClear' },
+    { physicalButton: uSection.btn_Mute, normalName: 'Mute', shiftedName: 'MuteClear' },
+    { physicalButton: uSection.btn_Arm, normalName: 'Arm', shiftedName: 'ArmAll' },
+    { physicalButton: uSection.btn_Bypass, normalName: 'Bypass', shiftedName: 'BypassAll' },
+    { physicalButton: uSection.btn_Touch, normalName: 'Touch', shiftedName: 'Latch' },
+    { physicalButton: uSection.btn_Write, normalName: 'Write', shiftedName: 'Trim' },
+    { physicalButton: uSection.btn_Read, normalName: 'Read', shiftedName: 'Off' },
+    { physicalButton: mSection.btn_Prev, normalName: 'Prev', shiftedName: 'Undo' },
+    { physicalButton: mSection.btn_Next, normalName: 'Next', shiftedName: 'Redo' },
+    { physicalButton: mSection.btn_Link, normalName: 'Link', shiftedName: 'LinkLock' },
+    { physicalButton: mSection.btn_Pan, normalName: 'Pan', shiftedName: 'Flip' },
+    { physicalButton: mSection.btn_Channel, normalName: 'Channel', shiftedName: 'ChannelLock' },
+    { physicalButton: mSection.btn_Scroll, normalName: 'Scroll', shiftedName: 'Zoom' },
+    { physicalButton: mSection.btn_Master, normalName: 'Master', shiftedName: 'F1' },
+    { physicalButton: mSection.btn_Click, normalName: 'Click', shiftedName: 'F2' },
+    { physicalButton: mSection.btn_Section, normalName: 'Section', shiftedName: 'F3' },
+    { physicalButton: mSection.btn_Marker, normalName: 'Marker', shiftedName: 'F4' }
 ]
 
 // Bind future Cubase actions to these logical values, e.g. buttons.F1 or
 // buttons.Flip. Physical surface buttons remain the single MIDI input source.
 var buttons = {}
-function routeButton(button, normalName, shiftedName) {
+function assignButtonRouting(mapping) {
+    var normalName = mapping.normalName
+    var shiftedName = mapping.shiftedName
     buttons[normalName] = surface.makeCustomValueVariable(normalName)
     buttons[shiftedName] = surface.makeCustomValueVariable(shiftedName)
     var stateKey = 'held.' + normalName
-    button.mSurfaceValue.mOnProcessValueChange = function(context, value) {
+    mapping.physicalButton.mSurfaceValue.mOnProcessValueChange = function(context, value) {
         var activeName = context.getState(stateKey)
         if (value > 0) {
             if (activeName) { return } // Ignore repeated press messages.
@@ -198,9 +200,8 @@ function routeButton(button, normalName, shiftedName) {
         }
     }
 }
-for (var buttonIndex = 0; buttonIndex < buttonFunctions.length; buttonIndex++) {
-    var definition = buttonFunctions[buttonIndex]
-    routeButton(definition[0], definition[1], definition[2])
+for (var buttonIndex = 0; buttonIndex < buttonMappings.length; buttonIndex++) {
+    assignButtonRouting(buttonMappings[buttonIndex])
 }
 
 uSection.btn_Shift.mSurfaceValue.mOnProcessValueChange = function(context, value) {
@@ -218,11 +219,14 @@ uSection.btn_Shift.mSurfaceValue.mOnProcessValueChange = function(context, value
 function resetButtonRouting(context) {
     context.setState('shiftEnabled', '0')
     context.setState('shiftPressed', '')
-    for (var i = 0; i < buttonFunctions.length; i++) {
-        var definition = buttonFunctions[i]
-        context.setState('held.' + definition[1], '')
-        buttons[definition[1]].setProcessValue(context, 0)
-        buttons[definition[2]].setProcessValue(context, 0)
+    for (var i = 0; i < buttonMappings.length; i++) {
+        var mapping = buttonMappings[i]
+        var normalButton = buttons[mapping.normalName]
+        var shiftedButton = buttons[mapping.shiftedName]
+
+        context.setState('held.' + mapping.normalName, '')
+        normalButton.setProcessValue(context, 0)
+        shiftedButton.setProcessValue(context, 0)
     }
 }
 
