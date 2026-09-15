@@ -147,3 +147,9 @@ With High Pass mode selected, disabled is green. Enabled uses a smoothly blended
 | 1 kHz and above | Violet |
 
 Most landmarks are below 300 Hz. These indicate cutoff frequency, not measured attenuation or slope. The named `highPassColors` entries can be tuned after checking the actual LEDs. Set `ENABLE_HIGH_PASS_COLOR_GRADIENT = false` for solid red whenever enabled. The state and frequency follow the selected track and mouse edits even outside this mode; the LED lights only while this mode is selected. Cubase's displayed Hz/kHz is used rather than assuming a normalized frequency curve. Missing/unrecognized display text falls back to red. Actual color appearance and host display callbacks need live verification.
+
+### RGB brightness
+
+`setRGBLED(context, note, r, g, b, brightness)` takes an explicit brightness argument. Current calls pass `FULL_BRIGHTNESS` (1); pass `HALF_BRIGHTNESS` (0.5) to halve component levels for an individual call. Perceived brightness is not necessarily linear. Values are clamped to 0..1 before MIDI conversion.
+
+This applies to Touch, Write, Read, Link, Pan, Channel and Scroll. The [PreSonus manual, sections 8.2.4 and LED tables](https://pae-web.presonusmusic.com/downloads/products/pdf/FaderPort_OwnersManual_V2_EN_051023.pdf) distinguishes these RGB buttons from the fixed-color transport LEDs and documents only off/on/flashing for the latter. A 50%-idle/full-on transport brightness effect is therefore not implemented; transport LEDs continue to show host state.

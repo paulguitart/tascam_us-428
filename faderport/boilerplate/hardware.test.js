@@ -36,7 +36,7 @@ h.host(0); h.host(1); h.host(0);
 assert.deepStrictEqual(h.messages,[[224,0,0],[224,127,127],[224,0,0]]);
 h.messages.length=0;
 h.scope.onLED(h.context,8); h.scope.onLED(h.context,8); assert.equal(h.messages.length,1);
-h.scope.setRGBLED(h.context,77,127,0,0); h.scope.setRGBLED(h.context,77,127,0,0);
+h.scope.setRGBLED(h.context,77,127,0,0,1); h.scope.setRGBLED(h.context,77,127,0,0,1);
 assert.equal(h.messages.length,4);
 h.scope.resetHardwareState(h.context); h.scope.onLED(h.context,8); assert.equal(h.messages.length,5);
 // A newer manual move supersedes a deferred host move.
@@ -57,3 +57,19 @@ h=load({FOOTSWITCH_NORMALLY_CLOSED:false}); h.foot(0); h.foot(1); h.foot(0); ass
 h=load({FOOTSWITCH_IS_TOGGLE:true}); h.foot(0); h.foot(0); h.foot(1); h.foot(0); assert.deepStrictEqual(h.pedal,[1,0,1,0]);
 h=load({ENABLE_FOOTSWITCH_NORMALIZATION:false}); h.foot(1); h.foot(0); assert.deepStrictEqual(h.pedal,[1,0]);
 console.log('PASS: touch/input protection, deferred motor output, MIDI cache/reset, calibration round trips, low-end snap, pedal modes and disabled flags');
+h=load();
+h.scope.setRGBLED(h.context,77,127,40,0,.5);
+assert.deepStrictEqual(h.messages,[[145,77,64],[146,77,20],[147,77,0]]);
+h.scope.setRGBLED(h.context,77,127,40,0,.5); assert.equal(h.messages.length,3);
+h=load(); h.scope.setRGBLED(h.context,77,127,127,127,0);
+assert(h.messages.every(message=>message[2]===0));
+console.log('PASS: RGB brightness scaling, zero brightness and cached scaled output');
+
+h=load();
+h.scope.setRGBLED(h.context,77,127,40,0,1);
+h.scope.setRGBLED(h.context,77,127,40,0,.5);
+h.scope.setRGBLED(h.context,77,127,40,0,1);
+assert.deepStrictEqual(h.messages.slice(-2),[[145,77,127],[146,77,40]]);
+assert.equal(vm.runInContext('FULL_BRIGHTNESS',h.scope),1);
+assert.equal(vm.runInContext('HALF_BRIGHTNESS',h.scope),.5);
+console.log('PASS: explicit per-call brightness and cache refresh when brightness changes');
