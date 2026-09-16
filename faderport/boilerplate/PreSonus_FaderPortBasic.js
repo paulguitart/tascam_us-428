@@ -1,7 +1,7 @@
-// PreSonus FaderPort v2 - hardware boilerplate (Cubase MIDI Remote).
+// PreSonus FaderPort v2 - Cubase MIDI Remote - by Paul Warner.
+//
 // Hardware definitions and surface geometry adapted from fp-wizard,
-// September 10, 2026, by Christian & Werner. Simplified by Paul Warner.
-// Original preserved at ../PreSonus_FaderPort.js.
+// September 10, 2026, by Christian & Werner.
 
 //-----------------------------------------------------------------------------
 // 0. CUSTOM SETTINGS
@@ -29,8 +29,65 @@ const FULL_BRIGHTNESS = 1
 const HALF_BRIGHTNESS = 0.5
 const GREEN = [0, 127, 0]
 
+/*
+====================================================================================================
+PRESONUS FADERPORT BASIC | CURRENT USAGE SUMMARY
+====================================================================================================
+
+TRANSPORT:
+----------------------------------------------------------------------------------------------------
+PLAY / REC / CYCLE       : Start, Record and Cycle (Loop) on/off
+REW / FF                 : Rewind / Fast Forward
+STOP (Tap)               : Stop Transport
+STOP (Hold 1.5s)         : Save; REW / FF / PLAY / REC LEDs blink to confirm
+STOP + REW               : Return To Zero (press STOP, then REW)
+
+SHIFT LAYER:
+----------------------------------------------------------------------------------------------------
+SHIFT                   : Latched layer toggle; press again to return to normal
+TRANSPORT / FADER / KNOB : Keep their direct functions in either layer
+
+ACTIVE PRINTED BUTTONS:
+----------------------------------------------------------------------------------------------------
+PREV / NEXT              : Select Previous / Next Track
+SHIFT + PREV / NEXT      : Undo / Redo
+PAN (Normal)             : Select Pan knob mode
+SCROLL / SHIFT + SCROLL  : Select Zoom knob mode
+MASTER (Normal)          : Select Stereo Out Volume knob mode (first output bus)
+CLICK (Normal)           : Metronome on/off; select Click Level knob mode
+CHANNEL (Normal)         : Select High Pass (Low Cut) knob mode for the selected track
+
+KNOB MODES:
+----------------------------------------------------------------------------------------------------
+PAN                      : Selected Track Pan
+ZOOM                     : Horizontal Zoom In / Out commands
+MASTER                   : Stereo Out Volume
+CLICK                    : Metronome Click Level
+HIGH PASS                : Selected Track Low Cut Frequency; press knob for filter on/off
+HIGH PASS LED            : Green when disabled; color indicates frequency when enabled
+
+FADER / FOOTSWITCH:
+----------------------------------------------------------------------------------------------------
+FADER                    : Selected Track Volume; input is ignored until touched
+                         : Motor waits while touched, then applies any pending position
+FOOTSWITCH               : Normalized to normally-closed press/release behavior by default
+
+UNASSIGNED BUTTON PATHS:
+----------------------------------------------------------------------------------------------------
+SOLO / MUTE / ARM / BYPASS / TOUCH / WRITE / READ : Normal paths
+SHIFT + those buttons    : SoloClear / MuteClear / ArmAll / BypassAll / Latch / Trim / Off
+LINK / SHIFT + LINK      : Link / LinkLock
+SHIFT + PAN              : Flip
+SHIFT + CHANNEL          : ChannelLock
+SHIFT + MASTER / CLICK   : F1 / F2
+SECTION / MARKER         : Section / Marker; SHIFT gives F3 / F4
+FOOTSWITCH PRESS         : Logical press path available for a future assignment
+
+====================================================================================================
+*/
+
 var deviceDriver = require('midiremote_api_v1')
-    .makeDeviceDriver('PreSonus', 'FaderPortBasic', 'Paul Warner; based on Christian & Werner')
+    .makeDeviceDriver('PreSonus', 'FaderPortBasic', 'Paul Warner')
 var midiIn = deviceDriver.mPorts.makeMidiInput()
 var midiOut = deviceDriver.mPorts.makeMidiOutput()
 deviceDriver.makeDetectionUnit().detectPortPair(midiIn, midiOut)
@@ -736,6 +793,8 @@ assignKnobControls()
 setupTransportFeedback()
 setupHighPassFeedback()
 
+//--------------------------------------------------------------------------------------------
+
 // Future mappings go here. Examples (inactive):
 // buttons.F1.mOnProcessValueChange = function(context, value) {
 //     if (value > 0) { /* Future F1 action. */ }
@@ -744,17 +803,4 @@ setupHighPassFeedback()
 //     if (value > 0) { onLED(context, cSolo) } else { offLED(context, cSolo) }
 // }
 
-// legal notes
-//
-// FaderPort is a registrated trademark of PreSonus(R) Audio Electronics, Inc.
-// Cubase is a registrated trademark of Steinberg(R) Media Technologies GmbH
-//
-// THE SOFTWARE (THIS SCRIPT) IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND,
-// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
-// ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
-// OR OTHER DEALINGS IN THE SOFTWARE.
-//
 //--------------------------------------------------------------------------------------------
