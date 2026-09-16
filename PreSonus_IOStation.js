@@ -114,7 +114,8 @@ FOOTSWITCH               : Normalized to normally-closed press/release behavior 
 
 UNASSIGNED BUTTON PATHS:
 ----------------------------------------------------------------------------------------------------
-BYPASS / TOUCH                                : Normal paths
+BYPASS                                        : MASTER: bypass Main Mix inserts; LED follows Stereo Out insert 1
+TOUCH                                         : Normal path
 SHIFT + BYPASS / TOUCH / WRITE / READ          : BypassAll / Latch / Trim / Off
 SHIFT + LINK             : LinkLock
 SHIFT + PAN              : Flip
@@ -518,6 +519,7 @@ deviceDriver.mOnActivate = function(context) {
     setRGBLED_color(context, cWrite, RED)
     setRGBLED_color(context, cRead, GREEN)
     updateClickLED(context)
+    updateMasterBypassLED(context)
 }
 deviceDriver.mOnDeactivate = function(context) {
     resetHardwareState(context)
@@ -930,8 +932,22 @@ var var_masterInsertPressed = surface.makeCustomValueVariable('Master Insert Pre
 // Projects with multiple output buses must place the intended master first.
 var hostStereoOutZone = page.mHostAccess.mMixConsole.makeMixerBankZone().includeOutputChannels()
 var hostStereoOut = hostStereoOutZone.makeMixerBankChannel()
+var stereoOutInsert1 = hostStereoOut.mInsertAndStripEffects
+    .makeInsertEffectViewer('Stereo Out Insert 1')
+    .accessSlotAtIndex(0)
+var masterInsertBypassed = stereoOutInsert1.mBypass
+var masterInsertBypassFeedback = surface.makeCustomValueVariable('Master Insert Bypass LED Feedback')
+page.makeValueBinding(masterInsertBypassFeedback, masterInsertBypassed)
+masterInsertBypassFeedback.mOnProcessValueChange = function(context) {
+    updateMasterBypassLED(context)
+}
 var hostMixerZoneFX = page.mHostAccess.mMixConsole.makeMixerBankZone().includeFXChannels()
 var fxChannel = hostMixerZoneFX.makeMixerBankChannel()
+
+function updateMasterBypassLED(context) {
+    setTransportLed(context, cBypass, context.getState('knobMode') === 'Master'
+        && masterInsertBypassFeedback.getProcessValue(context) > 0)
+}
 
 function updateKnobModeLEDs(context) {
     var mode = context.getState('knobMode')
@@ -940,6 +956,7 @@ function updateKnobModeLEDs(context) {
     setTransportLed(context, cSection, mode === 'Section')
     setTransportLed(context, cMarker, mode === 'Marker')
     updateClickLED(context)
+    updateMasterBypassLED(context)
 }
 
 function activateKnobMode(context, mode, activeMapping) {
@@ -1051,6 +1068,8 @@ function assignKnobControls() {
         page.makeCommandBinding(var_markerInsertPressed,
             'Transport', 'Insert Marker').setSubPage(knobModes.Marker)
     }
+    page.makeCommandBinding(buttons.Bypass,
+        'Mixer', 'Bypass: Inserts on Main Mix').setSubPage(knobModes.Master)
     page.makeCommandBinding(var_masterInsertPressed,
         'Mixer', 'Bypass: Inserts on Main Mix').setSubPage(knobModes.Master)
     page.makeCommandBinding(var_markerPrev,
