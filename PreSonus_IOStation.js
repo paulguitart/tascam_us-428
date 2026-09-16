@@ -319,6 +319,9 @@ function assignButtonRouting(mapping) {
             if (activeName === normalName && selectedTrackToggleValues[normalName]) {
                 toggleSelectedTrackValue(context, normalName)
             }
+            if (activeName === 'Prev' || activeName === 'Next') {
+                routeNavigationPress(context, activeName)
+            }
             buttons[activeName].setProcessValue(context, 1)
         } else if (activeName) {
             // Release the path that received the press, even if SHIFT changed meanwhile.
@@ -592,18 +595,33 @@ function assignTransportControls() {
 //-----------------------------------------------------------------------------
 var var_cycleMarkers = new Array(CYCLE_MARKER_MAX + 1)
 
+// Dedicated host inputs prevent a navigation press from reaching two targets.
+var var_trackPrev = surface.makeCustomValueVariable('Previous Track Pressed')
+var var_trackNext = surface.makeCustomValueVariable('Next Track Pressed')
+var var_markerPrev = surface.makeCustomValueVariable('Previous Marker Pressed')
+var var_markerNext = surface.makeCustomValueVariable('Next Marker Pressed')
+
+function routeNavigationPress(context, direction) {
+    var mode = context.getState('knobMode')
+    var previous = direction === 'Prev'
+    if (mode === 'Section') {
+        if (previous) recallPrevCycle(context)
+        else recallNextCycle(context)
+        return
+    }
+    var input = mode === 'Marker'
+        ? (previous ? var_markerPrev : var_markerNext)
+        : (previous ? var_trackPrev : var_trackNext)
+    input.setProcessValue(context, 1)
+    input.setProcessValue(context, 0)
+}
+
 function setupCycleMarkerCommands() {
     for (var i = 1; i <= CYCLE_MARKER_MAX; i++) {
         var_cycleMarkers[i] = surface.makeCustomValueVariable('Cycle Marker ' + i)
         page.makeCommandBinding(var_cycleMarkers[i], 'Transport', 'Recall Cycle Marker ' + i)
-            .setSubPage(knobModes.Section)
     }
-    buttons.Prev.mOnProcessValueChange = function(context, value) {
-        if (value > 0 && context.getState('knobMode') === 'Section') recallPrevCycle(context)
-    }
-    buttons.Next.mOnProcessValueChange = function(context, value) {
-        if (value > 0 && context.getState('knobMode') === 'Section') recallNextCycle(context)
-    }
+
 }
 
 function wrapCycleNumber(n) {
@@ -641,17 +659,8 @@ function assignSelectedTrackControls() {
     var hostTrackSelection = page.mHostAccess.mTrackSelection
     var hostSelectedTrack = hostTrackSelection.mMixerChannel
 
-    // Marker and Section use Prev/Next for marker navigation, so track stepping
-    // is scoped to the remaining modes.
-    var trackNavigationModes = [
-        knobModes.Pan, knobModes.Link, knobModes.Zoom, knobModes.Master, knobModes.Click, knobModes.HighPass
-    ]
-    for (var i = 0; i < trackNavigationModes.length; i++) {
-        page.makeActionBinding(buttons.Prev, hostTrackSelection.mAction.mPrevTrack)
-            .setSubPage(trackNavigationModes[i])
-        page.makeActionBinding(buttons.Next, hostTrackSelection.mAction.mNextTrack)
-            .setSubPage(trackNavigationModes[i])
-    }
+    page.makeActionBinding(var_trackPrev, hostTrackSelection.mAction.mPrevTrack)
+    page.makeActionBinding(var_trackNext, hostTrackSelection.mAction.mNextTrack)
     // Independent fader subpages let Scroll, Section and Marker preserve the previous assignment.
     page.makeValueBinding(fader.mSurfaceValue, hostSelectedTrack.mValue.mVolume)
         .setSubPage(faderModes.Track)
@@ -983,10 +992,10 @@ function assignKnobControls() {
     }
     page.makeCommandBinding(var_masterInsertPressed,
         'Mixer', 'Bypass: Inserts on Main Mix').setSubPage(knobModes.Master)
-    page.makeCommandBinding(buttons.Prev,
-        'Transport', 'Locate Previous Marker').setSubPage(knobModes.Marker)
-    page.makeCommandBinding(buttons.Next,
-        'Transport', 'Locate Next Marker').setSubPage(knobModes.Marker)
+    page.makeCommandBinding(var_markerPrev,
+        'Transport', 'Locate Previous Marker')
+    page.makeCommandBinding(var_markerNext,
+        'Transport', 'Locate Next Marker')
 
     knobModes.Link.mOnActivate = function(context, activeMapping) { activateKnobMode(context, 'Link', activeMapping) }
     knobModes.Pan.mOnActivate = function(context, activeMapping) { activateKnobMode(context, 'Pan', activeMapping) }
