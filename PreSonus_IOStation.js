@@ -811,6 +811,7 @@ function setupMetronomeFeedback() {
         }
         context.setState('metronomeEnabled', enabled)
         updateMetronomeModeLEDs(context, Date.now())
+        updateBypassLED(context)
     }
 }
 
@@ -957,6 +958,8 @@ function updateBypassLED(context) {
         enabled = masterInsertBypassFeedback.getProcessValue(context) === 0
     } else if (mode === 'Link' || mode === 'Pan') {
         enabled = firstSendEnabledFeedbackValue && firstSendEnabledFeedbackValue.getProcessValue(context) > 0
+    } else if (mode === 'Click') {
+        enabled = metronomeFeedbackValue && metronomeFeedbackValue.getProcessValue(context) > 0
     } else if (mode === 'HighPass') {
         enabled = highPassEnabledFeedbackValue && highPassEnabledFeedbackValue.getProcessValue(context) > 0
     }
@@ -966,6 +969,10 @@ function updateBypassLED(context) {
 // Both physical controls toggle the same host-bound value in these modes.
 function toggleModeEffect(context) {
     var mode = context.getState('knobMode')
+    if (mode === 'Click') {
+        toggleMetronome(context)
+        return
+    }
     var value = mode === 'Link' || mode === 'Pan' ? firstSendEnabledFeedbackValue
         : mode === 'HighPass' ? highPassEnabledFeedbackValue : null
     if (value) {
