@@ -105,7 +105,7 @@ PAN                      : Selected Track Pan; press knob to center pan
 ZOOM                     : Horizontal Zoom In / Out commands
 MASTER                   : Encoder controls FX Return 1; fader controls Stereo Out Volume
 CLICK                    : Metronome Click Level; fader controls Stereo Out Volume
-HIGH PASS                : Selected Track Low Cut Frequency; press knob for filter on/off
+HIGH PASS                : Selected Track Low Cut Frequency; push resets minimum; BYPASS toggles filter
 HIGH PASS LED            : White when disabled; color indicates frequency when enabled
 MARKER                   : Prev/Next locate previous/next marker; knob push inserts marker
 
@@ -588,6 +588,7 @@ var transportFeedback = []
 var hostMetronomeActive = hostTransport.mMetronomeActive
 var metronomeFeedbackValue = null
 var highPassEnabledFeedbackValue = null
+var highPassFrequencyFeedbackValue = null
 var firstSendEnabledFeedbackValue = null
 var confirmTransportNotes = [cRWD, cFWD, cPlay, cRecord]
 var stopProgressNotes = [cFWD, cRWD, cPlay, cRecord]
@@ -1274,6 +1275,7 @@ function setupHighPassFeedback() {
     var enabled = surface.makeCustomValueVariable('High Pass Enabled Feedback')
     var frequency = surface.makeCustomValueVariable('High Pass Frequency Feedback')
     highPassEnabledFeedbackValue = enabled
+    highPassFrequencyFeedbackValue = frequency
     // Always follow the selected track, including when another knob mode is active.
     page.makeValueBinding(enabled, preFilter.mLowCutOn)
     page.makeValueBinding(frequency, preFilter.mLowCutFreq)
@@ -1445,7 +1447,7 @@ function assignKnobControls() {
         } else if (mode === 'Click') {
             toggleMetronome(context)
         } else if (mode === 'HighPass') {
-            toggleModeEffect(context)
+            highPassFrequencyFeedbackValue.setProcessValue(context, 0)
         } else if (mode === 'Marker') {
             pulseVar(context, var_markerInsertPressed)
         } else if (mode === 'Zoom' || mode === 'Section') {
