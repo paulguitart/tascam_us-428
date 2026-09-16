@@ -27,8 +27,6 @@ const FADER_LOW_END_THRESHOLD = 0.012        // inherited from fp-wizard; normal
 const FADER_HOST_UNITY = 0.789087            // original +6 dB setting; +12 dB uses 0.748222
 const FADER_HARDWARE_UNITY = 0.789087        // measure your unit's U position before enabling
 const ENABLE_FADER_UNITY_CALIBRATION = false
-// 0.75 caps the master fader at 0 dB; 1.0 uses the full Stereo Out range.
-const MASTER_FADER_SCALE = 0.75
 
 // LED color values
 const FULL_BRIGHTNESS = 1
@@ -81,7 +79,7 @@ KNOB MODES:
 ----------------------------------------------------------------------------------------------------
 PAN                      : Selected Track Pan
 ZOOM                     : Horizontal Zoom In / Out commands
-MASTER                   : Stereo Out Volume; fader range is capped at 0 dB
+MASTER                   : Stereo Out Volume
 CLICK                    : Metronome Click Level
 HIGH PASS                : Selected Track Low Cut Frequency; press knob for filter on/off
 HIGH PASS LED            : Green when disabled; color indicates frequency when enabled
@@ -89,8 +87,8 @@ MARKER                    : Prev/Next locate previous/next marker; knob push ins
 
 FADER / FOOTSWITCH:
 ----------------------------------------------------------------------------------------------------
-FADER                    : Selected Track Volume; MASTER mode uses scaled Stereo Out volume
-                         : Input is ignored until touched; limited to 0 dB in MASTER mode
+FADER                    : Selected Track Volume; MASTER mode uses Stereo Out volume
+                         : Input is ignored until touched
                          : Motor waits while touched, then applies any pending position
 FOOTSWITCH               : Normalized to normally-closed press/release behavior by default
 
@@ -593,7 +591,7 @@ function assignSelectedTrackControls() {
         page.makeActionBinding(buttons.Next, hostTrackSelection.mAction.mNextTrack)
             .setSubPage(trackNavigationModes[i])
     }
-    // Master mode has a separate scaled Stereo Out fader binding.
+    // Master mode has a separate Stereo Out fader binding.
     var selectedTrackFaderModes = [
         knobModes.Pan, knobModes.Zoom, knobModes.Click, knobModes.HighPass, knobModes.Marker
     ]
@@ -855,7 +853,6 @@ function assignKnobControls() {
     page.makeValueBinding(fader.mSurfaceValue, hostStereoOut.mValue.mVolume)
         .setValueTakeOverModeScaled()
         .setSubPage(knobModes.Master)
-        .mapToValueRange(0, MASTER_FADER_SCALE)
     page.makeValueBinding(knob, hostTransport.mMetronomeClickLevel)
         .setSubPage(knobModes.Click)
     // The encoder push is routed below so it remains a momentary press path;

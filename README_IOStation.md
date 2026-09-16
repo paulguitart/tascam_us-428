@@ -31,7 +31,7 @@ LED feedback follows Cubase transport state independently of physical button pre
 
 - With SHIFT off, Prev/Next select the previous/next Cubase track in the other knob modes. Marker mode assigns them to previous/next marker instead.
 - With SHIFT off, Solo/Mute/Arm toggle Solo, Mute and Record Enable for the selected track. Their LEDs follow the selected track's state, including changes made in Cubase.
-- The fader controls the selected track's volume outside Master mode. In Master mode it controls the first Stereo Out channel from 0 to `MASTER_FADER_SCALE` (0.75 by default, capped at 0 dB). Host changes and track selection feed its motor through the existing touch-protection and calibration helpers.
+- The fader controls the selected track's volume outside Master mode. In Master mode it controls the first Stereo Out channel using the same FaderPort unity and motor calibration path as the track faders. Host changes and track selection feed its motor through the existing touch-protection and calibration helpers.
 - SHIFT does not change the fader assignment. Shifted Prev/Next retain Undo/Redo.
 - Encoder rotation uses the knob modes below. Encoder push toggles Cubase's metronome in Click mode, the high-pass filter in Channel mode, toggles Main Mix insert bypass in Master mode, and inserts a marker in Marker mode.
 
@@ -48,7 +48,7 @@ Pan is selected when the Hardware page activates. The fader controls selected-tr
 | Channel | Selected-track high-pass cutoff; knob push toggles the filter |
 | Marker | Prev/Next locate markers; encoder push inserts a marker |
 
-Master controls an output channel, not Control Room. With multiple output buses, put the intended Stereo Out first in the output bank. The API binding does not identify a bus by its name or Main Mix designation. `MASTER_FADER_SCALE = 0.75` caps the fader at 0 dB; use `1.0` for its full range. Encoder rotation remains full-range.
+Master controls an output channel, not Control Room. With multiple output buses, put the intended Stereo Out first in the output bank. The API binding does not identify a bus by its name or Main Mix designation. The fader uses the same FaderPort unity calibration as track faders. Encoder rotation remains full-range.
 
 Pan, Scroll, Master, Channel and Marker LEDs identify their active modes. Click's RGB LED shows both mode and metronome state: blue means Click mode selected with the metronome off, green means Click mode selected with the metronome on, amber means the metronome is on in another mode, and off means neither. SHIFT + Pan (Flip), SHIFT + Master (F1) and SHIFT + Click (F2) keep their separate, unassigned paths. SHIFT + Scroll selects the same Zoom mode as Scroll. Changing SHIFT alone does not change the current knob mode.
 
@@ -96,7 +96,6 @@ These are top-level `const` settings; edit and reload the script.
 | ENABLE_MIDI_OUTPUT_CACHE | true | Suppress identical LED states/colors and 14-bit motor targets |
 | ENABLE_FADER_LOW_END_SNAP | false | Snap physical positions below FADER_LOW_END_THRESHOLD (0.012) to zero |
 | ENABLE_FADER_UNITY_CALIBRATION | false | Align the printed U mark with host unity using reversible scaling |
-| MASTER_FADER_SCALE | `0.75` | Master-mode fader upper range; 0.75 caps Stereo Out at 0 dB, 1.0 uses full range |
 | ENABLE_FOOTSWITCH_NORMALIZATION | true | Provide a consistent logical pedal input |
 | FOOTSWITCH_NORMALLY_CLOSED | true | Invert momentary pedal polarity; false selects normally open |
 | FOOTSWITCH_IS_TOGGLE | false | Pulse the logical pedal on each toggle edge instead of forwarding press/release |
@@ -134,7 +133,7 @@ Run `node --check PreSonus_IOStation.js` from the repository root for a JavaScri
 - `node tests_iostation/routing.test.js` checks printed-button routing, SHIFT toggling, held-button release across layer changes, device isolation and LED feedback.
 - `node tests_iostation/transport.test.js` checks transport bindings, STOP/REW handling, repeated RTZ, save timing/cancellation and LED animation/restoration.
 - `node tests_iostation/hardware.test.js` checks touch protection, deferred motor commands, cache reset, calibration round trips, low-end snap, pedal normalization and optional RGB brightness defaults.
-- `node tests_iostation/knob.test.js` checks knob and fader mode targets, scaled Master range, insert-bypass push, selectors, mode LEDs, marker controls, repeated zoom pulses and mode-entry baselines.
+- `node tests_iostation/knob.test.js` checks knob and fader mode targets, Master fader binding, insert-bypass push, selectors, mode LEDs, marker controls, repeated zoom pulses and mode-entry baselines.
 
 Actual port detection, Cubase command execution, surface rendering, encoder direction, footswitch polarity and motor feedback still need a Cubase/hardware check.
 
