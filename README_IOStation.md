@@ -11,7 +11,7 @@
 - LED off/on/flash and RGB helpers; direct normalized motor-position helper.
 - One **Hardware** mapping page with Korg-style transport assignments.
 
-Selected-track navigation, volume, Solo, Mute and Record Enable are assigned to Cubase, along with transport, Undo/Redo, Click and the knob modes. SHIFT toggles a software layer; its LED stays on while that layer is enabled. Solo, Mute and Arm LEDs follow the selected track. RGB colors are initialized to white. The Click LED indicates Click mode. Inactive Link, Pan, Channel and Scroll LEDs show metronome status with a green tempo pulse. Other transport LEDs follow host state. No startup or shutdown fader movement is requested.
+Selected-track navigation, volume, Solo, Mute and Record Enable are assigned to Cubase, along with transport, Undo/Redo, Click and the knob modes. SHIFT toggles a software layer; its LED stays on while that layer is enabled. Solo, Mute and Arm LEDs follow the selected track. RGB colors are initialized to white. The Click LED indicates Click mode. Inactive Link, Pan, Channel and Scroll LEDs show metronome status in solid blue, pulsing red while recording. Other transport LEDs follow host state. No startup or shutdown fader movement is requested.
 
 ## Transport
 
@@ -51,9 +51,9 @@ Pan is selected when the Hardware page activates. The fader controls selected-tr
 
 Master fader controls an output channel, not Control Room. With multiple output buses, put the intended Stereo Out first in the output bank. The API binding does not identify a bus by its name or Main Mix designation. The encoder uses the first FX channel, so the intended FX Return 1 must be first in the FX bank. The fader uses the same FaderPort unity calibration as track faders. Encoder rotation remains full-range.
 
-The active Link, Pan or Scroll mode is white; active Channel uses the high-pass colors below. The other buttons in this four-button group pulse green when the metronome is enabled and turn off when it is disabled. In Master, Click or Marker mode, all four show metronome status. Master, Click and Marker LEDs indicate only their respective active modes.
+The active Link, Pan or Scroll mode is white; active Channel uses the high-pass colors below. The other buttons in this four-button group light solid `METRONOME_PULSE_COLOR` (blue by default) when the metronome is enabled, pulse red while recording, and turn off when the metronome is disabled. In Master, Click or Marker mode, all four show metronome status. Master, Click and Marker LEDs indicate only their respective active modes.
 
-The green brightness pulse uses the Tascam script's tempo callback and idle-timer pattern: `60000 / BPM`, with a 120 BPM fallback and a 150 ms minimum interval. A smooth brightness cycle runs once per beat, from 15% to full brightness. It follows tempo rate, not the transport's beat position, and continues while stopped if the metronome remains enabled. Set `ENABLE_METRONOME_PULSE = false` for steady green; adjust `METRONOME_PULSE_MIN_BRIGHTNESS` to change the pulse floor. Hardware smoothness depends on Cubase's idle callback cadence.
+The recording-only red brightness pulse uses the Tascam script's tempo callback and idle-timer pattern: `60000 / BPM`, with a 120 BPM fallback and a 150 ms minimum interval. A smooth brightness cycle runs once per beat, from 15% to full brightness. It follows tempo rate, not the transport's beat position, and returns to solid blue when recording stops. Set `METRONOME_PULSE_COLOR` to choose the normal metronome color. Set `ENABLE_METRONOME_PULSE = false` for steady red during recording; adjust `METRONOME_PULSE_MIN_BRIGHTNESS` to change the pulse floor. Hardware smoothness depends on Cubase's idle callback cadence.
 
 SHIFT + Pan (Flip), SHIFT + Master (F1) and SHIFT + Click (F2) keep their separate, unassigned paths. SHIFT + Scroll selects Zoom. Changing SHIFT alone does not change the current mode.
 

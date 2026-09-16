@@ -50,6 +50,7 @@ const AMBER =  [127, 48, 0]
 const MAGENTA = [127, 0, 127]
 
 // button color values
+const METRONOME_PULSE_COLOR = BLUE
 const ENABLE_METRONOME_PULSE = true
 const METRONOME_PULSE_MIN_BRIGHTNESS = 0.15
 const WHITE = [127, 127, 127]
@@ -627,6 +628,11 @@ function sendTransportFeedback(hostValue, note, name) {
 	page.makeValueBinding(ledValue, hostValue)
 	transportFeedback.push({ note: note, value: ledValue })
 	ledValue.mOnProcessValueChange = function(context, newValue) {
+        if (note === cRecord) {
+            context.setState('metronomeRecording', newValue > 0 ? '1' : '0')
+            context.setState('metronomePulseStart', '')
+            updateMetronomeModeLEDs(context, Date.now())
+        }
 		// Save animation owns only REW, FF, PLAY and REC; STOP/CYCLE remain live.
 		if (context.getState('saveBlinkCount') !== '' && confirmTransportNotes.indexOf(note) >= 0) return
 		setTransportLed(context, note, newValue > 0)
@@ -648,8 +654,10 @@ hostTimeDisplay.mOnChangeTempoBPM = function(context, activeMapping, tempoBPM) {
 
 function updateMetronomeModeLEDs(context, now) {
     var enabled = context.getState('metronomeEnabled') === '1'
+    var recording = context.getState('metronomeRecording') === '1'
+    var color = recording ? RED : METRONOME_PULSE_COLOR
     var brightness = 1
-    if (enabled && ENABLE_METRONOME_PULSE) {
+    if (enabled && recording && ENABLE_METRONOME_PULSE) {
         var start = context.getState('metronomePulseStart')
         if (start === '' || now < Number(start)) {
             start = String(now)
@@ -671,7 +679,7 @@ function updateMetronomeModeLEDs(context, now) {
                 onLED(context, notes[i])
             }
         } else if (enabled) {
-            setRGBLED_color(context, notes[i], GREEN, brightness)
+            setRGBLED_color(context, notes[i], color, brightness)
             onLED(context, notes[i])
         } else {
             offLED(context, notes[i])
@@ -820,7 +828,7 @@ function activateKnobMode(context, mode) {
 }
 
 // Blend only red to magenta through the useful low-cut range; clamp above 300 Hz.
-// White marks a disabled filter; green is reserved for metronome feedback.
+// White marks a disabled filter; inactive mode buttons carry metronome feedback.
 var highPassColors = [
     { hz: 20, red: RED[0], green: RED[1], blue: RED[2] },
     { hz: 300, red: MAGENTA[0], green: MAGENTA[1], blue: MAGENTA[2] }
