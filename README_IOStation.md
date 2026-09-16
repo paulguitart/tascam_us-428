@@ -177,3 +177,7 @@ These colors indicate cutoff frequency, not measured attenuation or slope. The `
 This applies to Touch, Write, Read, Link, Pan, Channel and Scroll. The [PreSonus manual, sections 8.2.4 and LED tables](https://pae-web.presonusmusic.com/downloads/products/pdf/FaderPort_OwnersManual_V2_EN_051023.pdf) distinguishes these RGB buttons from the fixed-color transport LEDs and documents only off/on/flashing for the latter. A 50%-idle/full-on transport brightness effect is therefore not implemented; transport LEDs continue to show host state.
 
 PREV/NEXT presses are routed directly to separate track, marker, cycle-recall, or locator-setting inputs according to the active mode. SECTION never sends a track-navigation action; SHIFT still routes to Undo/Redo.
+
+### STOP hold progress
+
+Holding STOP waits 500 ms, then lights FORWARD, REWIND, PLAY and REC cumulatively at 250 ms intervals. At 1.5 seconds it saves once and runs the existing five confirmation blinks. Releasing early or using STOP + REW cancels the progress and restores current transport feedback. STOP and CYCLE LEDs remain live throughout. `STOP_SAVE_PREDELAY_MS` controls the initial delay; `STOP_SAVE_HOLD_MS` controls the total hold time.

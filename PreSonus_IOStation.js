@@ -15,6 +15,7 @@ const ENABLE_METRONOME_FADER = true // CLICK fader controls metronome level; fal
 
 var ENABLE_STOP_HOLD_SAVE = true
 var STOP_SAVE_HOLD_MS = 1500
+var STOP_SAVE_PREDELAY_MS = 500       // wait before lighting the hold-progress LEDs
 var SAVE_BLINK_INTERVAL_MS = 140
 var SAVE_BLINK_TOGGLES = 10             // 5 full blinks, like the Korg
 
@@ -579,9 +580,26 @@ var metronomeFeedbackValue = null
 var highPassEnabledFeedbackValue = null
 var firstSendEnabledFeedbackValue = null
 var confirmTransportNotes = [cRWD, cFWD, cPlay, cRecord]
+var stopProgressNotes = [cFWD, cRWD, cPlay, cRecord]
 
 function resetStopProgress(context) {
 	context.setState('stopHoldStartMs', '')
+    var hadProgress = context.getState('stopProgressCount') !== ''
+    context.setState('stopProgressCount', '')
+    if (hadProgress && context.getState('saveBlinkCount') === '') restoreTransportLEDs(context)
+}
+
+function updateStopProgress(context, elapsed) {
+    // Confirmation from an earlier save takes priority over a new hold.
+    if (context.getState('saveBlinkCount') !== '' || elapsed < STOP_SAVE_PREDELAY_MS) return
+    var duration = Math.max(1, STOP_SAVE_HOLD_MS - STOP_SAVE_PREDELAY_MS)
+    var count = Math.min(stopProgressNotes.length,
+        1 + Math.floor((elapsed - STOP_SAVE_PREDELAY_MS) * stopProgressNotes.length / duration))
+    if (context.getState('stopProgressCount') === String(count)) return
+    context.setState('stopProgressCount', String(count))
+    for (var i = 0; i < stopProgressNotes.length; i++) {
+        setTransportLed(context, stopProgressNotes[i], i < count)
+    }
 }
 
 function resetTransport(context) {
@@ -874,7 +892,8 @@ function sendTransportFeedback(hostValue, note, name) {
             updateMetronomeModeLEDs(context, Date.now())
         }
 		// Save animation owns only REW, FF, PLAY and REC; STOP/CYCLE remain live.
-		if (context.getState('saveBlinkCount') !== '' && confirmTransportNotes.indexOf(note) >= 0) return
+		if ((context.getState('saveBlinkCount') !== '' || context.getState('stopProgressCount') !== '')
+            && confirmTransportNotes.indexOf(note) >= 0) return
 		setTransportLed(context, note, newValue > 0)
 	}
 }
@@ -1001,11 +1020,19 @@ deviceDriver.mOnIdle = function(context) {
 	var now = Date.now()
     updateMetronomeModeLEDs(context, now)
 	var holdStart = context.getState('stopHoldStartMs')
-	if (ENABLE_STOP_HOLD_SAVE && holdStart !== '' && now - Number(holdStart) >= STOP_SAVE_HOLD_MS) {
-		resetStopProgress(context)
-		pulseVar(context, var_savePressed)
-		blinkConfirmTransportLEDs(context)
-	}
+	if (ENABLE_STOP_HOLD_SAVE && holdStart !== '') {
+        var elapsed = now - Number(holdStart)
+        if (elapsed >= STOP_SAVE_HOLD_MS) {
+            // Transfer LED ownership directly from progress to confirmation.
+            blinkConfirmTransportLEDs(context)
+            resetStopProgress(context)
+            pulseVar(context, var_savePressed)
+        } else {
+            updateStopProgress(context, elapsed)
+        }
+    } else if (!ENABLE_STOP_HOLD_SAVE && holdStart !== '') {
+        resetStopProgress(context)
+    }
 
 	var blinkCount = context.getState('saveBlinkCount')
 	if (blinkCount === '') return
