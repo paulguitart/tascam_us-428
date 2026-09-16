@@ -1,12 +1,12 @@
-// Run with: node faderport/boilerplate/transport.test.js
+// Run with: node tests_iostation/transport.test.js
 const assert = require('assert');
 const fs = require('fs');
 const vm = require('vm');
 const path = require('path');
 let now = 10000;
-const scope = { require: () => require('../../api/midiremote_api_v1'), Date: { now: () => now } };
+const scope = { require: () => require('../api/midiremote_api_v1'), Date: { now: () => now } };
 vm.createContext(scope);
-vm.runInContext(fs.readFileSync(path.join(__dirname, 'PreSonus_FaderPortBasic.js'), 'utf8'), scope);
+vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'PreSonus_IOStation.js'), 'utf8'), scope);
 const state = {}, events = [], midi = [];
 const context = { setState: (k,v) => { state[k] = v; }, getState: k => state[k] || '' };
 for (const name of ['var_stopPressed','var_rewPressed','var_RTZPressed','var_savePressed']) {

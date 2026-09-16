@@ -1,6 +1,6 @@
 const assert=require('assert'),fs=require('fs'),vm=require('vm'),path=require('path');
-const s={require:()=>require('../../api/midiremote_api_v1')};
-vm.createContext(s); vm.runInContext(fs.readFileSync(path.join(__dirname,'PreSonus_FaderPortBasic.js'),'utf8'),s);
+const s={require:()=>require('../api/midiremote_api_v1')};
+vm.createContext(s); vm.runInContext(fs.readFileSync(path.join(__dirname,'..','PreSonus_IOStation.js'),'utf8'),s);
 const state={},midi=[],events=[],bindings=[],actions=[],commands=[];
 const ctx={getState:k=>state[k]||'',setState:(k,v)=>{state[k]=v;}};
 s.midiOut.sendMidi=(_,m)=>midi.push(Array.from(m));

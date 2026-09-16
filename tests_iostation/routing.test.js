@@ -1,11 +1,11 @@
-// Run with: node faderport/boilerplate/routing.test.js
+// Run with: node tests_iostation/routing.test.js
 const assert = require('assert');
 const fs = require('fs');
 const vm = require('vm');
 const path = require('path');
-const scope = { require: () => require('../../api/midiremote_api_v1') };
+const scope = { require: () => require('../api/midiremote_api_v1') };
 vm.createContext(scope);
-vm.runInContext(fs.readFileSync(path.join(__dirname, 'PreSonus_FaderPortBasic.js'), 'utf8'), scope);
+vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'PreSonus_IOStation.js'), 'utf8'), scope);
 function device() {
     const state = {};
     return { setState: (k, v) => { state[k] = v; }, getState: k => state[k] || '' };

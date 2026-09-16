@@ -2,13 +2,13 @@ const assert = require('assert');
 const fs = require('fs');
 const vm = require('vm');
 const path = require('path');
-const source = fs.readFileSync(path.join(__dirname, 'PreSonus_FaderPortBasic.js'), 'utf8');
+const source = fs.readFileSync(path.join(__dirname, '..', 'PreSonus_IOStation.js'), 'utf8');
 function load(settings = {}) {
     let code = source;
     for (const [name, value] of Object.entries(settings)) {
         code = code.replace(new RegExp('const ' + name + ' = [^\\r\\n]+'), 'const ' + name + ' = ' + value);
     }
-    const scope = { require: () => require('../../api/midiremote_api_v1') };
+    const scope = { require: () => require('../api/midiremote_api_v1') };
     vm.createContext(scope); vm.runInContext(code, scope);
     const state = {}, messages = [], input = [], pedal = [];
     const context = { getState: k => state[k] || '', setState: (k,v) => { state[k] = v; } };

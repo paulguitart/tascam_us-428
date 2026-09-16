@@ -1,6 +1,6 @@
-# FaderPort v2 hardware boilerplate
+# PreSonus IOStation MIDI Remote
 
-Use `boilerplate/PreSonus_FaderPortBasic.js`. The original Christian & Werner script is preserved as `PreSonus_FaderPort.js` for reference.
+`PreSonus_IOStation.js` maps the IOStation's FaderPort V2-style control surface to Cubase MIDI Remote. The IOStation adds audio features to the FaderPort V2 hardware; this script handles the control surface. Its MIDI behavior and port names match the PreSonus FP2, so the script intentionally keeps `PreSonus FP2` input/output detection. The original Christian & Werner script is preserved in `example_code/PreSonus_FaderPort_Werner.js` for reference.
 
 ## Included
 
@@ -11,7 +11,7 @@ Use `boilerplate/PreSonus_FaderPortBasic.js`. The original Christian & Werner sc
 - LED off/on/flash and RGB helpers; direct normalized motor-position helper.
 - One **Hardware** mapping page with Korg-style transport assignments.
 
-Selected-track navigation/volume, transport, Undo/Redo and Click are assigned to Cubase; the other controls remain available for future assignments. SHIFT toggles a software layer; its LED stays on while that layer is enabled. RGB colors are initialized to white. Transport LEDs follow host state. No startup or shutdown fader movement is requested.
+Selected-track navigation, volume, Solo, Mute and Record Enable are assigned to Cubase, along with transport, Undo/Redo, Click and the knob modes. SHIFT toggles a software layer; its LED stays on while that layer is enabled. Solo, Mute and Arm LEDs follow the selected track. RGB colors are initialized to white. Transport LEDs follow host state. No startup or shutdown fader movement is requested.
 
 ## Transport
 
@@ -30,6 +30,7 @@ LED feedback follows Cubase transport state independently of physical button pre
 ## Selected track
 
 - With SHIFT off, Prev/Next select the previous/next Cubase track.
+- With SHIFT off, Solo/Mute/Arm toggle Solo, Mute and Record Enable for the selected track. Their LEDs follow the selected track's state, including changes made in Cubase.
 - The fader controls the selected track's volume. Host changes and track selection feed its motor through the existing touch-protection and calibration helpers.
 - SHIFT does not change the fader assignment. Shifted Prev/Next retain Undo/Redo.
 - Encoder rotation uses the knob modes below. Encoder push toggles the high-pass filter only in Channel mode.
@@ -75,7 +76,7 @@ Press SHIFT once to enable the secondary paths and again to return to normal. Th
 | Link / Pan / Channel / Scroll | LinkLock / Flip / ChannelLock / Zoom |
 | Master / Click / Section / Marker | F1 / F2 / F3 / F4 |
 
-Assign future actions to `buttons.F1`, `buttons.Flip`, `buttons.Master`, etc. These are logical surface values that receive press/release events. Prev, Next, Undo, Redo and Click have Cubase assignments; Pan, Scroll, Zoom, Master and Channel select knob modes. The other named paths remain unassigned. The two printed Lock labels use separate names. The visible physical controls retain their original layout and primary labels.
+Assign future actions to `buttons.F1`, `buttons.Flip`, `buttons.SoloClear`, etc. These are logical surface values that receive press/release events. Solo, Mute, Arm, Prev, Next, Undo, Redo and Click have Cubase assignments; Pan, Scroll, Zoom, Master and Channel select knob modes. Other named paths remain unassigned, including shifted Solo/Mute/Arm (`SoloClear`, `MuteClear`, `ArmAll`). The two printed Lock labels use separate names. The visible physical controls retain their original layout and primary labels.
 
 Button release follows whichever path received the press, even if SHIFT changes while the button is held. Activation/deactivation clears the layer and held paths. Transport, encoder, fader and footswitch retain their direct paths. The printed RTZ transport chord is not implemented by this SHIFT layer.
 
@@ -104,13 +105,13 @@ Use `var_footswitchPressed` for future pedal assignments. Toggle mode uses the f
 
 ## Loading in Cubase
 
-Place the new script in the Cubase MIDI Remote user-script tree under `PreSonus/FaderPortBasic/PreSonus_FaderPortBasic.js`, then reload scripts. Its device name is **FaderPortBasic**. Assign the `PreSonus FP2` ports if automatic detection does not match the names on your machine. Disable the original script or other remote devices using those ports before testing this version.
+Place the script in the Cubase MIDI Remote user-script tree under `PreSonus/IOStation/PreSonus_IOStation.js`, then reload scripts. Its device name is **IOStation**. The script detects the input and output ports named `PreSonus FP2`, matching the IOStation's FaderPort V2-style MIDI surface. Disable the original script or other remote devices using those ports before testing this version.
 
 Retain the hardware DAW mode used with the original script. Neither source sends a DAW-mode initialization handshake; this extraction does not establish which power-on mode your unit currently uses.
 
 ## Extending
 
-The bottom of the script contains inactive examples for F1 and button LED feedback. Use `buttons` for the routed functions; do not replace the physical button callbacks, which perform the routing. Main handles:
+The bottom of the script contains an inactive F1 example. Use `buttons` for routed functions; do not replace the physical button callbacks, which perform the routing. Main handles:
 
 - `fader.mSurfaceValue`, `faderTouch`
 - `uSection.btn_Solo`, `uSection.btn_Mute`, etc.
@@ -118,21 +119,20 @@ The bottom of the script contains inactive examples for F1 and button LED feedba
 - `tpSection.btn_Play`, `tpSection.btn_Stop`, etc.
 - `var_footswitchPressed` (normalized input); `fsSection.btn_Footswitch` is the raw physical control
 
-From callbacks, pass the active device context to `onLED`, `offLED`, `flashingLED`, `setRGBLED` or `setMotorFader`. RGB components use 0..127; motor positions use 0..1. The motor helper takes raw physical travel and applies touch protection and output caching. Future host mappings use `fader.mSurfaceValue`; its feedback callback applies optional scaling/snap and sends through that same motor helper. Touch binding is guarded for older API versions.
+From callbacks, pass the active device context to `onLED`, `offLED`, `flashingLED`, `setRGBLED`, `setRGBLED_color` or `setMotorFader`. RGB components use 0..127; motor positions use 0..1. The motor helper takes raw physical travel and applies touch protection and output caching. Future host mappings use `fader.mSurfaceValue`; its feedback callback applies optional scaling/snap and sends through that same motor helper. Touch binding is guarded for older API versions.
 
-LED helpers control physical LEDs independently of the drawn buttons. Transport host feedback is already assigned; add feedback for other controls when implementing their assignments. Footswitch normalization is configured with the hardware settings above.
+LED helpers control physical LEDs independently of the drawn buttons. Transport, selected-track Solo/Mute/Arm, and high-pass feedback are already assigned. Footswitch normalization is configured with the hardware settings above.
 
 ## Validation
 
-JavaScript syntax and script construction against the repository's MIDI Remote API stub were checked. Output helper messages and motor touch suppression were checked with a captured MIDI output. Actual port detection, surface rendering, encoder direction, footswitch polarity and motor feedback still need a Cubase/hardware check.
+Run `node --check PreSonus_IOStation.js` from the repository root for a JavaScript syntax check. The test scripts are in `tests_iostation/` and use `api/midiremote_api_v1`; that API stub is not included in this workspace, so the behavioral tests need it available locally.
 
-Run `node faderport/boilerplate/routing.test.js` from the repository root to check all printed pairs, SHIFT toggling, held-button release across layer changes, device isolation and LED feedback.
+- `node tests_iostation/routing.test.js` checks printed-button routing, SHIFT toggling, held-button release across layer changes, device isolation and LED feedback.
+- `node tests_iostation/transport.test.js` checks transport bindings, STOP/REW handling, repeated RTZ, save timing/cancellation and LED animation/restoration.
+- `node tests_iostation/hardware.test.js` checks touch protection, deferred motor commands, cache reset, calibration round trips, low-end snap and pedal normalization.
+- `node tests_iostation/knob.test.js` checks knob mode binding targets, selectors, mode LEDs, repeated zoom pulses and mode-entry baselines.
 
-Run `node faderport/boilerplate/transport.test.js` to check transport bindings, STOP/REW handling, repeated RTZ, save timing/cancellation and LED animation/restoration against the API stub. Cubase command execution and physical feedback still require live testing.
-
-Run `node faderport/boilerplate/hardware.test.js` to check touch protection, deferred motor commands, cache reset, calibration round trips, low-end snap, pedal normalization and disabled options. Live hardware validation remains necessary.
-
-Run `node faderport/boilerplate/knob.test.js` to check mode binding targets, selectors, mode LEDs, repeated zoom pulses and mode-entry baselines. Live encoder behavior and first-output selection still need Cubase verification.
+Actual port detection, Cubase command execution, surface rendering, encoder direction, footswitch polarity and motor feedback still need a Cubase/hardware check.
 
 ### High-pass color feedback
 
@@ -150,6 +150,6 @@ Most landmarks are below 300 Hz. These indicate cutoff frequency, not measured a
 
 ### RGB brightness
 
-`setRGBLED(context, note, r, g, b, brightness)` takes an explicit brightness argument. Current calls pass `FULL_BRIGHTNESS` (1); pass `HALF_BRIGHTNESS` (0.5) to halve component levels for an individual call. Perceived brightness is not necessarily linear. Values are clamped to 0..1 before MIDI conversion.
+`setRGBLED(context, note, r, g, b, brightness)` defaults brightness to `FULL_BRIGHTNESS` (1), so ordinary calls can omit it. Pass `HALF_BRIGHTNESS` (0.5) to halve component levels for an individual call. `setRGBLED_color(context, note, color, brightness)` accepts an RGB array such as `GREEN`; it has the same full-brightness default. Perceived brightness is not necessarily linear. Values are clamped to 0..1 before MIDI conversion.
 
 This applies to Touch, Write, Read, Link, Pan, Channel and Scroll. The [PreSonus manual, sections 8.2.4 and LED tables](https://pae-web.presonusmusic.com/downloads/products/pdf/FaderPort_OwnersManual_V2_EN_051023.pdf) distinguishes these RGB buttons from the fixed-color transport LEDs and documents only off/on/flashing for the latter. A 50%-idle/full-on transport brightness effect is therefore not implemented; transport LEDs continue to show host state.
