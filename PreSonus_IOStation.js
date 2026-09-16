@@ -93,6 +93,7 @@ MASTER (Normal)          : Select Master mode; encoder controls FX Return 1, fad
 CLICK (Normal)           : Select Click Level knob mode
 KNOB PUSH (Click Mode)   : Metronome on/off; Click LED shows Click mode; inactive RGB mode LEDs optionally show metronome
 CHANNEL (Normal)         : Select High Pass (Low Cut) knob mode for the selected track
+SHIFT + CHANNEL         : Pre-gain; push resets 0 dB; BYPASS flips polarity (LED on = inverted)
 SECTION (Normal)         : Prev/Next recall cycle markers (wrap); keep current fader target
 MARKER (Normal)          : Select Marker mode; Prev/Next locate markers; knob push inserts marker
 
@@ -304,7 +305,7 @@ var buttonMappings = [
     { physicalButton: mSection.btn_Next, normalName: 'Next', shiftedName: 'Redo' },
     { physicalButton: mSection.btn_Link, normalName: 'Link', shiftedName: 'Link' },
     { physicalButton: mSection.btn_Pan, normalName: 'Pan', shiftedName: 'Pan' },
-    { physicalButton: mSection.btn_Channel, normalName: 'Channel', shiftedName: 'Channel' },
+    { physicalButton: mSection.btn_Channel, normalName: 'Channel', shiftedName: 'PreGain' },
     { physicalButton: mSection.btn_Scroll, normalName: 'Scroll', shiftedName: 'Zoom' },
     { physicalButton: mSection.btn_Master, normalName: 'Master', shiftedName: 'Master' },
     { physicalButton: mSection.btn_Click, normalName: 'Click', shiftedName: 'Click' },
@@ -351,6 +352,7 @@ function assignButtonRouting(mapping) {
         if (value > 0) {
             if (activeName) { return } // Ignore repeated press messages.
             activeName = context.getState('shiftEnabled') === '1' ? shiftedName : normalName
+            if (normalName === 'Bypass' && context.getState('knobMode') === 'PreGain') activeName = 'Bypass'
             activeName = resolveKnobModeButton(context, activeName)
             context.setState(stateKey, activeName)
             // Selected-track state bindings toggle on press; their release must not clear the host value.
@@ -932,7 +934,9 @@ function updateMetronomeModeLEDs(context, now) {
     var notes = [cLink, cPan, cChannel, cScroll]
     var modes = ['Link', 'Pan', 'HighPass', 'Zoom']
     for (var i = 0; i < notes.length; i++) {
-        if (mode === modes[i]) {
+        if (mode === 'PreGain' && notes[i] === cChannel) {
+            updatePreGainLED(context)
+        } else if (mode === modes[i]) {
             if (mode === 'HighPass') updateHighPassLED(context)
             else if (mode === 'Pan') updatePanLED(context)
             else {
@@ -1071,6 +1075,7 @@ var knobModes = {
     Master: knobModeArea.makeSubPage('Master'),
     Click: knobModeArea.makeSubPage('Click'),
     HighPass: knobModeArea.makeSubPage('High Pass'),
+    PreGain: knobModeArea.makeSubPage('Pre Gain'),
     Section: knobModeArea.makeSubPage('Section'),
     Marker: knobModeArea.makeSubPage('Marker')
 }
@@ -1082,6 +1087,7 @@ var knobModeButtons = [
     { button: buttons.Master, mode: knobModes.Master },
     { button: buttons.Click, mode: knobModes.Click },
     { button: buttons.Channel, mode: knobModes.HighPass },
+    { button: buttons.PreGain, mode: knobModes.PreGain },
     { button: buttons.Section, mode: knobModes.Section },
     { button: buttons.Marker, mode: knobModes.Marker }
 ]
@@ -1120,6 +1126,8 @@ function updateBypassLED(context) {
         enabled = firstSendEnabledFeedbackValue && firstSendEnabledFeedbackValue.getProcessValue(context) > 0
     } else if (isMetronomeBypassMode(mode)) {
         enabled = metronomeFeedbackValue && metronomeFeedbackValue.getProcessValue(context) > 0
+    } else if (mode === 'PreGain') {
+        enabled = polarityFeedbackValue && polarityFeedbackValue.getProcessValue(context) > 0
     } else if (mode === 'HighPass') {
         enabled = highPassEnabledFeedbackValue && highPassEnabledFeedbackValue.getProcessValue(context) > 0
     }
@@ -1134,7 +1142,8 @@ function toggleModeEffect(context) {
         return
     }
     var value = mode === 'Link' || mode === 'Pan' ? firstSendEnabledFeedbackValue
-        : mode === 'HighPass' ? highPassEnabledFeedbackValue : null
+        : mode === 'HighPass' ? highPassEnabledFeedbackValue
+        : mode === 'PreGain' ? polarityFeedbackValue : null
     if (value) {
         value.setProcessValue(context, value.getProcessValue(context) > 0 ? 0 : 1)
     }
@@ -1152,7 +1161,7 @@ function updateKnobModeLEDs(context) {
 
 function resolveKnobModeButton(context, name) {
     var modeNames = { Link: 'Link', Pan: 'Pan', Scroll: 'Zoom', Zoom: 'Zoom',
-        Master: 'Master', Click: 'Click', Channel: 'HighPass', Section: 'Section', Marker: 'Marker' }
+        Master: 'Master', Click: 'Click', Channel: 'HighPass', PreGain: 'PreGain', Section: 'Section', Marker: 'Marker' }
     var previous = context.getState('previousKnobMode')
     var requestedMode = modeNames[name]
     // Non-mode buttons keep their normal action.
@@ -1172,7 +1181,7 @@ function activateKnobMode(context, mode, activeMapping) {
     if (current && current !== mode) context.setState('previousKnobMode', current)
     // Scroll, Section and Marker leave the current fader target active.
     if (mode !== 'Zoom' && mode !== 'Section' && mode !== 'Marker') {
-        var target = mode === 'Pan' || mode === 'Link' || mode === 'HighPass'
+        var target = mode === 'Pan' || mode === 'Link' || mode === 'HighPass' || mode === 'PreGain'
             ? faderModes.Track
             : mode === 'Click' && ENABLE_METRONOME_FADER ? faderModes.Metronome : faderModes.StereoOut
         context.setState('faderTarget', target === faderModes.Track ? 'Track'
@@ -1250,6 +1259,33 @@ function setupHighPassFeedback() {
     }
 }
 
+var preGainFeedbackValue = null
+var polarityFeedbackValue = null
+
+function getPreGainColor(value) {
+    if (!isFinite(value)) return WHITE
+    var gain = Math.max(0, Math.min(1, value))
+    var amount = Math.abs(gain - 0.5) * 2
+    var extreme = gain < 0.5 ? BLUE : MAGENTA
+    return WHITE.map(function(component, i) { return component + (extreme[i] - component) * amount })
+}
+
+function updatePreGainLED(context) {
+    if (context.getState('knobMode') !== 'PreGain') return
+    setRGBLED_color(context, cChannel, getPreGainColor(preGainFeedbackValue.getProcessValue(context)))
+    onLED(context, cChannel)
+}
+
+function setupPreGainFeedback() {
+    var pre = page.mHostAccess.mTrackSelection.mMixerChannel.mPreFilter
+    preGainFeedbackValue = surface.makeCustomValueVariable('Pre Gain Feedback')
+    polarityFeedbackValue = surface.makeCustomValueVariable('Polarity Feedback')
+    page.makeValueBinding(preGainFeedbackValue, pre.mGain)
+    page.makeValueBinding(polarityFeedbackValue, pre.mPhaseSwitch)
+    preGainFeedbackValue.mOnProcessValueChange = function(context) { updatePreGainLED(context) }
+    polarityFeedbackValue.mOnProcessValueChange = function(context) { updateBypassLED(context) }
+}
+
 var panFeedbackValue = null
 
 function getPanColor(value) {
@@ -1308,6 +1344,7 @@ function assignKnobControls() {
     // mode-specific host values are toggled explicitly by the handler.
     // Cubase calls its high-pass filter "Low Cut" in the Pre section.
     var hostPreFilter = page.mHostAccess.mTrackSelection.mMixerChannel.mPreFilter
+    page.makeValueBinding(knob, hostPreFilter.mGain).setSubPage(knobModes.PreGain)
     page.makeValueBinding(knob, hostPreFilter.mLowCutFreq)
         .setSubPage(knobModes.HighPass)
     var zoomModes = [knobModes.Zoom, knobModes.Section, knobModes.Marker]
@@ -1338,6 +1375,7 @@ function assignKnobControls() {
     knobModes.Zoom.mOnActivate = function(context, activeMapping) { activateKnobMode(context, 'Zoom', activeMapping) }
     knobModes.Master.mOnActivate = function(context, activeMapping) { activateKnobMode(context, 'Master', activeMapping) }
     knobModes.Click.mOnActivate = function(context, activeMapping) { activateKnobMode(context, 'Click', activeMapping) }
+    knobModes.PreGain.mOnActivate = function(context, activeMapping) { activateKnobMode(context, 'PreGain', activeMapping) }
     knobModes.HighPass.mOnActivate = function(context, activeMapping) { activateKnobMode(context, 'HighPass', activeMapping) }
     knobModes.Section.mOnActivate = function(context, activeMapping) { activateKnobMode(context, 'Section', activeMapping) }
     knobModes.Marker.mOnActivate = function(context, activeMapping) { activateKnobMode(context, 'Marker', activeMapping) }
@@ -1356,6 +1394,8 @@ function assignKnobControls() {
         var mode = context.getState('knobMode')
         if (mode === 'Pan') {
             panFeedbackValue.setProcessValue(context, 0.5)
+        } else if (mode === 'PreGain') {
+            preGainFeedbackValue.setProcessValue(context, 0.5)
         } else if (mode === 'Link') {
             toggleModeEffect(context)
         } else if (mode === 'Click') {
@@ -1413,4 +1453,5 @@ setupTransportFeedback()
 setupMetronomeFeedback()
 setupSelectedTrackFeedback()
 setupHighPassFeedback()
+setupPreGainFeedback()
 setupPanFeedback()

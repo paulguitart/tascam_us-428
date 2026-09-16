@@ -56,10 +56,10 @@ for (const name of ['Link', 'Pan', 'Channel', 'Scroll', 'Master', 'Click', 'Sect
         press(context, 1);
         context.setState('shiftEnabled', shift === '1' ? '0' : '1');
         press(context, 0);
-        const expected = name === 'Scroll' && shift === '1' ? 'Zoom' : name;
+        const expected = name === 'Channel' && shift === '1' ? 'PreGain' : name === 'Scroll' && shift === '1' ? 'Zoom' : name;
         assert.deepEqual(events, [[expected, 1], [expected, 0]]);
         // Pressing the active mode returns to Pan in either SHIFT state.
-        context.setState('knobMode', name === 'Channel' ? 'HighPass' : name === 'Scroll' ? 'Zoom' : name);
+        context.setState('knobMode', name === 'Channel' ? (shift === '1' ? 'PreGain' : 'HighPass') : name === 'Scroll' ? 'Zoom' : name);
         context.setState('previousKnobMode', 'Pan');
         context.setState('shiftEnabled', shift);
         events.length = 0;
@@ -68,4 +68,4 @@ for (const name of ['Link', 'Pan', 'Channel', 'Scroll', 'Master', 'Click', 'Sect
         context.setState('knobMode', '');
     }
 }
-console.log('PASS: all mode buttons ignore SHIFT, toggle back, suppress duplicate presses and release across SHIFT changes');
+console.log('PASS: mode buttons respect the Channel SHIFT alternate, toggle back, suppress duplicate presses and release across SHIFT changes');
