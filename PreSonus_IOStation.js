@@ -73,6 +73,8 @@ STOP + REW               : Return To Zero (press STOP, then REW)
 SHIFT LAYER:
 ----------------------------------------------------------------------------------------------------
 SHIFT                   : Latched layer toggle; press again to return to normal
+SHIFT + SOLO / MUTE      : Clear all Solo / Mute
+SHIFT + ARM              : Toggle Arm All / Disarm All Audio Tracks
 TRANSPORT / FADER / KNOB : Keep their direct functions in either layer
 
 ACTIVE PRINTED BUTTONS:
@@ -112,7 +114,6 @@ FOOTSWITCH               : Normalized to normally-closed press/release behavior 
 UNASSIGNED BUTTON PATHS:
 ----------------------------------------------------------------------------------------------------
 BYPASS / TOUCH / WRITE / READ                  : Normal paths
-SHIFT + SOLO / MUTE / ARM                      : SoloClear / MuteClear / ArmAll
 SHIFT + BYPASS / TOUCH / WRITE / READ          : BypassAll / Latch / Trim / Off
 SHIFT + LINK             : LinkLock
 SHIFT + PAN              : Flip
@@ -333,6 +334,9 @@ function assignButtonRouting(mapping) {
             }
             if (activeName === 'Prev' || activeName === 'Next') {
                 routeNavigationPress(context, activeName)
+            }
+            if (activeName === 'ArmAll') {
+                toggleArmAll(context)
             }
             buttons[activeName].setProcessValue(context, 1)
         } else if (activeName) {
@@ -675,8 +679,27 @@ function recallNextCycle(context) {
     fireCycleRecall(context, number)
 }
 
+var var_armAllPressed = surface.makeCustomValueVariable('Arm All Audio Tracks Pressed')
+var var_disarmAllPressed = surface.makeCustomValueVariable('Disarm All Audio Tracks Pressed')
+
+function toggleArmAll(context) {
+    // Alternate presses; selected-track arm feedback also keeps this state current.
+    // Set the next state before sending, so synchronous host feedback takes priority.
+    if (context.getState('disarmAllNext') === '1') {
+        context.setState('disarmAllNext', '0')
+        pulseVar(context, var_disarmAllPressed)
+    } else {
+        context.setState('disarmAllNext', '1')
+        pulseVar(context, var_armAllPressed)
+    }
+}
+
 // Printed functions use the logical button paths, so SHIFT routing stays in one place.
 function assignUtilityControls() {
+    page.makeCommandBinding(buttons.SoloClear, 'Edit', 'Deactivate All Solo')
+    page.makeCommandBinding(buttons.MuteClear, 'Edit', 'Unmute All')
+    page.makeCommandBinding(var_armAllPressed, 'Mixer', 'Arm All Audio Tracks')
+    page.makeCommandBinding(var_disarmAllPressed, 'Mixer', 'Disarm All Audio Tracks')
 	page.makeCommandBinding(var_setLeftLocatorPressed, 'Transport', 'Set Left Locator')
 	page.makeCommandBinding(var_setRightLocatorPressed, 'Transport', 'Set Right Locator')
 	page.makeCommandBinding(buttons.Undo, 'Edit', 'Undo')
@@ -799,6 +822,9 @@ function sendSelectedTrackFeedback(hostValue, note, name) {
     var ledValue = surface.makeCustomValueVariable(name + ' LED Feedback')
     page.makeValueBinding(ledValue, hostValue)
     ledValue.mOnProcessValueChange = function(context, newValue) {
+        if (note === cArm) {
+            context.setState('disarmAllNext', newValue > 0 ? '1' : '0')
+        }
         setTransportLed(context, note, newValue > 0)
     }
     return ledValue
