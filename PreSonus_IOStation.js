@@ -9,6 +9,8 @@
 //-----------------------------------------------------------------------------
 
 const CYCLE_MARKER_MAX = 9
+const ENABLE_FADER_NUDGE = true // PREV/NEXT nudge the current fader in SCROLL and MASTER
+const FADER_NUDGE_DB_INCREMENT = 0.5
 const ENABLE_METRONOME_FADER = true // CLICK fader controls metronome level; false: Stereo Out
 
 var ENABLE_STOP_HOLD_SAVE = true
@@ -649,7 +651,9 @@ var var_setRightLocatorPressed = surface.makeCustomValueVariable('Set Right Loca
 function routeNavigationPress(context, direction) {
     var mode = context.getState('knobMode')
 
-    if (mode === 'Section') {
+    if (ENABLE_FADER_NUDGE && (mode === 'Zoom' || mode === 'Master')) {
+        nudgeCurrentFader(context, direction === 'Prev' ? -1 : 1)
+    } else if (mode === 'Section') {
         if (direction === 'Prev') {
             recallPrevCycle(context)
         } else {
@@ -735,6 +739,68 @@ function assignUtilityControls() {
 	page.makeCommandBinding(buttons.Redo, 'Edit', 'Redo')
 }
 
+// Direct access reads/writes Cubase's displayed dB value; no volume curve approximation.
+var faderNudgeAccess = {}
+var faderNudgeMappings = []
+
+function activateFaderNudge(context, activeMapping) {
+    var key = context.getState('faderNudgeMapping')
+    if (key === '') {
+        key = String(faderNudgeMappings.length)
+        context.setState('faderNudgeMapping', key)
+    }
+    faderNudgeMappings[Number(key)] = activeMapping
+    for (var name in faderNudgeAccess) faderNudgeAccess[name].activate(activeMapping)
+}
+
+function deactivateFaderNudge(context, activeMapping) {
+    for (var name in faderNudgeAccess) faderNudgeAccess[name].deactivate(activeMapping)
+    var key = context.getState('faderNudgeMapping')
+    if (key !== '') faderNudgeMappings[Number(key)] = null
+}
+
+function parseFaderDb(text) {
+    var match = String(text).replace(/\s/g, '').replace(',', '.')
+        .match(/^([+-]?[0-9]+(?:\.[0-9]+)?)(?:dB)?$/i)
+    return match ? Number(match[1]) : NaN
+}
+
+function nudgeCurrentFader(context, direction) {
+    var target = context.getState('faderTarget')
+    var value = faderTargetFeedback[target]
+    if (!value) return
+    if (target === 'Metronome') {
+        value.setProcessValue(context, clampFader(value.getProcessValue(context) + direction / 127))
+        return
+    }
+    if (!isFinite(FADER_NUDGE_DB_INCREMENT) || FADER_NUDGE_DB_INCREMENT <= 0) return
+    var key = context.getState('faderNudgeMapping')
+    var activeMapping = key === '' ? null : faderNudgeMappings[Number(key)]
+    var access = faderNudgeAccess[target]
+    if (!access || !activeMapping) return
+    access.update(activeMapping)
+    var objectID = access.getBaseObjectID(activeMapping)
+    var count = access.getNumberOfParameters(activeMapping, objectID)
+    // Channel Volume is tag 1025 (enumerate to confirm it exists on this object).
+    // Resolve the live base object each press so track selection cannot leave a stale target.
+    for (var i = 0; i < count; i++) {
+        var tag = access.getParameterTagByIndex(activeMapping, objectID, i)
+        if (tag !== 1025) continue
+        if (access.getParameterEditLockState(activeMapping, objectID, tag)) return
+        var units = String(access.getParameterDisplayUnits(activeMapping, objectID, tag) || '').replace(/\s/g, '')
+        // MIDI track volume has no dB scale; do not treat its 0..127 value as dB.
+        var display = access.getParameterDisplayValue(activeMapping, objectID, tag)
+        if (units && !/^db$/i.test(units)) return
+        var current = parseFaderDb(display)
+        if (!isFinite(current)) return // -infinity is not a finite dB starting point.
+        var next = Math.round((current + direction * FADER_NUDGE_DB_INCREMENT) * 1000000) / 1000000
+        var text = String(next)
+        if (String(display).indexOf(',') >= 0) text = text.replace('.', ',')
+        access.setParameterDisplayValue(activeMapping, objectID, tag, text)
+        return
+    }
+}
+
 var faderTargetFeedback = {}
 
 function updateTouchLED(context) {
@@ -780,6 +846,10 @@ function assignSelectedTrackControls() {
         .setSubPage(faderModes.StereoOut)
     page.makeValueBinding(fader.mSurfaceValue, hostTransport.mMetronomeClickLevel)
         .setSubPage(faderModes.Metronome)
+    if (ENABLE_FADER_NUDGE && page.mHostAccess.makeDirectAccess) {
+        faderNudgeAccess.Track = page.mHostAccess.makeDirectAccess(hostSelectedTrack)
+        faderNudgeAccess.StereoOut = page.mHostAccess.makeDirectAccess(hostStereoOut)
+    }
     setupFaderTargetFeedback('Track', hostSelectedTrack.mValue.mVolume)
     setupFaderTargetFeedback('StereoOut', hostStereoOut.mValue.mVolume)
     setupFaderTargetFeedback('Metronome', hostTransport.mMetronomeClickLevel)
@@ -1240,9 +1310,14 @@ function assignKnobControls() {
 }
 
 page.mOnActivate = function(context, activeMapping) {
+    activateFaderNudge(context, activeMapping)
     knobModes.Pan.mAction.mActivate.trigger(activeMapping)
     activateKnobMode(context, 'Pan', activeMapping)
     restoreTransportLEDs(context)
+}
+
+page.mOnDeactivate = function(context, activeMapping) {
+    deactivateFaderNudge(context, activeMapping)
 }
 
 assignTransportControls()

@@ -29,7 +29,7 @@ LED feedback follows Cubase transport state independently of physical button pre
 
 ## Selected track
 
-- With SHIFT off, Prev/Next select the previous/next Cubase track in the other knob modes. Marker mode assigns them to previous/next marker; Section assigns them to previous/next cycle-marker recall; Master assigns them to Set Left Locator / Set Right Locator.
+- With SHIFT off, Prev/Next select the previous/next Cubase track in the other knob modes. Marker mode assigns them to previous/next marker; Section assigns them to previous/next cycle-marker recall; Scroll and Master nudge the current fader when `ENABLE_FADER_NUDGE` is enabled (the default); with it disabled, Scroll selects tracks and Master sets the left/right locators.
 - With SHIFT off, Write/Read toggle the selected track's automation Write/Read enable. WRITE lights red and READ lights green while enabled; both follow track selection and Cubase edits in every mode. SHIFT + Write (Trim) and SHIFT + Read (Off) remain unassigned, as do SHIFT + BYPASS (BypassAll) and SHIFT + TOUCH (Latch). With SHIFT off, BYPASS mirrors encoder push in Link/Pan (selected-track send 1 on/off), Channel (high-pass on/off), Click (metronome on/off), and Master (`Mixer > Bypass: Inserts on Main Mix`). In Scroll, Section, and Marker, BYPASS also toggles the metronome; their knob-press actions stay unchanged.
 - With SHIFT off, Solo/Mute/Arm toggle Solo, Mute and Record Enable for the selected track. Their LEDs follow the selected track's state, including changes made in Cubase.
 - Pan, Link and Channel assign the fader to selected-track volume. Scroll, Section and Marker retain the previous fader assignment. In Click mode it controls metronome level when `ENABLE_METRONOME_FADER = true` (the default); set it to `false` for Stereo Out. In Master mode it controls the first Stereo Out channel using the same FaderPort unity and motor calibration path as the track faders. The Master encoder controls the first FX Return channel. Host changes and track selection feed the fader motor through the existing touch-protection and calibration helpers.
@@ -37,6 +37,12 @@ LED feedback follows Cubase transport state independently of physical button pre
 - Encoder rotation uses the knob modes below. Encoder push toggles the first send in Link and Pan modes, Cubase's metronome in Click mode, the high-pass filter in Channel mode, toggles Main Mix insert bypass in Master mode, and inserts a marker in Marker mode.
 
 With SHIFT off, TOUCH resets the current fader target: selected-track or Stereo Out volume goes to 0 dB using `FADER_HOST_UNITY`; metronome level goes to maximum. TOUCH lights white when the current volume target matches `FADER_HOST_UNITY` within one 14-bit MIDI step, or when the metronome level is at maximum; otherwise it is off. It follows host edits and track changes. Scroll, Section, and Marker retain the preceding fader target, so TOUCH retains that target too. SHIFT + TOUCH remains unassigned. Motor movement follows the existing touch protection.
+
+## Fader nudging
+
+`ENABLE_FADER_NUDGE = true` assigns PREV/NEXT in Scroll and Master to lower/raise the current fader target. `FADER_NUDGE_DB_INCREMENT = 0.5` sets the volume step in dB. Scroll uses its retained target; Master uses Stereo Out. If Scroll retained metronome level, each press changes it by one step on its 0-127 scale instead. SHIFT + PREV/NEXT still perform Undo/Redo. Section and Marker navigation stays unchanged.
+
+Set `ENABLE_FADER_NUDGE = false` to restore Scroll's previous/next track selection and Master's Set Left/Right Locator actions. Volume nudging reads Cubase's current displayed dB value and requests that value plus/minus `FADER_NUDGE_DB_INCREMENT` through Direct Access, with no lookup grid. Cubase handles its volume limits and display precision. At -infinity or an unavailable value, nudging does nothing; use TOUCH or the fader to restore a finite level. Direct Access must be supported by the Cubase version. If unavailable, volume nudging does nothing rather than substitute an approximate step. Host feedback continues to drive the motor and TOUCH LED.
 
 ## Knob modes
 
@@ -46,8 +52,8 @@ Pan is selected when the Hardware page activates. Pan, Link and Channel assign s
 |---|---|
 | Link | Selected-track send 1 level; encoder push or BYPASS toggles send on/off; fader controls selected-track volume |
 | Pan | Selected-track pan; encoder push or BYPASS toggles send 1 on/off |
-| Scroll or SHIFT + Scroll (Zoom) | Horizontal zoom using the Korg position-comparison pattern; knob push zooms to locators; fader retains its previous target |
-| Master | Encoder controls FX Return 1; fader controls Stereo Out; encoder push or BYPASS toggles Main Mix inserts; Prev/Next set left/right locators |
+| Scroll or SHIFT + Scroll (Zoom) | Horizontal zoom using the Korg position-comparison pattern; knob push zooms to locators; fader retains its previous target; Prev/Next nudge that target when enabled |
+| Master | Encoder controls FX Return 1; fader controls Stereo Out; encoder push or BYPASS toggles Main Mix inserts; Prev/Next nudge Stereo Out (set left/right locators when nudging is disabled) |
 | Click | Knob and fader control metronome level (`ENABLE_METRONOME_FADER = true`); encoder push or BYPASS toggles the metronome |
 | Channel | Selected-track high-pass cutoff; knob push or BYPASS toggles the filter |
 | Section | Prev/Next recall cycle markers with wrapping; fader retains its previous target; knob rotates horizontal zoom; knob push zooms to locators |
