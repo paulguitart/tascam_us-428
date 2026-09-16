@@ -160,15 +160,15 @@ Actual port detection, Cubase command execution, surface rendering, encoder dire
 
 ### High-pass color feedback
 
-With High Pass mode selected, disabled is white. When enabled, the color blends from red to magenta with logarithmic frequency spacing, then stays magenta at and above 300 Hz:
+With High Pass mode selected, disabled is white. When enabled, the color blends from green to magenta with logarithmic frequency spacing, then stays magenta at and above 300 Hz:
 
 | Cutoff | Color |
 |---|---|
-| 20 Hz and below | Red |
-| 20–300 Hz | Red-to-magenta blend |
+| 20 Hz and below | Green |
+| 20–300 Hz | Green-to-magenta blend |
 | 300 Hz and above | Magenta |
 
-These colors indicate cutoff frequency, not measured attenuation or slope. The `highPassColors` endpoints can be tuned after checking the actual LEDs. Set `ENABLE_HIGH_PASS_COLOR_GRADIENT = false` for solid red whenever enabled. The state and frequency follow the selected track and mouse edits even outside this mode; the cutoff color appears only while this mode is selected; otherwise Channel follows the nuclear LED flags. Cubase's displayed Hz/kHz is used rather than assuming a normalized frequency curve. Missing/unrecognized display text falls back to red. Actual color appearance and host display callbacks need live verification.
+These colors indicate cutoff frequency, not measured attenuation or slope. The `highPassColors` endpoints can be tuned after checking the actual LEDs. Set `ENABLE_HIGH_PASS_COLOR_GRADIENT = false` for solid green whenever enabled. The state and frequency follow the selected track and mouse edits even outside this mode; the cutoff color appears only while this mode is selected; otherwise Channel follows the nuclear LED flags. Cubase's displayed Hz/kHz is used rather than assuming a normalized frequency curve. Missing/unrecognized display text falls back to green. Actual color appearance and host display callbacks need live verification.
 
 ### RGB brightness
 

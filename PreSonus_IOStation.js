@@ -27,7 +27,7 @@ const ENABLE_FADER_LOW_END_SNAP = false
 const ENABLE_FOOTSWITCH_NORMALIZATION = true
 const FOOTSWITCH_NORMALLY_CLOSED = true
 const FOOTSWITCH_IS_TOGGLE = false           // false: press/release; true: pulse on each edge
-const ENABLE_HIGH_PASS_COLOR_GRADIENT = true // false: solid red when enabled
+const ENABLE_HIGH_PASS_COLOR_GRADIENT = true // false: solid green when enabled
 
 // Calibration values
 const FADER_LOW_END_THRESHOLD = 0.012        // inherited from fp-wizard; normalized travel
@@ -1230,10 +1230,10 @@ function activateKnobMode(context, mode, activeMapping) {
     updateKnobModeLEDs(context)
 }
 
-// Blend only red to magenta through the useful low-cut range; clamp above 300 Hz.
+// Blend green to magenta through the useful low-cut range; clamp above 300 Hz.
 // White marks a disabled filter; inactive mode buttons follow the nuclear LED flags.
 var highPassColors = [
-    { hz: 20, red: RED[0], green: RED[1], blue: RED[2] },
+    { hz: 20, red: GREEN[0], green: GREEN[1], blue: GREEN[2] },
     { hz: 300, red: MAGENTA[0], green: MAGENTA[1], blue: MAGENTA[2] }
 ]
 
@@ -1243,7 +1243,7 @@ function getHighPassColor(hz) {
     }
     if (hz >= highPassColors[1].hz) return highPassColors[1]
 
-    // Log spacing gives more detail at low cutoffs while blending red into magenta.
+    // Log spacing gives more detail at low cutoffs while blending green into magenta.
     var blend = Math.log(hz / highPassColors[0].hz)
         / Math.log(highPassColors[1].hz / highPassColors[0].hz)
     return {

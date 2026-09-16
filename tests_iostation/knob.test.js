@@ -63,11 +63,11 @@ assert.equal(s.parseFrequencyHz('80.0','Hz'),80);
 assert.equal(s.parseFrequencyHz('0,3','kHz'),300);
 assert.equal(s.parseFrequencyHz('1.0 kHz',''),1000);
 assert(Number.isNaN(s.parseFrequencyHz('Unavailable','Hz')));
-assert.equal(s.getHighPassColor(20).red,127);
-assert.equal(s.getHighPassColor(20).green,0);
+assert.equal(s.getHighPassColor(20).red,0);
+assert.equal(s.getHighPassColor(20).green,127);
 assert.equal(s.getHighPassColor(20).blue,0);
 assert.equal(Math.round(s.getHighPassColor(80).blue),65);
-assert.equal(s.getHighPassColor(80).green,0);
+assert.equal(Math.round(s.getHighPassColor(80).green),62);
 assert.equal(s.getHighPassColor(300).blue,127);
 for(const hz of [300,301,1000,20000]){
  const color=s.getHighPassColor(hz);
@@ -75,7 +75,7 @@ for(const hz of [300,301,1000,20000]){
 }
 for(let hz=20;hz<=20000;hz+=13){
  const color=s.getHighPassColor(hz);
- assert.equal(color.red,127);assert.equal(color.green,0);
+ assert.equal(color.red,color.blue);assert(Math.abs(color.green + color.red - 127) < 1e-9);
  assert(color.blue>=0 && color.blue<=127);
  for(const component of ['red','green','blue']) assert(color[component]>=0 && color[component]<=127);
 }
@@ -97,7 +97,7 @@ s.knobModes.Pan.mOnActivate(ctx);
 enabledFeedback.mOnProcessValueChange(ctx,0);
 frequencyFeedback.mOnDisplayValueChange(ctx,'150','Hz');
 assert.deepStrictEqual(midi.filter(message=>message[0]===144&&message[1]===s.cChannel).pop(),[144,s.cChannel,0]);
-console.log('PASS: Hz parsing, red-to-magenta gradient with 300 Hz clamp, host-driven colors and off-mode LED');
+console.log('PASS: Hz parsing, green-to-magenta gradient with 300 Hz clamp, host-driven colors and off-mode LED');
 
 const markerModeCommands=commands.filter(binding=>binding.page===s.knobModes.Marker);
 assert(markerModeCommands.some(binding=>binding.input===s.buttons.Prev&&binding.category==='Transport'&&binding.command==='Locate Previous Marker'));
