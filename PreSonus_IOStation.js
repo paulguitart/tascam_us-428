@@ -603,17 +603,30 @@ var var_markerNext = surface.makeCustomValueVariable('Next Marker Pressed')
 
 function routeNavigationPress(context, direction) {
     var mode = context.getState('knobMode')
-    var previous = direction === 'Prev'
+
     if (mode === 'Section') {
-        if (previous) recallPrevCycle(context)
-        else recallNextCycle(context)
-        return
+        if (direction === 'Prev') {
+            recallPrevCycle(context)
+        } else {
+            recallNextCycle(context)
+        }
+    } else if (mode === 'Marker') {
+        if (direction === 'Prev') {
+            var_markerPrev.setProcessValue(context, 1)
+            var_markerPrev.setProcessValue(context, 0)
+        } else {
+            var_markerNext.setProcessValue(context, 1)
+            var_markerNext.setProcessValue(context, 0)
+        }
+    } else {
+        if (direction === 'Prev') {
+            var_trackPrev.setProcessValue(context, 1)
+            var_trackPrev.setProcessValue(context, 0)
+        } else {
+            var_trackNext.setProcessValue(context, 1)
+            var_trackNext.setProcessValue(context, 0)
+        }
     }
-    var input = mode === 'Marker'
-        ? (previous ? var_markerPrev : var_markerNext)
-        : (previous ? var_trackPrev : var_trackNext)
-    input.setProcessValue(context, 1)
-    input.setProcessValue(context, 0)
 }
 
 function setupCycleMarkerCommands() {
