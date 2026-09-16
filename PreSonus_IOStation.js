@@ -50,9 +50,9 @@ const AMBER =  [127, 48, 0]
 const MAGENTA = [127, 0, 127]
 
 // button color values
-const CLICK_MODE_COLOR = BLUE
-const METRONOME_ON_COLOR= AMBER
-const CLICK_MODE_AND_METRONOME_ON_COLOR= GREEN
+const ENABLE_METRONOME_PULSE = true
+const METRONOME_PULSE_MIN_BRIGHTNESS = 0.15
+const WHITE = [127, 127, 127]
 
 /*
 ====================================================================================================
@@ -83,7 +83,7 @@ PAN (Normal)             : Select Pan knob mode; knob push toggles send 1 on/off
 SCROLL / SHIFT + SCROLL  : Select Zoom knob mode
 MASTER (Normal)          : Select Master mode; encoder controls FX Return 1, fader controls Stereo Out
 CLICK (Normal)           : Select Click Level knob mode
-KNOB PUSH (Click Mode)   : Metronome on/off; Click LED color shows mode and state
+KNOB PUSH (Click Mode)   : Metronome on/off; Click LED shows Click mode; inactive RGB mode LEDs show metronome
 CHANNEL (Normal)         : Select High Pass (Low Cut) knob mode for the selected track
 MARKER (Normal)          : Select Marker mode; Prev/Next locate markers; knob push inserts marker
 
@@ -95,7 +95,7 @@ ZOOM                     : Horizontal Zoom In / Out commands
 MASTER                   : Encoder controls FX Return 1; fader controls Stereo Out Volume
 CLICK                    : Metronome Click Level
 HIGH PASS                : Selected Track Low Cut Frequency; press knob for filter on/off
-HIGH PASS LED            : Green when disabled; color indicates frequency when enabled
+HIGH PASS LED            : White when disabled; color indicates frequency when enabled
 MARKER                    : Prev/Next locate previous/next marker; knob push inserts marker
 
 FADER / FOOTSWITCH:
@@ -479,7 +479,7 @@ function resetHardwareState(context) {
 var ledNotes = [cSolo, cMute, cArm, cShift, cBypass, cTouch, cWrite, cRead,
     cPrev, cNext, cLink, cPan, cChannel, cScroll, cMaster, cClick, cSection,
     cMarker, cCycle, cRWD, cFWD, cStop, cPlay, cRecord]
-var rgbNotes = [cTouch, cWrite, cRead, cLink, cPan, cChannel, cScroll, cClick]
+var rgbNotes = [cTouch, cWrite, cRead, cLink, cPan, cChannel, cScroll]
 function allLEDsOff(context) {
     for (var i = 0; i < ledNotes.length; i++) { offLED(context, ledNotes[i]) }
 }
@@ -633,34 +633,62 @@ function sendTransportFeedback(hostValue, note, name) {
 	}
 }
 
-function updateClickLED(context, isMetronomeActive) {
-    var isClickMode = context.getState('knobMode') === 'Click'
-    if (isMetronomeActive === undefined) {
-        isMetronomeActive = metronomeFeedbackValue
-            && Number(metronomeFeedbackValue.getProcessValue(context)) > 0
-    } else {
-        isMetronomeActive = Number(isMetronomeActive) > 0
-    }
+function updateClickLED(context) {
+    setTransportLed(context, cClick, context.getState('knobMode') === 'Click')
+}
 
-    var color = LED_OFF_COLOR
-    if (isClickMode && isMetronomeActive) {
-		color = CLICK_MODE_AND_METRONOME_ON_COLOR
-	} else if (isMetronomeActive) {
-		color = METRONOME_ON_COLOR
-	} else if (isClickMode) {
-		color = CLICK_MODE_COLOR
-	}
-    setRGBLED_color(context, cClick, color)
-    // RGB color and the button's lit state are separate MIDI messages.
-    if (isClickMode || isMetronomeActive) onLED(context, cClick)
-    else offLED(context, cClick)
+// Tascam pattern: host BPM -> milliseconds per beat -> Date.now() idle timer.
+// This follows tempo rate, not the transport's musical beat position.
+var hostTimeDisplay = page.mHostAccess.mTransport.mTimeDisplay
+hostTimeDisplay.mOnChangeTempoBPM = function(context, activeMapping, tempoBPM) {
+    if (!isFinite(tempoBPM) || tempoBPM <= 0) tempoBPM = 120
+    context.setState('metronomeMsPerBeat', String(Math.max(150, 60000 / tempoBPM)))
+    context.setState('metronomePulseStart', '')
+}
+
+function updateMetronomeModeLEDs(context, now) {
+    var enabled = context.getState('metronomeEnabled') === '1'
+    var brightness = 1
+    if (enabled && ENABLE_METRONOME_PULSE) {
+        var start = context.getState('metronomePulseStart')
+        if (start === '' || now < Number(start)) {
+            start = String(now)
+            context.setState('metronomePulseStart', start)
+        }
+        var interval = Number(context.getState('metronomeMsPerBeat')) || 500
+        var phase = ((now - Number(start)) % interval) / interval
+        brightness = METRONOME_PULSE_MIN_BRIGHTNESS
+            + (1 - METRONOME_PULSE_MIN_BRIGHTNESS) * (1 + Math.cos(2 * Math.PI * phase)) / 2
+    }
+    var mode = context.getState('knobMode')
+    var notes = [cLink, cPan, cChannel, cScroll]
+    var modes = ['Link', 'Pan', 'HighPass', 'Zoom']
+    for (var i = 0; i < notes.length; i++) {
+        if (mode === modes[i]) {
+            if (mode === 'HighPass') updateHighPassLED(context)
+            else {
+                setRGBLED_color(context, notes[i], WHITE)
+                onLED(context, notes[i])
+            }
+        } else if (enabled) {
+            setRGBLED_color(context, notes[i], GREEN, brightness)
+            onLED(context, notes[i])
+        } else {
+            offLED(context, notes[i])
+        }
+    }
 }
 
 function setupMetronomeFeedback() {
     metronomeFeedbackValue = surface.makeCustomValueVariable('Metronome LED Feedback')
     page.makeValueBinding(metronomeFeedbackValue, hostMetronomeActive)
-    hostMetronomeActive.mOnProcessValueChange = function(context, activeMapping, newValue) {
-        updateClickLED(context, newValue)
+    metronomeFeedbackValue.mOnProcessValueChange = function(context, newValue) {
+        var enabled = newValue > 0 ? '1' : '0'
+        if (context.getState('metronomeEnabled') !== enabled) {
+            context.setState('metronomePulseStart', '')
+        }
+        context.setState('metronomeEnabled', enabled)
+        updateMetronomeModeLEDs(context, Date.now())
     }
 }
 
@@ -714,6 +742,7 @@ function blinkConfirmTransportLEDs(context) {
 
 deviceDriver.mOnIdle = function(context) {
 	var now = Date.now()
+    updateMetronomeModeLEDs(context, now)
 	var holdStart = context.getState('stopHoldStartMs')
 	if (ENABLE_STOP_HOLD_SAVE && holdStart !== '' && now - Number(holdStart) >= STOP_SAVE_HOLD_MS) {
 		resetStopProgress(context)
@@ -777,13 +806,10 @@ var fxChannel = hostMixerZoneFX.makeMixerBankChannel()
 
 function updateKnobModeLEDs(context) {
     var mode = context.getState('knobMode')
-    setTransportLed(context, cLink, mode === 'Link')
-    setTransportLed(context, cPan, mode === 'Pan')
-    setTransportLed(context, cScroll, mode === 'Zoom')
+    updateMetronomeModeLEDs(context, Date.now())
     setTransportLed(context, cMaster, mode === 'Master')
     setTransportLed(context, cMarker, mode === 'Marker')
     updateClickLED(context)
-    updateHighPassLED(context)
 }
 
 function activateKnobMode(context, mode) {
@@ -794,7 +820,7 @@ function activateKnobMode(context, mode) {
 }
 
 // Blend only red to magenta through the useful low-cut range; clamp above 300 Hz.
-// Green is reserved for selected mode with the filter disabled.
+// White marks a disabled filter; green is reserved for metronome feedback.
 var highPassColors = [
     { hz: 20, red: RED[0], green: RED[1], blue: RED[2] },
     { hz: 300, red: MAGENTA[0], green: MAGENTA[1], blue: MAGENTA[2] }
@@ -826,12 +852,9 @@ function parseFrequencyHz(value, units) {
 }
 
 function updateHighPassLED(context) {
-    if (context.getState('knobMode') !== 'HighPass') {
-        offLED(context, cChannel)
-        return
-    }
+    if (context.getState('knobMode') !== 'HighPass') return
     if (context.getState('highPassEnabled') !== '1') {
-        setRGBLED_color(context, cChannel, GREEN)
+        setRGBLED_color(context, cChannel, WHITE)
     } else {
         var color = getHighPassColor(Number(context.getState('highPassHz')))
         setRGBLED(context, cChannel, color.red, color.green, color.blue)

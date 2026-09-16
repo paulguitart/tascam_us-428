@@ -11,7 +11,7 @@
 - LED off/on/flash and RGB helpers; direct normalized motor-position helper.
 - One **Hardware** mapping page with Korg-style transport assignments.
 
-Selected-track navigation, volume, Solo, Mute and Record Enable are assigned to Cubase, along with transport, Undo/Redo, Click and the knob modes. SHIFT toggles a software layer; its LED stays on while that layer is enabled. Solo, Mute and Arm LEDs follow the selected track. RGB colors are initialized to white. The Click RGB LED distinguishes Click mode from metronome state. Other transport LEDs follow host state. No startup or shutdown fader movement is requested.
+Selected-track navigation, volume, Solo, Mute and Record Enable are assigned to Cubase, along with transport, Undo/Redo, Click and the knob modes. SHIFT toggles a software layer; its LED stays on while that layer is enabled. Solo, Mute and Arm LEDs follow the selected track. RGB colors are initialized to white. The Click LED indicates Click mode. Inactive Link, Pan, Channel and Scroll LEDs show metronome status with a green tempo pulse. Other transport LEDs follow host state. No startup or shutdown fader movement is requested.
 
 ## Transport
 
@@ -51,11 +51,15 @@ Pan is selected when the Hardware page activates. The fader controls selected-tr
 
 Master fader controls an output channel, not Control Room. With multiple output buses, put the intended Stereo Out first in the output bank. The API binding does not identify a bus by its name or Main Mix designation. The encoder uses the first FX channel, so the intended FX Return 1 must be first in the FX bank. The fader uses the same FaderPort unity calibration as track faders. Encoder rotation remains full-range.
 
-Link, Pan, Scroll, Master, Channel and Marker LEDs identify their active modes. Click's RGB LED shows both mode and metronome state: blue means Click mode selected with the metronome off, green means Click mode selected with the metronome on, amber means the metronome is on in another mode, and off means neither. SHIFT + Pan (Flip), SHIFT + Master (F1) and SHIFT + Click (F2) keep their separate, unassigned paths. SHIFT + Scroll selects the same Zoom mode as Scroll. Changing SHIFT alone does not change the current knob mode.
+The active Link, Pan or Scroll mode is white; active Channel uses the high-pass colors below. The other buttons in this four-button group pulse green when the metronome is enabled and turn off when it is disabled. In Master, Click or Marker mode, all four show metronome status. Master, Click and Marker LEDs indicate only their respective active modes.
+
+The green brightness pulse uses the Tascam script's tempo callback and idle-timer pattern: `60000 / BPM`, with a 120 BPM fallback and a 150 ms minimum interval. A smooth brightness cycle runs once per beat, from 15% to full brightness. It follows tempo rate, not the transport's beat position, and continues while stopped if the metronome remains enabled. Set `ENABLE_METRONOME_PULSE = false` for steady green; adjust `METRONOME_PULSE_MIN_BRIGHTNESS` to change the pulse floor. Hardware smoothness depends on Cubase's idle callback cadence.
+
+SHIFT + Pan (Flip), SHIFT + Master (F1) and SHIFT + Click (F2) keep their separate, unassigned paths. SHIFT + Scroll selects Zoom. Changing SHIFT alone does not change the current mode.
 
 Zoom pulses commands for repeated movement and seeds its comparison value on mode entry to avoid an immediate zoom jump. Like the Korg pattern, reaching the normalized range endpoint may require reversing the knob before further travel is available; verify the relative encoder behavior in Cubase.
 
-Channel mode uses Cubase’s Pre section Low Cut (high-pass) frequency and on/off controls. Selecting Channel does not enable the filter automatically; press the knob to toggle it. Cutoff adjustment leaves the current enable state and slope intact. The Channel LED is off outside High Pass mode, green when that mode is active with the filter disabled, and a cutoff-dependent color when enabled. SHIFT + Channel remains the unassigned ChannelLock path. In Master mode, encoder push runs Cubase's `Mixer > Bypass: Inserts on Main Mix` command. Marker mode uses Prev/Next to locate the previous/next marker and encoder push to insert one; encoder rotation is unused in that mode. Cubase 12 and 13+ use different command categories for marker insertion, which the script selects based on API feature availability. Knob push has no assigned action in Zoom mode.
+Channel mode uses Cubase’s Pre section Low Cut (high-pass) frequency and on/off controls. Selecting Channel does not enable the filter automatically; press the knob to toggle it. Cutoff adjustment leaves the current enable state and slope intact. The Channel LED shows metronome status outside High Pass mode, white when that mode is active with the filter disabled, and a cutoff-dependent color when enabled. SHIFT + Channel remains the unassigned ChannelLock path. In Master mode, encoder push runs Cubase's `Mixer > Bypass: Inserts on Main Mix` command. Marker mode uses Prev/Next to locate the previous/next marker and encoder push to insert one; encoder rotation is unused in that mode. Cubase 12 and 13+ use different command categories for marker insertion, which the script selects based on API feature availability. Knob push has no assigned action in Zoom mode.
 
 Link controls send slot 1 (`mSends.getByIndex(0)`) on the selected track. Assign the intended FX destination to that slot in Cubase. Turning the knob changes its level without changing its enabled state; pressing the knob toggles its current on/off state. Pan mode also toggles this same send with knob push, while rotation adjusts pan. The fader and Prev/Next behave as in Pan mode. SHIFT + Link remains the unassigned LinkLock path. Section and Quick Controls are left for later.
 
@@ -64,7 +68,7 @@ Link controls send slot 1 (`mSends.getByIndex(0)`) on the selected track. Assign
 - With SHIFT enabled, Prev triggers Undo and Next triggers Redo, following the printed labels.
 - With SHIFT off, Click selects the knob’s Click mode; encoder push toggles Cubase's metronome. Knob rotation adjusts metronome click level.
 - With SHIFT off, Marker selects Marker mode; Prev/Next locate the previous/next marker, and encoder push inserts a marker.
-- The Click RGB LED follows Cubase state, including changes made with the mouse: blue is selected mode/off, green selected mode/on, amber metronome on in another mode, and off when both are off.
+- Metronome feedback follows Cubase state, including mouse changes, on the inactive Link/Pan/Channel/Scroll LEDs. Click lights only while Click mode is active.
 - With SHIFT enabled, Click reaches the unassigned F2 path; it does not select Click mode or toggle the metronome.
 - Cycle toggles loop mode and follows Cubase's cycle state with its LED. Cycle feedback remains live during Save confirmation blinking.
 
@@ -140,7 +144,7 @@ Actual port detection, Cubase command execution, surface rendering, encoder dire
 
 ### High-pass color feedback
 
-With High Pass mode selected, disabled is green. When enabled, the color blends from red to magenta with logarithmic frequency spacing, then stays magenta at and above 300 Hz:
+With High Pass mode selected, disabled is white. When enabled, the color blends from red to magenta with logarithmic frequency spacing, then stays magenta at and above 300 Hz:
 
 | Cutoff | Color |
 |---|---|
@@ -148,7 +152,7 @@ With High Pass mode selected, disabled is green. When enabled, the color blends 
 | 20–300 Hz | Red-to-magenta blend |
 | 300 Hz and above | Magenta |
 
-These colors indicate cutoff frequency, not measured attenuation or slope. The `highPassColors` endpoints can be tuned after checking the actual LEDs. Set `ENABLE_HIGH_PASS_COLOR_GRADIENT = false` for solid red whenever enabled. The state and frequency follow the selected track and mouse edits even outside this mode; the LED lights only while this mode is selected. Cubase's displayed Hz/kHz is used rather than assuming a normalized frequency curve. Missing/unrecognized display text falls back to red. Actual color appearance and host display callbacks need live verification.
+These colors indicate cutoff frequency, not measured attenuation or slope. The `highPassColors` endpoints can be tuned after checking the actual LEDs. Set `ENABLE_HIGH_PASS_COLOR_GRADIENT = false` for solid red whenever enabled. The state and frequency follow the selected track and mouse edits even outside this mode; the cutoff color appears only while this mode is selected; otherwise Channel shows metronome status. Cubase's displayed Hz/kHz is used rather than assuming a normalized frequency curve. Missing/unrecognized display text falls back to red. Actual color appearance and host display callbacks need live verification.
 
 ### RGB brightness
 
