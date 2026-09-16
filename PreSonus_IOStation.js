@@ -67,6 +67,7 @@ SOLO / MUTE / ARM (Normal): Toggle selected-track Solo / Mute / Record Enable
                            : LEDs follow the selected-track state
 PREV / NEXT              : Select Previous / Next Track
 SHIFT + PREV / NEXT      : Undo / Redo
+LINK (Normal)            : Select first-send knob mode; knob push toggles send on/off
 PAN (Normal)             : Select Pan knob mode
 SCROLL / SHIFT + SCROLL  : Select Zoom knob mode
 MASTER (Normal)          : Select Master mode; encoder controls FX Return 1, fader controls Stereo Out
@@ -77,6 +78,7 @@ MARKER (Normal)          : Select Marker mode; Prev/Next locate markers; knob pu
 
 KNOB MODES:
 ----------------------------------------------------------------------------------------------------
+LINK                     : Selected Track Send 1 Level; press knob for send on/off
 PAN                      : Selected Track Pan
 ZOOM                     : Horizontal Zoom In / Out commands
 MASTER                   : Encoder controls FX Return 1; fader controls Stereo Out Volume
@@ -97,7 +99,7 @@ UNASSIGNED BUTTON PATHS:
 BYPASS / TOUCH / WRITE / READ                  : Normal paths
 SHIFT + SOLO / MUTE / ARM                      : SoloClear / MuteClear / ArmAll
 SHIFT + BYPASS / TOUCH / WRITE / READ          : BypassAll / Latch / Trim / Off
-LINK / SHIFT + LINK      : Link / LinkLock
+SHIFT + LINK             : LinkLock
 SHIFT + PAN              : Flip
 SHIFT + CHANNEL          : ChannelLock
 SHIFT + MASTER / CLICK   : F1 / F2
@@ -583,7 +585,7 @@ function assignSelectedTrackControls() {
     // Marker mode gives Prev/Next to marker navigation, so scope track stepping
     // to every other knob mode instead of leaving a competing page-wide action.
     var trackNavigationModes = [
-        knobModes.Pan, knobModes.Zoom, knobModes.Master, knobModes.Click, knobModes.HighPass
+        knobModes.Pan, knobModes.Link, knobModes.Zoom, knobModes.Master, knobModes.Click, knobModes.HighPass
     ]
     for (var i = 0; i < trackNavigationModes.length; i++) {
         page.makeActionBinding(buttons.Prev, hostTrackSelection.mAction.mPrevTrack)
@@ -593,7 +595,7 @@ function assignSelectedTrackControls() {
     }
     // Master mode has a separate Stereo Out fader binding.
     var selectedTrackFaderModes = [
-        knobModes.Pan, knobModes.Zoom, knobModes.Click, knobModes.HighPass, knobModes.Marker
+        knobModes.Pan, knobModes.Link, knobModes.Zoom, knobModes.Click, knobModes.HighPass, knobModes.Marker
     ]
     for (var faderModeIndex = 0; faderModeIndex < selectedTrackFaderModes.length; faderModeIndex++) {
         page.makeValueBinding(fader.mSurfaceValue, hostSelectedTrack.mValue.mVolume)
@@ -732,6 +734,7 @@ deviceDriver.mOnIdle = function(context) {
 var knob = mSection.knob_vis.mSurfaceValue
 var knobModeArea = page.makeSubPageArea('Knob Mode')
 var knobModes = {
+    Link: knobModeArea.makeSubPage('Link'),
     Pan: knobModeArea.makeSubPage('Pan'),
     Zoom: knobModeArea.makeSubPage('Zoom'),
     Master: knobModeArea.makeSubPage('Master'),
@@ -740,6 +743,7 @@ var knobModes = {
     Marker: knobModeArea.makeSubPage('Marker')
 }
 var knobModeButtons = [
+    { button: buttons.Link, mode: knobModes.Link },
     { button: buttons.Pan, mode: knobModes.Pan },
     { button: buttons.Scroll, mode: knobModes.Zoom },
     { button: buttons.Zoom, mode: knobModes.Zoom },
@@ -762,6 +766,7 @@ var fxChannel = hostMixerZoneFX.makeMixerBankChannel()
 
 function updateKnobModeLEDs(context) {
     var mode = context.getState('knobMode')
+    setTransportLed(context, cLink, mode === 'Link')
     setTransportLed(context, cPan, mode === 'Pan')
     setTransportLed(context, cScroll, mode === 'Zoom')
     setTransportLed(context, cMaster, mode === 'Master')
@@ -850,6 +855,11 @@ function assignKnobControls() {
     }
     page.makeValueBinding(knob, page.mHostAccess.mTrackSelection.mMixerChannel.mValue.mPan)
         .setSubPage(knobModes.Pan)
+    var firstSend = page.mHostAccess.mTrackSelection.mMixerChannel.mSends.getByIndex(0)
+    page.makeValueBinding(knob, firstSend.mLevel).setSubPage(knobModes.Link)
+    // Follow host/track changes so each push toggles the current send state.
+    var sendEnabled = surface.makeCustomValueVariable('First Send Enabled')
+    page.makeValueBinding(sendEnabled, firstSend.mOn)
     // Master-mode encoder controls the first FX Return channel.
     page.makeValueBinding(knob, fxChannel.mValue.mVolume)
         .setValueTakeOverModeScaled()
@@ -880,6 +890,7 @@ function assignKnobControls() {
     page.makeCommandBinding(buttons.Next,
         'Transport', 'Locate Next Marker').setSubPage(knobModes.Marker)
 
+    knobModes.Link.mOnActivate = function(context) { activateKnobMode(context, 'Link') }
     knobModes.Pan.mOnActivate = function(context) { activateKnobMode(context, 'Pan') }
     knobModes.Zoom.mOnActivate = function(context) { activateKnobMode(context, 'Zoom') }
     knobModes.Master.mOnActivate = function(context) { activateKnobMode(context, 'Master') }
@@ -899,7 +910,10 @@ function assignKnobControls() {
         context.setState('knobPressRouted', '1')
 
         var mode = context.getState('knobMode')
-        if (mode === 'Click') {
+        if (mode === 'Link') {
+            var enabled = Number(sendEnabled.getProcessValue(context)) > 0
+            sendEnabled.setProcessValue(context, enabled ? 0 : 1)
+        } else if (mode === 'Click') {
             toggleMetronome(context)
         } else if (mode === 'HighPass') {
             var highPassEnabled = Number(highPassEnabledFeedbackValue.getProcessValue(context)) > 0
