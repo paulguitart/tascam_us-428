@@ -28,7 +28,7 @@ assert.equal(a.getState('previousKnobMode'), 'Click');
 for (const [button, mode] of Object.entries({ Link: 'Link', Scroll: 'Zoom', Zoom: 'Zoom', Master: 'Master', Click: 'Click', Channel: 'HighPass', Section: 'Section', Marker: 'Marker' })) {
     scope.activateKnobMode(a, 'Pan');
     scope.activateKnobMode(a, mode);
-    assert.equal(scope.resolveKnobModeButton(a, button), button === 'Channel' ? 'PreGain' : 'Pan');
+    assert.equal(scope.resolveKnobModeButton(a, button), button === 'Channel' ? 'PreGain' : button === 'Link' ? 'Mouse' : 'Pan');
     assert.equal(scope.resolveKnobModeButton(a, 'F2'), 'F2');
     assert.equal(scope.resolveKnobModeButton(b, button), button);
 }
@@ -56,15 +56,15 @@ for (const name of ['Link', 'Pan', 'Channel', 'Scroll', 'Master', 'Click', 'Sect
         press(context, 1);
         context.setState('shiftEnabled', shift === '1' ? '0' : '1');
         press(context, 0);
-        const expected = name === 'Channel' && shift === '1' ? 'PreGain' : name === 'Scroll' && shift === '1' ? 'Zoom' : name;
+        const expected = name === 'Link' && shift === '1' ? 'Mouse' : name === 'Channel' && shift === '1' ? 'PreGain' : name === 'Scroll' && shift === '1' ? 'Zoom' : name;
         assert.deepEqual(events, [[expected, 1], [expected, 0]]);
         // Pressing the active mode returns to Pan in either SHIFT state.
-        context.setState('knobMode', name === 'Channel' ? (shift === '1' ? 'PreGain' : 'HighPass') : name === 'Scroll' ? 'Zoom' : name);
+        context.setState('knobMode', name === 'Link' ? (shift === '1' ? 'Mouse' : 'Link') : name === 'Channel' ? (shift === '1' ? 'PreGain' : 'HighPass') : name === 'Scroll' ? 'Zoom' : name);
         context.setState('previousKnobMode', 'Pan');
         context.setState('shiftEnabled', shift);
         events.length = 0;
         press(context, 1); press(context, 0);
-        const target = name === 'Channel' ? (shift === '1' ? 'Channel' : 'PreGain') : 'Pan';
+        const target = name === 'Link' ? (shift === '1' ? 'Link' : 'Mouse') : name === 'Channel' ? (shift === '1' ? 'Channel' : 'PreGain') : 'Pan';
         assert.deepEqual(events, [[target, 1], [target, 0]]);
         context.setState('knobMode', '');
     }

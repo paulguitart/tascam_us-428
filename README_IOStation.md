@@ -46,7 +46,7 @@ Set `ENABLE_FADER_NUDGE = false` to restore Master's Set Left/Right Locator acti
 
 ## Knob modes
 
-Press the active mode's button again to return to the previous mode. For example, Pan -> Click -> Click returns to Pan; pressing Pan again returns to Click. Channel instead alternates High Pass and Pre Gain; other mode buttons share this history behavior with SHIFT on or off. Before the first mode change, Pan stays active. History resets when the mapping activates. Restored modes use their usual fader behavior; Scroll, Section and Marker retain the current fader target.
+Press the active mode's button again to return to the previous mode. For example, Pan -> Click -> Click returns to Pan; pressing Pan again returns to Click. Channel alternates High Pass and Pre Gain; Link alternates Send 1 and Mouse Parameter; other mode buttons share this history behavior with SHIFT on or off. Before the first mode change, Pan stays active. History resets when the mapping activates. Restored modes use their usual fader behavior; Scroll, Section and Marker retain the current fader target.
 
 Pan is selected when the Hardware page activates. Pan, Link and Channel assign selected-track volume; Master assigns Stereo Out; Click assigns metronome level (Stereo Out when `ENABLE_METRONOME_FADER = false`). Scroll (including SHIFT + Scroll), Section and Marker keep whichever fader target was previously active. All use the same motor and calibration helpers.
 
@@ -69,7 +69,7 @@ With `ENABLE_PAN_COLOR = true` (default), active Pan is white at exact center. M
 
 The recording-only red brightness pulse uses the Tascam script's tempo callback and idle-timer pattern: `60000 / BPM`, with a 120 BPM fallback and a 150 ms minimum interval. A smooth brightness cycle runs once per beat, from 15% to full brightness. It follows tempo rate, not the transport's beat position, and returns to solid blue only if the metronome and `ENABLE_NUCLEAR_METRONOME_LEDS` are both enabled; otherwise it turns off when recording stops. Set `METRONOME_PULSE_COLOR` to choose the normal metronome color. Set `ENABLE_NUCLEAR_RECORD_BLINK = false` to disable the recording indication on this group entirely. With that flag enabled, set `ENABLE_METRONOME_PULSE = false` for steady red during recording; adjust `METRONOME_PULSE_MIN_BRIGHTNESS` to change the pulse floor. Hardware smoothness depends on Cubase's idle callback cadence.
 
-All mode buttons except Channel select and toggle the same modes with SHIFT on or off. SHIFT + Channel selects Pre Gain; unshifted Channel selects High Pass. Changing SHIFT switches between High Pass and Pre Gain when either Channel mode is active; other modes stay selected.
+All mode buttons except Channel and Link select and toggle the same modes with SHIFT on or off. SHIFT + Channel selects Pre Gain; unshifted Channel selects High Pass. Changing SHIFT switches between High Pass and Pre Gain when either Channel mode is active; other modes stay selected.
 
 In Scroll/Zoom and Section modes, knob push runs `Zoom > Zoom to Locators`, once per press. Scroll/Zoom, Section, and Marker share horizontal zoom rotation. Zoom pulses commands for repeated movement and seeds its comparison value on mode entry to avoid an immediate zoom jump. Like the Korg pattern, reaching the normalized range endpoint may require reversing the knob before further travel is available; verify the relative encoder behavior in Cubase.
 
@@ -187,3 +187,9 @@ PLAY uses the working `hostTransport.mStart` value binding. Its LED follows Cuba
 ## Pre Gain alternate mode
 
 SHIFT + Channel selects selected-track pre-gain on the knob. The fader remains selected-track volume, and navigation follows the existing SHIFT layer. Channel is white at 0 dB, blending continuously toward blue below zero and red above zero, reaching full color at the gain range endpoints. Knob push resets pre-gain to 0 dB. BYPASS toggles polarity inversion, with its LED on when inverted; this works with SHIFT on or off in Pre Gain mode. Host edits and track selection update both LEDs. While either Channel mode is active, pressing CHANNEL toggles High Pass ↔ Pre Gain, and pressing SHIFT switches immediately to the matching mode. SHIFT is off for High Pass and on for Pre Gain, including when restored through another button’s mode history. Channel uses this two-mode toggle instead of previous-mode recall. Other modes retain their existing SHIFT behavior.
+
+## Mouse Parameter alternate Link mode
+
+SHIFT + Link enters Mouse Parameter mode. Pressing Link again toggles Send 1 and Mouse Parameter; pressing SHIFT while either is active switches immediately. SHIFT is off for Send 1 and on for Mouse Parameter, including history recall. Mouse Parameter shows a steady blue Link LED; Send 1 stays white. The knob adjusts Cubase’s supported parameter under the mouse; the fader remains selected-track volume.
+
+Knob push or BYPASS toggles Cubase’s mouse-parameter lock, with SHIFT on or off. BYPASS lights steadily when locked. A locked target remains controlled after the mouse moves away. The script keeps the lock binding active and does not clear it when leaving or returning to the mode. Persistence across project changes or script reloads is controlled by Cubase, not saved by this script. Unlock to follow the mouse again. No reset or flashing lock indication is assigned.

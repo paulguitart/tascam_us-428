@@ -86,7 +86,8 @@ SOLO / MUTE / ARM (Normal): Toggle selected-track Solo / Mute / Record Enable
                            : LEDs follow the selected-track state
 PREV / NEXT              : Select Previous / Next Track
 SHIFT + PREV / NEXT      : Undo / Redo
-LINK (Normal)            : Select first-send knob mode; knob push toggles send on/off
+LINK (Normal)            : First-send knob mode; press again for Mouse Parameter mode
+SHIFT + LINK            : Mouse parameter; knob push/BYPASS lock; steady BYPASS LED = locked
 PAN (Normal)             : Select Pan knob mode; knob push centers pan
 SCROLL / SHIFT + SCROLL  : Select Zoom knob mode
 MASTER (Normal)          : Select Master mode; encoder controls FX Return 1, fader controls Stereo Out
@@ -303,7 +304,7 @@ var buttonMappings = [
     { physicalButton: uSection.btn_Read, normalName: 'Read', shiftedName: 'Off' },
     { physicalButton: mSection.btn_Prev, normalName: 'Prev', shiftedName: 'Undo' },
     { physicalButton: mSection.btn_Next, normalName: 'Next', shiftedName: 'Redo' },
-    { physicalButton: mSection.btn_Link, normalName: 'Link', shiftedName: 'Link' },
+    { physicalButton: mSection.btn_Link, normalName: 'Link', shiftedName: 'Mouse' },
     { physicalButton: mSection.btn_Pan, normalName: 'Pan', shiftedName: 'Pan' },
     { physicalButton: mSection.btn_Channel, normalName: 'Channel', shiftedName: 'PreGain' },
     { physicalButton: mSection.btn_Scroll, normalName: 'Scroll', shiftedName: 'Zoom' },
@@ -352,7 +353,7 @@ function assignButtonRouting(mapping) {
         if (value > 0) {
             if (activeName) { return } // Ignore repeated press messages.
             activeName = context.getState('shiftEnabled') === '1' ? shiftedName : normalName
-            if (normalName === 'Bypass' && context.getState('knobMode') === 'PreGain') activeName = 'Bypass'
+            if (normalName === 'Bypass' && (context.getState('knobMode') === 'PreGain' || context.getState('knobMode') === 'Mouse')) activeName = 'Bypass'
             activeName = resolveKnobModeButton(context, activeName)
             context.setState(stateKey, activeName)
             // Selected-track state bindings toggle on press; their release must not clear the host value.
@@ -395,6 +396,8 @@ uSection.btn_Shift.mSurfaceValue.mOnProcessValueChange = function(context, value
     var mode = context.getState('knobMode')
     if (mode === 'HighPass' || mode === 'PreGain') {
         pulseVar(context, enabled ? buttons.PreGain : buttons.Channel)
+    } else if (mode === 'Link' || mode === 'Mouse') {
+        pulseVar(context, enabled ? buttons.Mouse : buttons.Link)
     }
 }
 
@@ -938,7 +941,10 @@ function updateMetronomeModeLEDs(context, now) {
     var notes = [cLink, cPan, cChannel, cScroll]
     var modes = ['Link', 'Pan', 'HighPass', 'Zoom']
     for (var i = 0; i < notes.length; i++) {
-        if (mode === 'PreGain' && notes[i] === cChannel) {
+        if (mode === 'Mouse' && notes[i] === cLink) {
+            setRGBLED_color(context, cLink, BLUE)
+            onLED(context, cLink)
+        } else if (mode === 'PreGain' && notes[i] === cChannel) {
             updatePreGainLED(context)
         } else if (mode === modes[i]) {
             if (mode === 'HighPass') updateHighPassLED(context)
@@ -1074,6 +1080,7 @@ var faderModes = {
 var knobModeArea = page.makeSubPageArea('Knob Mode')
 var knobModes = {
     Link: knobModeArea.makeSubPage('Link'),
+    Mouse: knobModeArea.makeSubPage('Mouse Parameter'),
     Pan: knobModeArea.makeSubPage('Pan'),
     Zoom: knobModeArea.makeSubPage('Zoom'),
     Master: knobModeArea.makeSubPage('Master'),
@@ -1085,6 +1092,7 @@ var knobModes = {
 }
 var knobModeButtons = [
     { button: buttons.Link, mode: knobModes.Link },
+    { button: buttons.Mouse, mode: knobModes.Mouse },
     { button: buttons.Pan, mode: knobModes.Pan },
     { button: buttons.Scroll, mode: knobModes.Zoom },
     { button: buttons.Zoom, mode: knobModes.Zoom },
@@ -1130,6 +1138,8 @@ function updateBypassLED(context) {
         enabled = firstSendEnabledFeedbackValue && firstSendEnabledFeedbackValue.getProcessValue(context) > 0
     } else if (isMetronomeBypassMode(mode)) {
         enabled = metronomeFeedbackValue && metronomeFeedbackValue.getProcessValue(context) > 0
+    } else if (mode === 'Mouse') {
+        enabled = mouseLockFeedbackValue && mouseLockFeedbackValue.getProcessValue(context) > 0
     } else if (mode === 'PreGain') {
         enabled = polarityFeedbackValue && polarityFeedbackValue.getProcessValue(context) > 0
     } else if (mode === 'HighPass') {
@@ -1147,7 +1157,8 @@ function toggleModeEffect(context) {
     }
     var value = mode === 'Link' || mode === 'Pan' ? firstSendEnabledFeedbackValue
         : mode === 'HighPass' ? highPassEnabledFeedbackValue
-        : mode === 'PreGain' ? polarityFeedbackValue : null
+        : mode === 'PreGain' ? polarityFeedbackValue
+        : mode === 'Mouse' ? mouseLockFeedbackValue : null
     if (value) {
         value.setProcessValue(context, value.getProcessValue(context) > 0 ? 0 : 1)
     }
@@ -1164,12 +1175,15 @@ function updateKnobModeLEDs(context) {
 }
 
 function resolveKnobModeButton(context, name) {
-    var modeNames = { Link: 'Link', Pan: 'Pan', Scroll: 'Zoom', Zoom: 'Zoom',
+    var modeNames = { Link: 'Link', Mouse: 'Mouse', Pan: 'Pan', Scroll: 'Zoom', Zoom: 'Zoom',
         Master: 'Master', Click: 'Click', Channel: 'HighPass', PreGain: 'PreGain', Section: 'Section', Marker: 'Marker' }
     // Channel always alternates its two functions, independent of mode history.
     var current = context.getState('knobMode')
     if ((name === 'Channel' || name === 'PreGain') && (current === 'HighPass' || current === 'PreGain')) {
         return current === 'HighPass' ? 'PreGain' : 'Channel'
+    }
+    if ((name === 'Link' || name === 'Mouse') && (current === 'Link' || current === 'Mouse')) {
+        return current === 'Link' ? 'Mouse' : 'Link'
     }
     var previous = context.getState('previousKnobMode')
     var requestedMode = modeNames[name]
@@ -1190,7 +1204,7 @@ function activateKnobMode(context, mode, activeMapping) {
     if (current && current !== mode) context.setState('previousKnobMode', current)
     // Scroll, Section and Marker leave the current fader target active.
     if (mode !== 'Zoom' && mode !== 'Section' && mode !== 'Marker') {
-        var target = mode === 'Pan' || mode === 'Link' || mode === 'HighPass' || mode === 'PreGain'
+        var target = mode === 'Pan' || mode === 'Link' || mode === 'Mouse' || mode === 'HighPass' || mode === 'PreGain'
             ? faderModes.Track
             : mode === 'Click' && ENABLE_METRONOME_FADER ? faderModes.Metronome : faderModes.StereoOut
         context.setState('faderTarget', target === faderModes.Track ? 'Track'
@@ -1198,9 +1212,10 @@ function activateKnobMode(context, mode, activeMapping) {
         target.mAction.mActivate.trigger(activeMapping)
     }
     context.setState('knobMode', mode)
-    if (mode === 'HighPass' || mode === 'PreGain') {
-        context.setState('shiftEnabled', mode === 'PreGain' ? '1' : '0')
-        if (mode === 'PreGain') onLED(context, cShift)
+    if (mode === 'HighPass' || mode === 'PreGain' || mode === 'Link' || mode === 'Mouse') {
+        var alternate = mode === 'PreGain' || mode === 'Mouse'
+        context.setState('shiftEnabled', alternate ? '1' : '0')
+        if (alternate) onLED(context, cShift)
         else offLED(context, cShift)
     }
     updateTouchLED(context)
@@ -1273,6 +1288,14 @@ function setupHighPassFeedback() {
     }
 }
 
+// Keep the host lock binding active across knob modes; never clear it on mode exit.
+var mouseLockFeedbackValue = null
+function setupMouseLockFeedback() {
+    mouseLockFeedbackValue = surface.makeCustomValueVariable('Mouse Parameter Locked')
+    page.makeValueBinding(mouseLockFeedbackValue, page.mHostAccess.mMouseCursor.mValueLocked)
+    mouseLockFeedbackValue.mOnProcessValueChange = function(context) { updateBypassLED(context) }
+}
+
 var preGainFeedbackValue = null
 var polarityFeedbackValue = null
 
@@ -1341,6 +1364,7 @@ function assignKnobControls() {
         .setSubPage(knobModes.Pan)
     var firstSend = page.mHostAccess.mTrackSelection.mMixerChannel.mSends.getByIndex(0)
     page.makeValueBinding(knob, firstSend.mLevel).setSubPage(knobModes.Link)
+    page.makeValueBinding(knob, page.mHostAccess.mMouseCursor.mValueUnderMouse).setSubPage(knobModes.Mouse)
     // Follow host/track changes so each push toggles the current send state.
     var sendEnabled = surface.makeCustomValueVariable('First Send Enabled')
     firstSendEnabledFeedbackValue = sendEnabled
@@ -1384,6 +1408,7 @@ function assignKnobControls() {
     page.makeCommandBinding(var_markerNext,
         'Transport', 'Locate Next Marker')
 
+    knobModes.Mouse.mOnActivate = function(context, activeMapping) { activateKnobMode(context, 'Mouse', activeMapping) }
     knobModes.Link.mOnActivate = function(context, activeMapping) { activateKnobMode(context, 'Link', activeMapping) }
     knobModes.Pan.mOnActivate = function(context, activeMapping) { activateKnobMode(context, 'Pan', activeMapping) }
     knobModes.Zoom.mOnActivate = function(context, activeMapping) { activateKnobMode(context, 'Zoom', activeMapping) }
@@ -1410,7 +1435,7 @@ function assignKnobControls() {
             panFeedbackValue.setProcessValue(context, 0.5)
         } else if (mode === 'PreGain') {
             preGainFeedbackValue.setProcessValue(context, 0.5)
-        } else if (mode === 'Link') {
+        } else if (mode === 'Link' || mode === 'Mouse') {
             toggleModeEffect(context)
         } else if (mode === 'Click') {
             toggleMetronome(context)
@@ -1468,4 +1493,5 @@ setupMetronomeFeedback()
 setupSelectedTrackFeedback()
 setupHighPassFeedback()
 setupPreGainFeedback()
+setupMouseLockFeedback()
 setupPanFeedback()
