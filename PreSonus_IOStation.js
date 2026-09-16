@@ -1,4 +1,4 @@
-// PreSonus FaderPort v2 - Cubase MIDI Remote - by Paul Warner.
+// PreSonus IO Station / Faderport V2 - Cubase MIDI Remote - by Paul Warner.
 //
 // Hardware definitions and surface geometry adapted from fp-wizard,
 // September 10, 2026, by Christian & Werner.
@@ -31,7 +31,7 @@ const GREEN = [0, 127, 0]
 
 /*
 ====================================================================================================
-PRESONUS FADERPORT BASIC | CURRENT USAGE SUMMARY
+PRESONUS IO STATION / FADERPORT V2 BASIC | CURRENT USAGE SUMMARY
 ====================================================================================================
 
 TRANSPORT:
@@ -90,7 +90,7 @@ FOOTSWITCH PRESS         : Logical press path available for a future assignment
 */
 
 var deviceDriver = require('midiremote_api_v1')
-    .makeDeviceDriver('PreSonus', 'FaderPortBasic', 'Paul Warner')
+    .makeDeviceDriver('PreSonus', 'IOStation', 'Paul Warner')
 var midiIn = deviceDriver.mPorts.makeMidiInput()
 var midiOut = deviceDriver.mPorts.makeMidiOutput()
 deviceDriver.makeDetectionUnit().detectPortPair(midiIn, midiOut)
@@ -98,7 +98,7 @@ deviceDriver.makeDetectionUnit().detectPortPair(midiIn, midiOut)
 
 // MIDI channel arguments are zero-based. Keep the hardware in the same mode
 // used with the original script; this script does not change its DAW mode.
-// midi codes for controlling the FaderPort
+// midi codes for controlling the IOStation/Faderport V2
 var cSolo = 0x08, cMute = 0x10, cArm = 0x00, cShift = 0x46
 var cBypass = 0x03, cTouch = 0x4D, cWrite = 0x4B, cRead = 0x4A
 var cPrev = 0x2E, cNext = 0x2F, cKnobRotate = 0x10, cKnobPress = 0x20
