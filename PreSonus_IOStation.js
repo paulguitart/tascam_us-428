@@ -1,3 +1,14 @@
+/*
+RGB-capable buttons (Werner reference):
+- TOUCH
+- WRITE
+- READ
+- LINK
+- PAN
+- CHANNEL
+- SCROLL
+*/
+
 // PreSonus IO Station / Faderport V2 - Cubase MIDI Remote - by Paul Warner.
 //
 // Hardware definitions and surface geometry adapted from fp-wizard,
