@@ -1243,14 +1243,14 @@ function getHighPassColor(hz) {
     }
     if (hz >= highPassColors[1].hz) return highPassColors[1]
 
-    // Log spacing gives more detail at low cutoffs while blending green into magenta.
+    // Log frequency spacing; saturated green -> cyan -> blue -> magenta.
+    // Keep one RGB component at full brightness and one at zero to avoid gray/white.
     var blend = Math.log(hz / highPassColors[0].hz)
         / Math.log(highPassColors[1].hz / highPassColors[0].hz)
-    return {
-        red: highPassColors[0].red + blend * (highPassColors[1].red - highPassColors[0].red),
-        green: highPassColors[0].green + blend * (highPassColors[1].green - highPassColors[0].green),
-        blue: highPassColors[0].blue + blend * (highPassColors[1].blue - highPassColors[0].blue)
-    }
+    var segment = blend * 3
+    if (segment < 1) return { red: 0, green: 127, blue: 127 * segment }
+    if (segment < 2) return { red: 0, green: 127 * (2 - segment), blue: 127 }
+    return { red: 127 * (segment - 2), green: 0, blue: 127 }
 }
 
 function parseFrequencyHz(value, units) {
