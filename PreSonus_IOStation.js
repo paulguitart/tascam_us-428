@@ -46,6 +46,7 @@ const AMBER =  [127, 48, 0]
 const MAGENTA = [127, 0, 127]
 
 // button color values
+const ENABLE_PAN_COLOR = true             // white center, blue left, magenta right
 const ENABLE_NUCLEAR_METRONOME_LEDS = false // spread metronome status across inactive mode buttons
 const ENABLE_NUCLEAR_RECORD_BLINK = true    // spread recording red pulse across inactive mode buttons
 const METRONOME_PULSE_COLOR = BLUE
@@ -86,7 +87,7 @@ SOLO / MUTE / ARM (Normal): Toggle selected-track Solo / Mute / Record Enable
 PREV / NEXT              : Select Previous / Next Track
 SHIFT + PREV / NEXT      : Undo / Redo
 LINK (Normal)            : Select first-send knob mode; knob push toggles send on/off
-PAN (Normal)             : Select Pan knob mode; knob push toggles send 1 on/off
+PAN (Normal)             : Select Pan knob mode; knob push centers pan
 SCROLL / SHIFT + SCROLL  : Select Zoom knob mode
 MASTER (Normal)          : Select Master mode; encoder controls FX Return 1, fader controls Stereo Out
 CLICK (Normal)           : Select Click Level knob mode
@@ -98,7 +99,7 @@ MARKER (Normal)          : Select Marker mode; Prev/Next locate markers; knob pu
 KNOB MODES:
 ----------------------------------------------------------------------------------------------------
 LINK                     : Selected Track Send 1 Level; press knob for send on/off
-PAN                      : Selected Track Pan; press knob for send 1 on/off
+PAN                      : Selected Track Pan; press knob to center pan
 ZOOM                     : Horizontal Zoom In / Out commands
 MASTER                   : Encoder controls FX Return 1; fader controls Stereo Out Volume
 CLICK                    : Metronome Click Level; fader controls Stereo Out Volume
@@ -933,6 +934,7 @@ function updateMetronomeModeLEDs(context, now) {
     for (var i = 0; i < notes.length; i++) {
         if (mode === modes[i]) {
             if (mode === 'HighPass') updateHighPassLED(context)
+            else if (mode === 'Pan') updatePanLED(context)
             else {
                 setRGBLED_color(context, notes[i], WHITE)
                 onLED(context, notes[i])
@@ -1124,7 +1126,7 @@ function updateBypassLED(context) {
     setTransportLed(context, cBypass, !!enabled)
 }
 
-// Both physical controls toggle the same host-bound value in these modes.
+// BYPASS toggles the mode effect; Pan knob push separately centers pan.
 function toggleModeEffect(context) {
     var mode = context.getState('knobMode')
     if (isMetronomeBypassMode(mode)) {
@@ -1248,6 +1250,38 @@ function setupHighPassFeedback() {
     }
 }
 
+var panFeedbackValue = null
+
+function getPanColor(value) {
+    if (!ENABLE_PAN_COLOR || !isFinite(value)) return WHITE
+    var pan = Math.max(0, Math.min(1, value))
+    var amount = Math.abs(pan - 0.5) * 2
+    // Center stays white; off-center starts at 50% color and rises quickly.
+    if (amount > 0) amount = 0.5 + 0.5 * Math.sqrt(amount)
+    var extreme = pan < 0.5 ? BLUE : MAGENTA
+    return [
+        WHITE[0] + (extreme[0] - WHITE[0]) * amount,
+        WHITE[1] + (extreme[1] - WHITE[1]) * amount,
+        WHITE[2] + (extreme[2] - WHITE[2]) * amount
+    ]
+}
+
+function updatePanLED(context) {
+    if (context.getState('knobMode') !== 'Pan') return
+    var value = panFeedbackValue ? panFeedbackValue.getProcessValue(context) : 0.5
+    setRGBLED_color(context, cPan, getPanColor(value))
+    onLED(context, cPan)
+}
+
+function setupPanFeedback() {
+    panFeedbackValue = surface.makeCustomValueVariable('Selected Track Pan')
+    // Always follow host edits and track selection, even outside Pan mode.
+    page.makeValueBinding(panFeedbackValue, page.mHostAccess.mTrackSelection.mMixerChannel.mValue.mPan)
+    panFeedbackValue.mOnProcessValueChange = function(context) {
+        updatePanLED(context)
+    }
+}
+
 function assignKnobControls() {
     for (var i = 0; i < knobModeButtons.length; i++) {
         var mapping = knobModeButtons[i]
@@ -1320,7 +1354,9 @@ function assignKnobControls() {
         context.setState('knobPressRouted', '1')
 
         var mode = context.getState('knobMode')
-        if (mode === 'Link' || mode === 'Pan') {
+        if (mode === 'Pan') {
+            panFeedbackValue.setProcessValue(context, 0.5)
+        } else if (mode === 'Link') {
             toggleModeEffect(context)
         } else if (mode === 'Click') {
             toggleMetronome(context)
@@ -1377,3 +1413,4 @@ setupTransportFeedback()
 setupMetronomeFeedback()
 setupSelectedTrackFeedback()
 setupHighPassFeedback()
+setupPanFeedback()
