@@ -1088,9 +1088,13 @@ function assignKnobControls() {
     var hostPreFilter = page.mHostAccess.mTrackSelection.mMixerChannel.mPreFilter
     page.makeValueBinding(knob, hostPreFilter.mLowCutFreq)
         .setSubPage(knobModes.HighPass)
-    page.makeCommandBinding(var_zoomIn, 'Zoom', 'Zoom In').setSubPage(knobModes.Zoom)
-    page.makeCommandBinding(var_zoomOut, 'Zoom', 'Zoom Out').setSubPage(knobModes.Zoom)
+    var zoomModes = [knobModes.Zoom, knobModes.Section, knobModes.Marker]
+    for (var zoomIndex = 0; zoomIndex < zoomModes.length; zoomIndex++) {
+        page.makeCommandBinding(var_zoomIn, 'Zoom', 'Zoom In').setSubPage(zoomModes[zoomIndex])
+        page.makeCommandBinding(var_zoomOut, 'Zoom', 'Zoom Out').setSubPage(zoomModes[zoomIndex])
+    }
     page.makeCommandBinding(var_zoomToLocators, 'Zoom', 'Zoom to Locators').setSubPage(knobModes.Zoom)
+    page.makeCommandBinding(var_zoomToLocators, 'Zoom', 'Zoom to Locators').setSubPage(knobModes.Section)
     if (cubase13OrHigher) {
         page.makeCommandBinding(var_markerInsertPressed,
             'Marker', 'Insert Marker').setSubPage(knobModes.Marker)
@@ -1136,7 +1140,7 @@ function assignKnobControls() {
             toggleModeEffect(context)
         } else if (mode === 'Marker') {
             pulseVar(context, var_markerInsertPressed)
-        } else if (mode === 'Zoom') {
+        } else if (mode === 'Zoom' || mode === 'Section') {
             pulseVar(context, var_zoomToLocators)
         } else if (mode === 'Master') {
             pulseVar(context, var_masterInsertPressed)
@@ -1146,7 +1150,8 @@ function assignKnobControls() {
     // Korg zoom pattern: compare successive knob positions and fire zoom commands.
     // Pulse each command so consecutive detents in the same direction retrigger.
     knob.mOnProcessValueChange = function(context, newValue, diff) {
-        if (context.getState('knobMode') !== 'Zoom') return
+        var mode = context.getState('knobMode')
+        if (mode !== 'Zoom' && mode !== 'Section' && mode !== 'Marker') return
         var newZoomValue = Math.floor(newValue * 1000)
         var lastZoomValue = Number(context.getState('lastZoomValue'))
         var zoomCommand
