@@ -9,7 +9,7 @@
 //-----------------------------------------------------------------------------
 
 const CYCLE_MARKER_MAX = 9
-const ENABLE_FADER_NUDGE = true // PREV/NEXT nudge the current fader in SCROLL and MASTER
+const ENABLE_FADER_NUDGE = true // PREV/NEXT nudge Stereo Out in MASTER
 const FADER_NUDGE_DB_INCREMENT = 0.5
 const ENABLE_METRONOME_FADER = true // CLICK fader controls metronome level; false: Stereo Out
 
@@ -651,7 +651,7 @@ var var_setRightLocatorPressed = surface.makeCustomValueVariable('Set Right Loca
 function routeNavigationPress(context, direction) {
     var mode = context.getState('knobMode')
 
-    if (ENABLE_FADER_NUDGE && (mode === 'Zoom' || mode === 'Master')) {
+    if (ENABLE_FADER_NUDGE && mode === 'Master') {
         nudgeCurrentFader(context, direction === 'Prev' ? -1 : 1)
     } else if (mode === 'Section') {
         if (direction === 'Prev') {
@@ -665,7 +665,7 @@ function routeNavigationPress(context, direction) {
         } else {
             pulseVar(context, var_markerNext)
         }
-    } else if (mode === 'Master') {
+    } else if (mode === 'Zoom' || mode === 'Master') {
         if (direction === 'Prev') {
             pulseVar(context, var_setLeftLocatorPressed)
         } else {
@@ -769,10 +769,7 @@ function nudgeCurrentFader(context, direction) {
     var target = context.getState('faderTarget')
     var value = faderTargetFeedback[target]
     if (!value) return
-    if (target === 'Metronome') {
-        value.setProcessValue(context, clampFader(value.getProcessValue(context) + direction / 127))
-        return
-    }
+    if (target === 'Metronome') return // Metronome level stays on its knob/fader controls.
     if (!isFinite(FADER_NUDGE_DB_INCREMENT) || FADER_NUDGE_DB_INCREMENT <= 0) return
     var key = context.getState('faderNudgeMapping')
     var activeMapping = key === '' ? null : faderNudgeMappings[Number(key)]
