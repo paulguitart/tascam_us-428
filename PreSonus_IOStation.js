@@ -86,6 +86,7 @@ MASTER (Normal)          : Select Master mode; encoder controls FX Return 1, fad
 CLICK (Normal)           : Select Click Level knob mode
 KNOB PUSH (Click Mode)   : Metronome on/off; Click LED shows Click mode; inactive RGB mode LEDs show metronome
 CHANNEL (Normal)         : Select High Pass (Low Cut) knob mode for the selected track
+SECTION (Normal)         : Keep current fader target; knob rotation/push unassigned
 MARKER (Normal)          : Select Marker mode; Prev/Next locate markers; knob push inserts marker
 
 KNOB MODES:
@@ -94,14 +95,14 @@ LINK                     : Selected Track Send 1 Level; press knob for send on/o
 PAN                      : Selected Track Pan; press knob for send 1 on/off
 ZOOM                     : Horizontal Zoom In / Out commands
 MASTER                   : Encoder controls FX Return 1; fader controls Stereo Out Volume
-CLICK                    : Metronome Click Level
+CLICK                    : Metronome Click Level; fader controls Stereo Out Volume
 HIGH PASS                : Selected Track Low Cut Frequency; press knob for filter on/off
 HIGH PASS LED            : White when disabled; color indicates frequency when enabled
 MARKER                    : Prev/Next locate previous/next marker; knob push inserts marker
 
 FADER / FOOTSWITCH:
 ----------------------------------------------------------------------------------------------------
-FADER                    : Selected Track Volume; MASTER mode uses Stereo Out volume
+FADER                    : Selected Track Volume; MASTER / CLICK use Stereo Out; SCROLL / SECTION / MARKER keep prior target
                          : Input is ignored until touched
                          : Motor waits while touched, then applies any pending position
 FOOTSWITCH               : Normalized to normally-closed press/release behavior by default
@@ -115,7 +116,7 @@ SHIFT + LINK             : LinkLock
 SHIFT + PAN              : Flip
 SHIFT + CHANNEL          : ChannelLock
 SHIFT + MASTER / CLICK   : F1 / F2
-SECTION                  : Named path for later assignment; SHIFT gives F3
+SHIFT + SECTION          : F3
 MARKER                   : Marker mode; SHIFT gives F4
 FOOTSWITCH PRESS         : Logical press path available for a future assignment
 
@@ -597,7 +598,7 @@ function assignSelectedTrackControls() {
     // Marker mode gives Prev/Next to marker navigation, so scope track stepping
     // to every other knob mode instead of leaving a competing page-wide action.
     var trackNavigationModes = [
-        knobModes.Pan, knobModes.Link, knobModes.Zoom, knobModes.Master, knobModes.Click, knobModes.HighPass
+        knobModes.Pan, knobModes.Link, knobModes.Zoom, knobModes.Master, knobModes.Click, knobModes.HighPass, knobModes.Section
     ]
     for (var i = 0; i < trackNavigationModes.length; i++) {
         page.makeActionBinding(buttons.Prev, hostTrackSelection.mAction.mPrevTrack)
@@ -605,14 +606,11 @@ function assignSelectedTrackControls() {
         page.makeActionBinding(buttons.Next, hostTrackSelection.mAction.mNextTrack)
             .setSubPage(trackNavigationModes[i])
     }
-    // Master mode has a separate Stereo Out fader binding.
-    var selectedTrackFaderModes = [
-        knobModes.Pan, knobModes.Link, knobModes.Zoom, knobModes.Click, knobModes.HighPass, knobModes.Marker
-    ]
-    for (var faderModeIndex = 0; faderModeIndex < selectedTrackFaderModes.length; faderModeIndex++) {
-        page.makeValueBinding(fader.mSurfaceValue, hostSelectedTrack.mValue.mVolume)
-            .setSubPage(selectedTrackFaderModes[faderModeIndex])
-    }
+    // Independent fader subpages let Scroll, Section and Marker preserve the previous assignment.
+    page.makeValueBinding(fader.mSurfaceValue, hostSelectedTrack.mValue.mVolume)
+        .setSubPage(faderModes.Track)
+    page.makeValueBinding(fader.mSurfaceValue, hostStereoOut.mValue.mVolume)
+        .setSubPage(faderModes.StereoOut)
 }
 
 //-----------------------------------------------------------------------------
@@ -657,7 +655,7 @@ function updateMetronomeModeLEDs(context, now) {
     var recording = context.getState('metronomeRecording') === '1'
     var color = recording ? RED : METRONOME_PULSE_COLOR
     var brightness = 1
-    if (enabled && recording && ENABLE_METRONOME_PULSE) {
+    if (recording && ENABLE_METRONOME_PULSE) {
         var start = context.getState('metronomePulseStart')
         if (start === '' || now < Number(start)) {
             start = String(now)
@@ -678,7 +676,7 @@ function updateMetronomeModeLEDs(context, now) {
                 setRGBLED_color(context, notes[i], WHITE)
                 onLED(context, notes[i])
             }
-        } else if (enabled) {
+        } else if (recording || enabled) {
             setRGBLED_color(context, notes[i], color, brightness)
             onLED(context, notes[i])
         } else {
@@ -780,6 +778,11 @@ deviceDriver.mOnIdle = function(context) {
 //-----------------------------------------------------------------------------
 
 var knob = mSection.knob_vis.mSurfaceValue
+var faderModeArea = page.makeSubPageArea('Fader Target')
+var faderModes = {
+    Track: faderModeArea.makeSubPage('Selected Track'),
+    StereoOut: faderModeArea.makeSubPage('Stereo Out')
+}
 var knobModeArea = page.makeSubPageArea('Knob Mode')
 var knobModes = {
     Link: knobModeArea.makeSubPage('Link'),
@@ -788,6 +791,7 @@ var knobModes = {
     Master: knobModeArea.makeSubPage('Master'),
     Click: knobModeArea.makeSubPage('Click'),
     HighPass: knobModeArea.makeSubPage('High Pass'),
+    Section: knobModeArea.makeSubPage('Section'),
     Marker: knobModeArea.makeSubPage('Marker')
 }
 var knobModeButtons = [
@@ -798,6 +802,7 @@ var knobModeButtons = [
     { button: buttons.Master, mode: knobModes.Master },
     { button: buttons.Click, mode: knobModes.Click },
     { button: buttons.Channel, mode: knobModes.HighPass },
+    { button: buttons.Section, mode: knobModes.Section },
     { button: buttons.Marker, mode: knobModes.Marker }
 ]
 var var_zoomIn = surface.makeCustomValueVariable('Zoom In')
@@ -816,11 +821,18 @@ function updateKnobModeLEDs(context) {
     var mode = context.getState('knobMode')
     updateMetronomeModeLEDs(context, Date.now())
     setTransportLed(context, cMaster, mode === 'Master')
+    setTransportLed(context, cSection, mode === 'Section')
     setTransportLed(context, cMarker, mode === 'Marker')
     updateClickLED(context)
 }
 
-function activateKnobMode(context, mode) {
+function activateKnobMode(context, mode, activeMapping) {
+    // Scroll, Section and Marker leave the current fader target active.
+    if (mode !== 'Zoom' && mode !== 'Section' && mode !== 'Marker') {
+        var target = mode === 'Pan' || mode === 'Link' || mode === 'HighPass'
+            ? faderModes.Track : faderModes.StereoOut
+        target.mAction.mActivate.trigger(activeMapping)
+    }
     context.setState('knobMode', mode)
     // Seed zoom from the current knob value so switching modes doesn't zoom.
     context.setState('lastZoomValue', String(Math.floor((knob.getProcessValue(context) || 0) * 1000)))
@@ -906,8 +918,6 @@ function assignKnobControls() {
     page.makeValueBinding(knob, fxChannel.mValue.mVolume)
         .setValueTakeOverModeScaled()
         .setSubPage(knobModes.Master)
-    page.makeValueBinding(fader.mSurfaceValue, hostStereoOut.mValue.mVolume)
-        .setSubPage(knobModes.Master)
     page.makeValueBinding(knob, hostTransport.mMetronomeClickLevel)
         .setSubPage(knobModes.Click)
     // The encoder push is routed below so it remains a momentary press path;
@@ -932,13 +942,14 @@ function assignKnobControls() {
     page.makeCommandBinding(buttons.Next,
         'Transport', 'Locate Next Marker').setSubPage(knobModes.Marker)
 
-    knobModes.Link.mOnActivate = function(context) { activateKnobMode(context, 'Link') }
-    knobModes.Pan.mOnActivate = function(context) { activateKnobMode(context, 'Pan') }
-    knobModes.Zoom.mOnActivate = function(context) { activateKnobMode(context, 'Zoom') }
-    knobModes.Master.mOnActivate = function(context) { activateKnobMode(context, 'Master') }
-    knobModes.Click.mOnActivate = function(context) { activateKnobMode(context, 'Click') }
-    knobModes.HighPass.mOnActivate = function(context) { activateKnobMode(context, 'HighPass') }
-    knobModes.Marker.mOnActivate = function(context) { activateKnobMode(context, 'Marker') }
+    knobModes.Link.mOnActivate = function(context, activeMapping) { activateKnobMode(context, 'Link', activeMapping) }
+    knobModes.Pan.mOnActivate = function(context, activeMapping) { activateKnobMode(context, 'Pan', activeMapping) }
+    knobModes.Zoom.mOnActivate = function(context, activeMapping) { activateKnobMode(context, 'Zoom', activeMapping) }
+    knobModes.Master.mOnActivate = function(context, activeMapping) { activateKnobMode(context, 'Master', activeMapping) }
+    knobModes.Click.mOnActivate = function(context, activeMapping) { activateKnobMode(context, 'Click', activeMapping) }
+    knobModes.HighPass.mOnActivate = function(context, activeMapping) { activateKnobMode(context, 'HighPass', activeMapping) }
+    knobModes.Section.mOnActivate = function(context, activeMapping) { activateKnobMode(context, 'Section', activeMapping) }
+    knobModes.Marker.mOnActivate = function(context, activeMapping) { activateKnobMode(context, 'Marker', activeMapping) }
 
     // Route encoder pushes for the active command mode. Click uses the
     // host-bound custom metronome variable rather than a page binding.
@@ -991,7 +1002,7 @@ function assignKnobControls() {
 
 page.mOnActivate = function(context, activeMapping) {
     knobModes.Pan.mAction.mActivate.trigger(activeMapping)
-    activateKnobMode(context, 'Pan')
+    activateKnobMode(context, 'Pan', activeMapping)
     restoreTransportLEDs(context)
 }
 
