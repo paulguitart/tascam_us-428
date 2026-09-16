@@ -76,7 +76,7 @@ let shiftLed = false;
 scope.onLED = (_, note) => { if (note === scope.cShift) shiftLed = true; };
 scope.offLED = (_, note) => { if (note === scope.cShift) shiftLed = false; };
 for (const alternate of ['PreGain', 'Mouse']) {
-    for (const normal of ['Master', 'Click', 'Section', 'Marker']) {
+    for (const normal of ['Master', 'Click', 'Section', 'Marker', 'Pan', 'Zoom']) {
         const context = device();
         scope.activateKnobMode(context, alternate);
         assert.equal(context.getState('shiftEnabled'), '1'); assert.equal(shiftLed, true);
@@ -89,4 +89,4 @@ for (const alternate of ['PreGain', 'Mouse']) {
         assert.equal(context.getState('previousKnobMode'), normal);
     }
 }
-console.log('PASS: Master/Click/Section/Marker clear SHIFT and history restores both alternate modes and LED');
+console.log('PASS: Master/Click/Section/Marker/Pan/Zoom clear SHIFT and history restores both alternate modes and LED');

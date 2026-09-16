@@ -194,4 +194,4 @@ SHIFT + Link enters Mouse Parameter mode. Pressing Link again toggles Send 1 and
 
 Knob push enables Cubase’s mouse-parameter lock; pressing again leaves it locked. BYPASS toggles lock on/off, with SHIFT on or off. BYPASS lights steadily when locked. A locked target remains controlled after the mouse moves away. The script keeps the lock binding active and does not clear it when leaving or returning to the mode. Persistence across project changes or script reloads is controlled by Cubase, not saved by this script. Unlock to follow the mouse again. No reset or flashing lock indication is assigned.
 
-Entering Master, Click, Section, or Marker clears the SHIFT layer and its LED. Pressing that active mode button again recalls the previous mode; if that was Pre Gain or Mouse Parameter, SHIFT and its LED come back on automatically.
+Entering Pan, Scroll/Zoom, Master, Click, Section, or Marker clears the SHIFT layer and its LED. Pressing that active mode button again recalls the previous mode; if that was Pre Gain or Mouse Parameter, SHIFT and its LED come back on automatically.
