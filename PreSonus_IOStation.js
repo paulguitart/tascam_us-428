@@ -114,7 +114,7 @@ FOOTSWITCH               : Normalized to normally-closed press/release behavior 
 
 UNASSIGNED BUTTON PATHS:
 ----------------------------------------------------------------------------------------------------
-BYPASS                                        : MASTER: bypass Main Mix inserts; LED follows Stereo Out insert 1
+BYPASS                                        : LINK/PAN: send 1; CHANNEL: high pass; MASTER: Main Mix inserts; LED means enabled
 TOUCH                                         : Normal path
 SHIFT + BYPASS / TOUCH / WRITE / READ          : BypassAll / Latch / Trim / Off
 SHIFT + LINK             : LinkLock
@@ -519,7 +519,7 @@ deviceDriver.mOnActivate = function(context) {
     setRGBLED_color(context, cWrite, RED)
     setRGBLED_color(context, cRead, GREEN)
     updateClickLED(context)
-    updateMasterBypassLED(context)
+    updateBypassLED(context)
 }
 deviceDriver.mOnDeactivate = function(context) {
     resetHardwareState(context)
@@ -551,6 +551,7 @@ var transportFeedback = []
 var hostMetronomeActive = hostTransport.mMetronomeActive
 var metronomeFeedbackValue = null
 var highPassEnabledFeedbackValue = null
+var firstSendEnabledFeedbackValue = null
 var confirmTransportNotes = [cRWD, cFWD, cPlay, cRecord]
 
 function resetStopProgress(context) {
@@ -939,14 +940,32 @@ var masterInsertBypassed = stereoOutInsert1.mBypass
 var masterInsertBypassFeedback = surface.makeCustomValueVariable('Master Insert Bypass LED Feedback')
 page.makeValueBinding(masterInsertBypassFeedback, masterInsertBypassed)
 masterInsertBypassFeedback.mOnProcessValueChange = function(context) {
-    updateMasterBypassLED(context)
+    updateBypassLED(context)
 }
 var hostMixerZoneFX = page.mHostAccess.mMixConsole.makeMixerBankZone().includeFXChannels()
 var fxChannel = hostMixerZoneFX.makeMixerBankChannel()
 
-function updateMasterBypassLED(context) {
-    setTransportLed(context, cBypass, context.getState('knobMode') === 'Master'
-        && masterInsertBypassFeedback.getProcessValue(context) > 0)
+function updateBypassLED(context) {
+    var mode = context.getState('knobMode')
+    var enabled = false
+    if (mode === 'Master') {
+        enabled = masterInsertBypassFeedback.getProcessValue(context) === 0
+    } else if (mode === 'Link' || mode === 'Pan') {
+        enabled = firstSendEnabledFeedbackValue && firstSendEnabledFeedbackValue.getProcessValue(context) > 0
+    } else if (mode === 'HighPass') {
+        enabled = highPassEnabledFeedbackValue && highPassEnabledFeedbackValue.getProcessValue(context) > 0
+    }
+    setTransportLed(context, cBypass, !!enabled)
+}
+
+// Both physical controls toggle the same host-bound value in these modes.
+function toggleModeEffect(context) {
+    var mode = context.getState('knobMode')
+    var value = mode === 'Link' || mode === 'Pan' ? firstSendEnabledFeedbackValue
+        : mode === 'HighPass' ? highPassEnabledFeedbackValue : null
+    if (value) {
+        value.setProcessValue(context, value.getProcessValue(context) > 0 ? 0 : 1)
+    }
 }
 
 function updateKnobModeLEDs(context) {
@@ -956,7 +975,7 @@ function updateKnobModeLEDs(context) {
     setTransportLed(context, cSection, mode === 'Section')
     setTransportLed(context, cMarker, mode === 'Marker')
     updateClickLED(context)
-    updateMasterBypassLED(context)
+    updateBypassLED(context)
 }
 
 function activateKnobMode(context, mode, activeMapping) {
@@ -1026,6 +1045,7 @@ function setupHighPassFeedback() {
     enabled.mOnProcessValueChange = function(context, value) {
         context.setState('highPassEnabled', value > 0 ? '1' : '0')
         updateHighPassLED(context)
+        updateBypassLED(context)
     }
     // Read Cubase's displayed Hz rather than guessing its normalized frequency curve.
     frequency.mOnDisplayValueChange = function(context, value, units) {
@@ -1046,7 +1066,14 @@ function assignKnobControls() {
     page.makeValueBinding(knob, firstSend.mLevel).setSubPage(knobModes.Link)
     // Follow host/track changes so each push toggles the current send state.
     var sendEnabled = surface.makeCustomValueVariable('First Send Enabled')
+    firstSendEnabledFeedbackValue = sendEnabled
     page.makeValueBinding(sendEnabled, firstSend.mOn)
+    sendEnabled.mOnProcessValueChange = function(context) {
+        updateBypassLED(context)
+    }
+    buttons.Bypass.mOnProcessValueChange = function(context, value) {
+        if (value > 0) toggleModeEffect(context)
+    }
     // Master-mode encoder controls the first FX Return channel.
     page.makeValueBinding(knob, fxChannel.mValue.mVolume)
         .setValueTakeOverModeScaled()
@@ -1099,13 +1126,11 @@ function assignKnobControls() {
 
         var mode = context.getState('knobMode')
         if (mode === 'Link' || mode === 'Pan') {
-            var enabled = Number(sendEnabled.getProcessValue(context)) > 0
-            sendEnabled.setProcessValue(context, enabled ? 0 : 1)
+            toggleModeEffect(context)
         } else if (mode === 'Click') {
             toggleMetronome(context)
         } else if (mode === 'HighPass') {
-            var highPassEnabled = Number(highPassEnabledFeedbackValue.getProcessValue(context)) > 0
-            highPassEnabledFeedbackValue.setProcessValue(context, highPassEnabled ? 0 : 1)
+            toggleModeEffect(context)
         } else if (mode === 'Marker') {
             pulseVar(context, var_markerInsertPressed)
         } else if (mode === 'Master') {

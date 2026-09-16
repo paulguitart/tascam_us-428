@@ -30,7 +30,7 @@ LED feedback follows Cubase transport state independently of physical button pre
 ## Selected track
 
 - With SHIFT off, Prev/Next select the previous/next Cubase track in the other knob modes. Marker mode assigns them to previous/next marker; Section assigns them to previous/next cycle-marker recall; Master assigns them to Set Left Locator / Set Right Locator.
-- With SHIFT off, Write/Read toggle the selected track's automation Write/Read enable. WRITE lights red and READ lights green while enabled; both follow track selection and Cubase edits in every mode. SHIFT + Write (Trim) and SHIFT + Read (Off) remain unassigned, as do SHIFT + BYPASS (BypassAll) and TOUCH. With SHIFT off, BYPASS runs `Mixer > Bypass: Inserts on Main Mix` in Master mode, matching encoder push; it is unassigned in other modes.
+- With SHIFT off, Write/Read toggle the selected track's automation Write/Read enable. WRITE lights red and READ lights green while enabled; both follow track selection and Cubase edits in every mode. SHIFT + Write (Trim) and SHIFT + Read (Off) remain unassigned, as do SHIFT + BYPASS (BypassAll) and TOUCH. With SHIFT off, BYPASS mirrors encoder push in Link/Pan (selected-track send 1 on/off), Channel (high-pass on/off), and Master (`Mixer > Bypass: Inserts on Main Mix`). It is unassigned in other modes.
 - With SHIFT off, Solo/Mute/Arm toggle Solo, Mute and Record Enable for the selected track. Their LEDs follow the selected track's state, including changes made in Cubase.
 - Pan, Link and Channel assign the fader to selected-track volume. Scroll, Section and Marker retain the previous fader assignment. In Master and Click modes it controls the first Stereo Out channel using the same FaderPort unity and motor calibration path as the track faders. The Master encoder controls the first FX Return channel. Host changes and track selection feed the fader motor through the existing touch-protection and calibration helpers.
 - SHIFT does not change the fader assignment. Shifted Prev/Next retain Undo/Redo. PREV/NEXT LEDs stay on while their physical buttons are held and turn off on release, in every mode and SHIFT layer.
@@ -42,18 +42,18 @@ Pan is selected when the Hardware page activates. Pan, Link and Channel assign s
 
 | Button path | Knob assignment |
 |---|---|
-| Link | Selected-track send 1 level; encoder push toggles send on/off; fader controls selected-track volume |
-| Pan | Selected-track pan; encoder push toggles send 1 on/off |
+| Link | Selected-track send 1 level; encoder push or BYPASS toggles send on/off; fader controls selected-track volume |
+| Pan | Selected-track pan; encoder push or BYPASS toggles send 1 on/off |
 | Scroll or SHIFT + Scroll (Zoom) | Horizontal zoom using the Korg position-comparison pattern; fader retains its previous target |
 | Master | Encoder controls FX Return 1; fader controls Stereo Out; encoder push or BYPASS toggles Main Mix inserts; Prev/Next set left/right locators |
 | Click | Metronome level; fader controls Stereo Out; encoder push toggles the metronome |
-| Channel | Selected-track high-pass cutoff; knob push toggles the filter |
+| Channel | Selected-track high-pass cutoff; knob push or BYPASS toggles the filter |
 | Section | Prev/Next recall cycle markers with wrapping; fader retains its previous target; knob rotation and push unassigned |
 | Marker | Fader retains its previous target; Prev/Next locate markers; encoder push inserts a marker |
 
 Master fader controls an output channel, not Control Room. With multiple output buses, put the intended Stereo Out first in the output bank. The API binding does not identify a bus by its name or Main Mix designation. The encoder uses the first FX channel, so the intended FX Return 1 must be first in the FX bank. The fader uses the same FaderPort unity calibration as track faders. Encoder rotation remains full-range.
 
-In Master mode, the BYPASS LED follows `mBypass` for insert slot 1 (`accessSlotAtIndex(0)`) through the `Stereo Out Insert 1` viewer on that first output channel. It lights when that slot is bypassed, follows Cubase edits, and turns off outside Master mode. This reports slot 1's state, while the button command targets all Main Mix inserts. SHIFT does not change this LED feedback.
+In Master mode, the BYPASS LED follows `mBypass` for insert slot 1 (`accessSlotAtIndex(0)`) through the `Stereo Out Insert 1` viewer on that first output channel. It lights when that slot is **not bypassed**. This reports slot 1's state, while the button command targets all Main Mix inserts. In Link and Pan, the LED follows selected-track send 1's `mOn`; in Channel, it follows the high-pass filter's `mLowCutOn`. Across these modes, **LED on means enabled; off means bypassed/disabled**. Feedback follows Cubase edits, track selection, and mode changes; the LED is off in other modes. SHIFT does not change this LED feedback. Link/Pan toggle the send to the FX destination, not the FX return channel or its inserts.
 
 The active Link, Pan or Scroll mode is white; active Channel uses the high-pass colors below. The other buttons in this four-button group light solid `METRONOME_PULSE_COLOR` (blue by default) when the metronome is enabled, pulse red while recording regardless of metronome state, and turn off when neither recording nor the metronome is active. In Master, Click, Section or Marker mode, all four show metronome status. Master, Click, Section and Marker LEDs indicate only their respective active modes.
 
