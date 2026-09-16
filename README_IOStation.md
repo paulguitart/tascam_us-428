@@ -1,6 +1,6 @@
 # PreSonus IOStation MIDI Remote
 
-`PreSonus_IOStation.js` maps the IOStation's FaderPort V2-style control surface to Cubase MIDI Remote. The IOStation adds audio features to the FaderPort V2 hardware; this script handles the control surface. Its MIDI behavior and port names match the PreSonus FP2, so the script intentionally keeps `PreSonus FP2` input/output detection. The original Christian & Werner script is preserved in `example_code/PreSonus_FaderPort_Werner.js` for reference.
+`PreSonus_IOStation.js` maps the IOStation's FaderPort 2 control surface to Cubase MIDI Remote. The IOStation combines that surface with a separate ASIO audio interface in the same chassis; this script handles only the MIDI control surface. Its MIDI behavior and port names match the PreSonus FP2, so the script intentionally keeps `PreSonus FP2` input/output detection. The original Christian & Werner script is preserved in `example_code/PreSonus_FaderPort_Werner.js` for reference.
 
 ## Included
 
@@ -105,7 +105,7 @@ Use `var_footswitchPressed` for future pedal assignments. Toggle mode uses the f
 
 ## Loading in Cubase
 
-Place the script in the Cubase MIDI Remote user-script tree under `PreSonus/IOStation/PreSonus_IOStation.js`, then reload scripts. Its device name is **IOStation**. The script detects the input and output ports named `PreSonus FP2`, matching the IOStation's FaderPort V2-style MIDI surface. Disable the original script or other remote devices using those ports before testing this version.
+Place the script in the Cubase MIDI Remote user-script tree under `PreSonus/IOStation/PreSonus_IOStation.js`, then reload scripts. Its device name is **IOStation**. The script detects the input and output ports named `PreSonus FP2`, matching the IOStation's FaderPort 2 control surface. Disable the original script or other remote devices using those ports before testing this version.
 
 Retain the hardware DAW mode used with the original script. Neither source sends a DAW-mode initialization handshake; this extraction does not establish which power-on mode your unit currently uses.
 
