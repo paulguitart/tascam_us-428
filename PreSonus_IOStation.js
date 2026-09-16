@@ -87,7 +87,7 @@ SOLO / MUTE / ARM (Normal): Toggle selected-track Solo / Mute / Record Enable
 PREV / NEXT              : Select Previous / Next Track
 SHIFT + PREV / NEXT      : Undo / Redo
 LINK (Normal)            : First-send knob mode; press again for Mouse Parameter mode
-SHIFT + LINK            : Mouse parameter; knob push/BYPASS lock; steady BYPASS LED = locked
+SHIFT + LINK            : Mouse parameter; push locks; BYPASS toggles lock; steady BYPASS LED = locked
 PAN (Normal)             : Select Pan knob mode; knob push centers pan
 SCROLL / SHIFT + SCROLL  : Select Zoom knob mode
 MASTER (Normal)          : Select Master mode; encoder controls FX Return 1, fader controls Stereo Out
@@ -1161,6 +1161,8 @@ function toggleModeEffect(context) {
         : mode === 'Mouse' ? mouseLockFeedbackValue : null
     if (value) {
         value.setProcessValue(context, value.getProcessValue(context) > 0 ? 0 : 1)
+        // Local writes may not immediately invoke the host feedback callback.
+        if (mode === 'Mouse') updateBypassLED(context)
     }
 }
 
@@ -1435,7 +1437,10 @@ function assignKnobControls() {
             panFeedbackValue.setProcessValue(context, 0.5)
         } else if (mode === 'PreGain') {
             preGainFeedbackValue.setProcessValue(context, 0.5)
-        } else if (mode === 'Link' || mode === 'Mouse') {
+        } else if (mode === 'Mouse') {
+            mouseLockFeedbackValue.setProcessValue(context, 1)
+            updateBypassLED(context)
+        } else if (mode === 'Link') {
             toggleModeEffect(context)
         } else if (mode === 'Click') {
             toggleMetronome(context)

@@ -20,3 +20,14 @@ const bypass=s.uSection.btn_Bypass.mSurfaceValue.mOnProcessValueChange;bypass(ct
 locked=1;s.mouseLockFeedbackValue.mOnProcessValueChange(ctx);assert.equal(bypassLED,true);
 shift(ctx,1);shift(ctx,0);assert.equal(state.knobMode,'Link');assert.equal(locked,1);
 console.log('PASS: mouse binding, persistent host lock, both lock buttons, LED feedback, Link/SHIFT transitions and track fader');
+
+// Cubase can update the value without delivering its callback until later.
+s.activateKnobMode(ctx,'Mouse',{});locked=0;s.updateBypassLED(ctx);
+s.mouseLockFeedbackValue.setProcessValue=(ctx,v)=>{locked=v;writes++};
+push(ctx,1);assert.equal(locked,1);assert.equal(bypassLED,true);push(ctx,0);
+push(ctx,1);assert.equal(locked,1);assert.equal(bypassLED,true);push(ctx,0);
+bypass(ctx,1);assert.equal(locked,0);assert.equal(bypassLED,false);bypass(ctx,0);
+bypass(ctx,1);assert.equal(locked,1);assert.equal(bypassLED,true);bypass(ctx,0);
+// Subsequent host feedback remains authoritative.
+locked=0;s.mouseLockFeedbackValue.mOnProcessValueChange(ctx);assert.equal(bypassLED,false);
+console.log('PASS: immediate lock/unlock LED without a feedback callback, plus later host correction');
