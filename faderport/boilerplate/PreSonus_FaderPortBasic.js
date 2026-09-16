@@ -49,6 +49,8 @@ TRANSPORT / FADER / KNOB : Keep their direct functions in either layer
 
 ACTIVE PRINTED BUTTONS:
 ----------------------------------------------------------------------------------------------------
+SOLO / MUTE / ARM (Normal): Toggle selected-track Solo / Mute / Record Enable
+                           : LEDs follow the selected-track state
 PREV / NEXT              : Select Previous / Next Track
 SHIFT + PREV / NEXT      : Undo / Redo
 PAN (Normal)             : Select Pan knob mode
@@ -74,8 +76,9 @@ FOOTSWITCH               : Normalized to normally-closed press/release behavior 
 
 UNASSIGNED BUTTON PATHS:
 ----------------------------------------------------------------------------------------------------
-SOLO / MUTE / ARM / BYPASS / TOUCH / WRITE / READ : Normal paths
-SHIFT + those buttons    : SoloClear / MuteClear / ArmAll / BypassAll / Latch / Trim / Off
+BYPASS / TOUCH / WRITE / READ                  : Normal paths
+SHIFT + SOLO / MUTE / ARM                      : SoloClear / MuteClear / ArmAll
+SHIFT + BYPASS / TOUCH / WRITE / READ          : BypassAll / Latch / Trim / Off
 LINK / SHIFT + LINK      : Link / LinkLock
 SHIFT + PAN              : Flip
 SHIFT + CHANNEL          : ChannelLock
@@ -541,6 +544,9 @@ function assignSelectedTrackControls() {
 	page.makeActionBinding(buttons.Prev, hostTrackSelection.mAction.mPrevTrack)
 	page.makeActionBinding(buttons.Next, hostTrackSelection.mAction.mNextTrack)
 	page.makeValueBinding(fader.mSurfaceValue, hostSelectedTrack.mValue.mVolume)
+	page.makeValueBinding(buttons.Solo, hostSelectedTrack.mValue.mSolo).setTypeToggle()
+	page.makeValueBinding(buttons.Mute, hostSelectedTrack.mValue.mMute).setTypeToggle()
+	page.makeValueBinding(buttons.Arm, hostSelectedTrack.mValue.mRecordEnable).setTypeToggle()
 }
 
 //-----------------------------------------------------------------------------
@@ -571,6 +577,21 @@ function setupTransportFeedback() {
 	sendTransportFeedback(hostTransport.mCycleActive, cCycle, 'Cycle')
 	// CLICK shows metronome state in either SHIFT layer; F2 remains unassigned.
 	sendTransportFeedback(hostTransport.mMetronomeActive, cClick, 'Metronome')
+}
+
+function sendSelectedTrackFeedback(hostValue, note, name) {
+	var ledValue = surface.makeCustomValueVariable(name + ' LED Feedback')
+	page.makeValueBinding(ledValue, hostValue)
+	ledValue.mOnProcessValueChange = function(context, newValue) {
+		setTransportLed(context, note, newValue > 0)
+	}
+}
+
+function setupSelectedTrackFeedback() {
+	var selectedTrack = page.mHostAccess.mTrackSelection.mMixerChannel.mValue
+	sendSelectedTrackFeedback(selectedTrack.mSolo, cSolo, 'Selected Track Solo')
+	sendSelectedTrackFeedback(selectedTrack.mMute, cMute, 'Selected Track Mute')
+	sendSelectedTrackFeedback(selectedTrack.mRecordEnable, cArm, 'Selected Track Record Enable')
 }
 
 function setConfirmTransportLEDs(context, isOn) {
@@ -791,6 +812,7 @@ assignUtilityControls()
 assignSelectedTrackControls()
 assignKnobControls()
 setupTransportFeedback()
+setupSelectedTrackFeedback()
 setupHighPassFeedback()
 
 //--------------------------------------------------------------------------------------------
