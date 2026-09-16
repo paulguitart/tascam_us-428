@@ -62,6 +62,7 @@ scope.assignTransportControls();
 assert.equal(bindings.length, 5);
 assert.equal(bindings.filter(b => b.toggle).length, 3);
 assert.strictEqual(bindings[0].host, scope.hostTransport.mStart);
+assert.strictEqual(bindings[0].host, scope.hostTransport.mStart);
 assert.strictEqual(bindings[1].host, scope.hostTransport.mRecord);
 assert.strictEqual(bindings[2].host, scope.hostTransport.mCycleActive);
 assert.strictEqual(bindings[3].host, scope.hostTransport.mForward);

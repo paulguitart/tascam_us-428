@@ -181,3 +181,5 @@ PREV/NEXT presses are routed directly to separate track, marker, cycle-recall, o
 ### STOP hold progress
 
 Holding STOP waits 500 ms, then lights FORWARD, REWIND, PLAY and REC cumulatively at 250 ms intervals. At 1.5 seconds it saves once and runs the existing five confirmation blinks. Releasing early or using STOP + REW cancels the progress and restores current transport feedback. STOP and CYCLE LEDs remain live throughout. `STOP_SAVE_PREDELAY_MS` controls the initial delay; `STOP_SAVE_HOLD_MS` controls the total hold time.
+
+PLAY uses the working `hostTransport.mStart` value binding. Its LED follows Cubase playback state through separate feedback.
