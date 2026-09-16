@@ -349,6 +349,7 @@ function assignButtonRouting(mapping) {
         if (value > 0) {
             if (activeName) { return } // Ignore repeated press messages.
             activeName = context.getState('shiftEnabled') === '1' ? shiftedName : normalName
+            activeName = resolveKnobModeButton(context, activeName)
             context.setState(stateKey, activeName)
             // Selected-track state bindings toggle on press; their release must not clear the host value.
             if (activeName === normalName && selectedTrackToggleValues[normalName]) {
@@ -1120,7 +1121,26 @@ function updateKnobModeLEDs(context) {
     updateBypassLED(context)
 }
 
+function resolveKnobModeButton(context, name) {
+    var modeNames = { Link: 'Link', Pan: 'Pan', Scroll: 'Zoom', Zoom: 'Zoom',
+        Master: 'Master', Click: 'Click', Channel: 'HighPass', Section: 'Section', Marker: 'Marker' }
+    var previous = context.getState('previousKnobMode')
+    var requestedMode = modeNames[name]
+    // Non-mode buttons keep their normal action.
+    if (!requestedMode) return name
+    // Pressing a different mode selects it normally.
+    if (requestedMode !== context.getState('knobMode')) return name
+    // Pressing the active mode can only go back if a previous mode exists.
+    if (!previous) return name
+    for (var buttonName in modeNames) {
+        if (modeNames[buttonName] === previous) return buttonName
+    }
+    return name
+}
+
 function activateKnobMode(context, mode, activeMapping) {
+    var current = context.getState('knobMode')
+    if (current && current !== mode) context.setState('previousKnobMode', current)
     // Scroll, Section and Marker leave the current fader target active.
     if (mode !== 'Zoom' && mode !== 'Section' && mode !== 'Marker') {
         var target = mode === 'Pan' || mode === 'Link' || mode === 'HighPass'
@@ -1310,6 +1330,8 @@ function assignKnobControls() {
 
 page.mOnActivate = function(context, activeMapping) {
     activateFaderNudge(context, activeMapping)
+    context.setState('knobMode', '')
+    context.setState('previousKnobMode', '')
     knobModes.Pan.mAction.mActivate.trigger(activeMapping)
     activateKnobMode(context, 'Pan', activeMapping)
     restoreTransportLEDs(context)

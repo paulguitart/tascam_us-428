@@ -46,6 +46,8 @@ Set `ENABLE_FADER_NUDGE = false` to restore Master's Set Left/Right Locator acti
 
 ## Knob modes
 
+Press the active mode's button again to return to the previous mode. For example, Pan -> Click -> Click returns to Pan; pressing Pan again returns to Click. Scroll and SHIFT + Scroll share this behavior. Before the first mode change, Pan stays active. History resets when the mapping activates. Restored modes use their usual fader behavior; Scroll, Section and Marker retain the current fader target.
+
 Pan is selected when the Hardware page activates. Pan, Link and Channel assign selected-track volume; Master assigns Stereo Out; Click assigns metronome level (Stereo Out when `ENABLE_METRONOME_FADER = false`). Scroll (including SHIFT + Scroll), Section and Marker keep whichever fader target was previously active. All use the same motor and calibration helpers.
 
 | Button path | Knob assignment |
