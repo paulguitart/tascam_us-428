@@ -36,7 +36,7 @@ LED feedback follows Cubase transport state independently of physical button pre
 - SHIFT does not change the fader assignment. Shifted Prev/Next retain Undo/Redo. PREV/NEXT LEDs stay on while their physical buttons are held and turn off on release, in every mode and SHIFT layer.
 - Encoder rotation uses the knob modes below. Encoder push toggles the first send in Link and Pan modes, Cubase's metronome in Click mode, the high-pass filter in Channel mode, toggles Main Mix insert bypass in Master mode, and inserts a marker in Marker mode.
 
-With SHIFT off, TOUCH resets the current fader target: selected-track or Stereo Out volume goes to 0 dB using `FADER_HOST_UNITY`; metronome level goes to maximum. TOUCH lights white when Cubase displays 0 dB for the current volume target, or when the metronome level is at maximum; otherwise it is off. It follows host edits and track changes. Scroll, Section, and Marker retain the preceding fader target, so TOUCH retains that target too. SHIFT + TOUCH remains unassigned. Motor movement follows the existing touch protection.
+With SHIFT off, TOUCH resets the current fader target: selected-track or Stereo Out volume goes to 0 dB using `FADER_HOST_UNITY`; metronome level goes to maximum. TOUCH lights white when the current volume target matches `FADER_HOST_UNITY` within one 14-bit MIDI step, or when the metronome level is at maximum; otherwise it is off. It follows host edits and track changes. Scroll, Section, and Marker retain the preceding fader target, so TOUCH retains that target too. SHIFT + TOUCH remains unassigned. Motor movement follows the existing touch protection.
 
 ## Knob modes
 

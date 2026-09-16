@@ -744,7 +744,8 @@ function updateTouchLED(context) {
     if (value) {
         atReset = target === 'Metronome'
             ? value.getProcessValue(context) >= 1 - 0.000001
-            : context.getState('faderZero.' + target) === '1'
+            // Match the reset value directly; display callbacks may omit dB units.
+            : Math.abs(value.getProcessValue(context) - FADER_HOST_UNITY) <= 1 / 16383
     }
     setRGBLED_color(context, cTouch, WHITE)
     setTransportLed(context, cTouch, atReset)
@@ -763,13 +764,7 @@ function setupFaderTargetFeedback(name, hostValue) {
     value.mOnProcessValueChange = function(context) {
         if (context.getState('faderTarget') === name) updateTouchLED(context)
     }
-    value.mOnDisplayValueChange = function(context, text, units) {
-        var display = String(text).replace(/\s/g, '').replace(',', '.')
-        var match = display.match(/^([+-]?[0-9]+(?:\.[0-9]+)?)(?:dB)?$/i)
-        var isDb = /^db$/i.test(String(units || '').replace(/\s/g, '')) || /db$/i.test(display)
-        context.setState('faderZero.' + name, match && isDb && Number(match[1]) === 0 ? '1' : '0')
-        if (context.getState('faderTarget') === name) updateTouchLED(context)
-    }
+
 }
 
 function assignSelectedTrackControls() {
