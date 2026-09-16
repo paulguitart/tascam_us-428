@@ -93,8 +93,9 @@ var deviceDriver = require('midiremote_api_v1')
     .makeDeviceDriver('PreSonus', 'IOStation', 'Paul Warner')
 var midiIn = deviceDriver.mPorts.makeMidiInput()
 var midiOut = deviceDriver.mPorts.makeMidiOutput()
+// The IOStation surface uses the FaderPort 2 map but exposes IOStation port names.
 deviceDriver.makeDetectionUnit().detectPortPair(midiIn, midiOut)
-    .expectInputNameEquals('PreSonus FP2').expectOutputNameEquals('PreSonus FP2')
+    .expectInputNameEquals('ioStation 24c MIDI In').expectOutputNameEquals('ioStation 24c MIDI Out')
 
 // MIDI channel arguments are zero-based. Keep the hardware in the same mode
 // used with the original script; this script does not change its DAW mode.
@@ -257,6 +258,14 @@ var buttonMappings = [
 // Bind future Cubase actions to these logical values, e.g. buttons.F1 or
 // buttons.Flip. Physical surface buttons remain the single MIDI input source.
 var buttons = {}
+var selectedTrackToggleValues = {}
+function toggleSelectedTrackValue(context, name) {
+    var stateValue = selectedTrackToggleValues[name]
+    if (!stateValue) return
+    var isOn = stateValue.getProcessValue(context) > 0
+    stateValue.setProcessValue(context, isOn ? 0 : 1)
+}
+
 function assignButtonRouting(mapping) {
     var normalName = mapping.normalName
     var shiftedName = mapping.shiftedName
@@ -269,6 +278,10 @@ function assignButtonRouting(mapping) {
             if (activeName) { return } // Ignore repeated press messages.
             activeName = context.getState('shiftEnabled') === '1' ? shiftedName : normalName
             context.setState(stateKey, activeName)
+            // Selected-track state bindings toggle on press; their release must not clear the host value.
+            if (activeName === normalName && selectedTrackToggleValues[normalName]) {
+                toggleSelectedTrackValue(context, normalName)
+            }
             buttons[activeName].setProcessValue(context, 1)
         } else if (activeName) {
             // Release the path that received the press, even if SHIFT changed meanwhile.
@@ -328,13 +341,15 @@ function midi7(value) { return Math.max(0, Math.min(127, Math.round(value))) }
 function clampFader(value) { return Math.max(0, Math.min(1, value)) }
 
 // RGB color and on/off/flash state are separate hardware messages.
-function setRGBLED(context, note, r, g, b, brightness = FULL_BRIGHTNESS) {
+function setRGBLED(context, note, r, g, b, brightness) {
+    // Use an ES5 body check; Cubase does not parse ES2015 default parameters.
+    if (typeof brightness === 'undefined') brightness = FULL_BRIGHTNESS
     brightness = Math.max(0, Math.min(1, brightness))
     sendHardwareMidi(context, 0x91, note, midi7(midi7(r) * brightness))
     sendHardwareMidi(context, 0x92, note, midi7(midi7(g) * brightness))
     sendHardwareMidi(context, 0x93, note, midi7(midi7(b) * brightness))
 }
-function setRGBLED_color(context, note, color, brightness = FULL_BRIGHTNESS) {
+function setRGBLED_color(context, note, color, brightness) {
     setRGBLED(context, note, color[0], color[1], color[2], brightness)
 }
 
@@ -544,9 +559,6 @@ function assignSelectedTrackControls() {
 	page.makeActionBinding(buttons.Prev, hostTrackSelection.mAction.mPrevTrack)
 	page.makeActionBinding(buttons.Next, hostTrackSelection.mAction.mNextTrack)
 	page.makeValueBinding(fader.mSurfaceValue, hostSelectedTrack.mValue.mVolume)
-	page.makeValueBinding(buttons.Solo, hostSelectedTrack.mValue.mSolo).setTypeToggle()
-	page.makeValueBinding(buttons.Mute, hostSelectedTrack.mValue.mMute).setTypeToggle()
-	page.makeValueBinding(buttons.Arm, hostSelectedTrack.mValue.mRecordEnable).setTypeToggle()
 }
 
 //-----------------------------------------------------------------------------
@@ -580,18 +592,19 @@ function setupTransportFeedback() {
 }
 
 function sendSelectedTrackFeedback(hostValue, note, name) {
-	var ledValue = surface.makeCustomValueVariable(name + ' LED Feedback')
-	page.makeValueBinding(ledValue, hostValue)
-	ledValue.mOnProcessValueChange = function(context, newValue) {
-		setTransportLed(context, note, newValue > 0)
-	}
+    var ledValue = surface.makeCustomValueVariable(name + ' LED Feedback')
+    page.makeValueBinding(ledValue, hostValue)
+    ledValue.mOnProcessValueChange = function(context, newValue) {
+        setTransportLed(context, note, newValue > 0)
+    }
+    return ledValue
 }
 
 function setupSelectedTrackFeedback() {
 	var selectedTrack = page.mHostAccess.mTrackSelection.mMixerChannel.mValue
-	sendSelectedTrackFeedback(selectedTrack.mSolo, cSolo, 'Selected Track Solo')
-	sendSelectedTrackFeedback(selectedTrack.mMute, cMute, 'Selected Track Mute')
-	sendSelectedTrackFeedback(selectedTrack.mRecordEnable, cArm, 'Selected Track Record Enable')
+	selectedTrackToggleValues.Solo = sendSelectedTrackFeedback(selectedTrack.mSolo, cSolo, 'Selected Track Solo')
+	selectedTrackToggleValues.Mute = sendSelectedTrackFeedback(selectedTrack.mMute, cMute, 'Selected Track Mute')
+	selectedTrackToggleValues.Arm = sendSelectedTrackFeedback(selectedTrack.mRecordEnable, cArm, 'Selected Track Record Enable')
 }
 
 function setConfirmTransportLEDs(context, isOn) {

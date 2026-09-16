@@ -73,3 +73,11 @@ assert.deepStrictEqual(h.messages.slice(-2),[[145,77,127],[146,77,40]]);
 assert.equal(vm.runInContext('FULL_BRIGHTNESS',h.scope),1);
 assert.equal(vm.runInContext('HALF_BRIGHTNESS',h.scope),.5);
 console.log('PASS: explicit per-call brightness and cache refresh when brightness changes');
+
+h=load();
+h.scope.setRGBLED(h.context,77,127,40,0);
+assert.deepStrictEqual(h.messages,[[145,77,127],[146,77,40],[147,77,0]]);
+h.messages.length=0;
+h.scope.setRGBLED_color(h.context,77,[0,127,0]);
+assert.deepStrictEqual(h.messages,[[145,77,0],[146,77,127],[147,77,0]]);
+console.log('PASS: omitted brightness defaults to full for RGB components and color-array helper');

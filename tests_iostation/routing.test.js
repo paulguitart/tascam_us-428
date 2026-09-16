@@ -14,6 +14,15 @@ const a = device(), b = device(), events = [], midi = [];
 for (const name of Object.keys(scope.buttons)) {
     scope.buttons[name].setProcessValue = (context, value) => events.push([name, value]);
 }
+const selectedTrackStates = { Solo: 0, Mute: 0, Arm: 0 }, toggleWrites = [];
+for (const name of Object.keys(selectedTrackStates)) {
+    const value = scope.selectedTrackToggleValues[name];
+    value.getProcessValue = () => selectedTrackStates[name];
+    value.setProcessValue = (context, nextValue) => {
+        selectedTrackStates[name] = nextValue;
+        toggleWrites.push([name, nextValue]);
+    };
+}
 scope.midiOut.sendMidi = (context, bytes) => midi.push(Array.from(bytes));
 const shift = value => scope.uSection.btn_Shift.mSurfaceValue.mOnProcessValueChange(a, value);
 const press = (mapping, value, context = a) => mapping.physicalButton.mSurfaceValue.mOnProcessValueChange(context, value);
@@ -25,6 +34,19 @@ for (const mapping of scope.buttonMappings) {
     press(mapping, 1); press(mapping, 1); press(mapping, 0);
     assert.deepStrictEqual(events, [[mapping.normalName, 1], [mapping.normalName, 0], [mapping.shiftedName, 1], [mapping.shiftedName, 0]]);
     assert.equal(a.getState('shiftEnabled'), '1');
+}
+// Selected-track buttons change host state once on press; duplicates and release do not undo it.
+for (const name of Object.keys(selectedTrackStates)) {
+    const mapping = scope.buttonMappings.find(item => item.normalName === name);
+    scope.resetButtonRouting(a);
+    selectedTrackStates[name] = 0;
+    toggleWrites.length = 0;
+    press(mapping, 1); press(mapping, 1); press(mapping, 0);
+    assert.equal(selectedTrackStates[name], 1);
+    assert.deepStrictEqual(toggleWrites, [[name, 1]]);
+    press(mapping, 1); press(mapping, 0);
+    assert.equal(selectedTrackStates[name], 0);
+    assert.deepStrictEqual(toggleWrites, [[name, 1], [name, 0]]);
 }
 // Held shifted button releases its original path after SHIFT toggles off.
 const master = scope.buttonMappings.find(mapping => mapping.normalName === 'Master');
@@ -40,4 +62,4 @@ assert(midi.some(bytes => bytes.join() === '144,70,0'));
 scope.deviceDriver.mOnDeactivate(a);
 assert.equal(a.getState('shiftEnabled'), '0');
 assert.equal(a.getState('held.Master'), '');
-console.log('PASS: 17 printed pairs, latched SHIFT, duplicate presses, release routing, device isolation, LED feedback and reset');
+console.log('PASS: 17 printed pairs, selected-track toggles, latched SHIFT, duplicate presses, release routing, device isolation, LED feedback and reset');

@@ -1,12 +1,12 @@
 # PreSonus IOStation MIDI Remote
 
-`PreSonus_IOStation.js` maps the IOStation's FaderPort 2 control surface to Cubase MIDI Remote. The IOStation combines that surface with a separate ASIO audio interface in the same chassis; this script handles only the MIDI control surface. Its MIDI behavior and port names match the PreSonus FP2, so the script intentionally keeps `PreSonus FP2` input/output detection. The original Christian & Werner script is preserved in `example_code/PreSonus_FaderPort_Werner.js` for reference.
+`PreSonus_IOStation.js` maps the IOStation's FaderPort 2 control surface to Cubase MIDI Remote. The IOStation combines that surface with a separate ASIO audio interface in the same chassis; this script handles only the MIDI control surface. Its control behavior matches the FaderPort 2, but the IOStation exposes ports named `ioStation 24c MIDI In` and `ioStation 24c MIDI Out`, which the script detects. The original Christian & Werner script is preserved in `example_code/PreSonus_FaderPort_Werner.js` for reference.
 
 ## Included
 
 - Original surface coordinates, control sizes, shapes and five control layers.
 - 24 panel buttons, encoder rotation and push, footswitch, motor fader and touch input.
-- Original `PreSonus FP2` input/output port detection.
+- `ioStation 24c MIDI In` / `ioStation 24c MIDI Out` input/output port detection.
 - Channel-1 pitch-bend fader input/output through configurable hardware protection helpers; relative signed-bit CC 16 encoder input.
 - LED off/on/flash and RGB helpers; direct normalized motor-position helper.
 - One **Hardware** mapping page with Korg-style transport assignments.
@@ -105,7 +105,7 @@ Use `var_footswitchPressed` for future pedal assignments. Toggle mode uses the f
 
 ## Loading in Cubase
 
-Place the script in the Cubase MIDI Remote user-script tree under `PreSonus/IOStation/PreSonus_IOStation.js`, then reload scripts. Its device name is **IOStation**. The script detects the input and output ports named `PreSonus FP2`, matching the IOStation's FaderPort 2 control surface. Disable the original script or other remote devices using those ports before testing this version.
+Place the script in the Cubase MIDI Remote user-script tree under `PreSonus/IOStation/PreSonus_IOStation.js`, then reload scripts. Its device name is **IOStation**. The script detects input `ioStation 24c MIDI In` and output `ioStation 24c MIDI Out`. Disable the original script or other remote devices using those ports before testing this version.
 
 Retain the hardware DAW mode used with the original script. Neither source sends a DAW-mode initialization handshake; this extraction does not establish which power-on mode your unit currently uses.
 
@@ -129,7 +129,7 @@ Run `node --check PreSonus_IOStation.js` from the repository root for a JavaScri
 
 - `node tests_iostation/routing.test.js` checks printed-button routing, SHIFT toggling, held-button release across layer changes, device isolation and LED feedback.
 - `node tests_iostation/transport.test.js` checks transport bindings, STOP/REW handling, repeated RTZ, save timing/cancellation and LED animation/restoration.
-- `node tests_iostation/hardware.test.js` checks touch protection, deferred motor commands, cache reset, calibration round trips, low-end snap and pedal normalization.
+- `node tests_iostation/hardware.test.js` checks touch protection, deferred motor commands, cache reset, calibration round trips, low-end snap, pedal normalization and optional RGB brightness defaults.
 - `node tests_iostation/knob.test.js` checks knob mode binding targets, selectors, mode LEDs, repeated zoom pulses and mode-entry baselines.
 
 Actual port detection, Cubase command execution, surface rendering, encoder direction, footswitch polarity and motor feedback still need a Cubase/hardware check.
@@ -150,6 +150,6 @@ Most landmarks are below 300 Hz. These indicate cutoff frequency, not measured a
 
 ### RGB brightness
 
-`setRGBLED(context, note, r, g, b, brightness)` defaults brightness to `FULL_BRIGHTNESS` (1), so ordinary calls can omit it. Pass `HALF_BRIGHTNESS` (0.5) to halve component levels for an individual call. `setRGBLED_color(context, note, color, brightness)` accepts an RGB array such as `GREEN`; it has the same full-brightness default. Perceived brightness is not necessarily linear. Values are clamped to 0..1 before MIDI conversion.
+`setRGBLED(context, note, r, g, b, brightness)` defaults brightness to `FULL_BRIGHTNESS` (1), so ordinary calls can omit it. Pass `HALF_BRIGHTNESS` (0.5) to halve component levels for an individual call. `setRGBLED_color(context, note, color, brightness)` accepts an RGB array such as `GREEN`; omitted brightness is forwarded as `undefined` and defaults to full in `setRGBLED`. This uses an ES5-compatible body check because [Steinberg's MIDI Remote user-script repository specifies ES5 JavaScript](https://github.com/steinbergmedia/midiremote-userscripts#about). Perceived brightness is not necessarily linear. Values are clamped to 0..1 before MIDI conversion.
 
 This applies to Touch, Write, Read, Link, Pan, Channel and Scroll. The [PreSonus manual, sections 8.2.4 and LED tables](https://pae-web.presonusmusic.com/downloads/products/pdf/FaderPort_OwnersManual_V2_EN_051023.pdf) distinguishes these RGB buttons from the fixed-color transport LEDs and documents only off/on/flashing for the latter. A 50%-idle/full-on transport brightness effect is therefore not implemented; transport LEDs continue to show host state.
