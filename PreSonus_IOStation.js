@@ -803,15 +803,17 @@ var faderTargetFeedback = {}
 function updateTouchLED(context) {
     var target = context.getState('faderTarget')
     var value = faderTargetFeedback[target]
-    var atReset = false
+    var color = null
     if (value) {
-        atReset = target === 'Metronome'
-            ? value.getProcessValue(context) >= 1 - 0.000001
-            // Match the reset value directly; display callbacks may omit dB units.
-            : Math.abs(value.getProcessValue(context) - FADER_HOST_UNITY) <= 1 / 16383
+        var level = value.getProcessValue(context)
+        var tolerance = 1 / 16383
+        if (level >= 1 - tolerance) color = RED
+        else if (level <= tolerance) color = AMBER
+        // Match the reset value directly; display callbacks may omit dB units.
+        else if (target !== 'Metronome' && Math.abs(level - FADER_HOST_UNITY) <= tolerance) color = WHITE
     }
-    setRGBLED_color(context, cTouch, WHITE)
-    setTransportLed(context, cTouch, atReset)
+    if (color) setRGBLED_color(context, cTouch, color)
+    setTransportLed(context, cTouch, !!color)
 }
 
 function resetCurrentFader(context) {
