@@ -30,15 +30,15 @@ LED feedback follows Cubase transport state independently of physical button pre
 ## Selected track
 
 - With SHIFT off, Prev/Next select the previous/next Cubase track in the other knob modes. Marker mode assigns them to previous/next marker; Section assigns them to previous/next cycle-marker recall; Master assigns them to Set Left Locator / Set Right Locator.
-- With SHIFT off, Write/Read toggle the selected track's automation Write/Read enable. WRITE lights red and READ lights green while enabled; both follow track selection and Cubase edits in every mode. SHIFT + Write (Trim) and SHIFT + Read (Off) remain unassigned, as do SHIFT + BYPASS (BypassAll) and TOUCH. With SHIFT off, BYPASS mirrors encoder push in Link/Pan (selected-track send 1 on/off), Channel (high-pass on/off), Click (metronome on/off), and Master (`Mixer > Bypass: Inserts on Main Mix`). It is unassigned in other modes.
+- With SHIFT off, Write/Read toggle the selected track's automation Write/Read enable. WRITE lights red and READ lights green while enabled; both follow track selection and Cubase edits in every mode. SHIFT + Write (Trim) and SHIFT + Read (Off) remain unassigned, as do SHIFT + BYPASS (BypassAll) and TOUCH. With SHIFT off, BYPASS mirrors encoder push in Link/Pan (selected-track send 1 on/off), Channel (high-pass on/off), Click (metronome on/off), and Master (`Mixer > Bypass: Inserts on Main Mix`). In Scroll, Section, and Marker, BYPASS also toggles the metronome; their knob-press actions stay unchanged.
 - With SHIFT off, Solo/Mute/Arm toggle Solo, Mute and Record Enable for the selected track. Their LEDs follow the selected track's state, including changes made in Cubase.
-- Pan, Link and Channel assign the fader to selected-track volume. Scroll, Section and Marker retain the previous fader assignment. In Master and Click modes it controls the first Stereo Out channel using the same FaderPort unity and motor calibration path as the track faders. The Master encoder controls the first FX Return channel. Host changes and track selection feed the fader motor through the existing touch-protection and calibration helpers.
+- Pan, Link and Channel assign the fader to selected-track volume. Scroll, Section and Marker retain the previous fader assignment. In Click mode it controls metronome level when `ENABLE_METRONOME_FADER = true` (the default); set it to `false` for Stereo Out. In Master mode it controls the first Stereo Out channel using the same FaderPort unity and motor calibration path as the track faders. The Master encoder controls the first FX Return channel. Host changes and track selection feed the fader motor through the existing touch-protection and calibration helpers.
 - SHIFT does not change the fader assignment. Shifted Prev/Next retain Undo/Redo. PREV/NEXT LEDs stay on while their physical buttons are held and turn off on release, in every mode and SHIFT layer.
 - Encoder rotation uses the knob modes below. Encoder push toggles the first send in Link and Pan modes, Cubase's metronome in Click mode, the high-pass filter in Channel mode, toggles Main Mix insert bypass in Master mode, and inserts a marker in Marker mode.
 
 ## Knob modes
 
-Pan is selected when the Hardware page activates. Pan, Link and Channel assign selected-track volume; Master and Click assign Stereo Out. Scroll (including SHIFT + Scroll), Section and Marker keep whichever fader target was previously active. All use the same motor and calibration helpers.
+Pan is selected when the Hardware page activates. Pan, Link and Channel assign selected-track volume; Master assigns Stereo Out; Click assigns metronome level (Stereo Out when `ENABLE_METRONOME_FADER = false`). Scroll (including SHIFT + Scroll), Section and Marker keep whichever fader target was previously active. All use the same motor and calibration helpers.
 
 | Button path | Knob assignment |
 |---|---|
@@ -46,16 +46,16 @@ Pan is selected when the Hardware page activates. Pan, Link and Channel assign s
 | Pan | Selected-track pan; encoder push or BYPASS toggles send 1 on/off |
 | Scroll or SHIFT + Scroll (Zoom) | Horizontal zoom using the Korg position-comparison pattern; knob push zooms to locators; fader retains its previous target |
 | Master | Encoder controls FX Return 1; fader controls Stereo Out; encoder push or BYPASS toggles Main Mix inserts; Prev/Next set left/right locators |
-| Click | Metronome level; fader controls Stereo Out; encoder push or BYPASS toggles the metronome |
+| Click | Knob and fader control metronome level (`ENABLE_METRONOME_FADER = true`); encoder push or BYPASS toggles the metronome |
 | Channel | Selected-track high-pass cutoff; knob push or BYPASS toggles the filter |
 | Section | Prev/Next recall cycle markers with wrapping; fader retains its previous target; knob rotates horizontal zoom; knob push zooms to locators |
 | Marker | Fader retains its previous target; Prev/Next locate markers; knob rotates horizontal zoom; encoder push inserts a marker |
 
 Master fader controls an output channel, not Control Room. With multiple output buses, put the intended Stereo Out first in the output bank. The API binding does not identify a bus by its name or Main Mix designation. The encoder uses the first FX channel, so the intended FX Return 1 must be first in the FX bank. The fader uses the same FaderPort unity calibration as track faders. Encoder rotation remains full-range.
 
-In Master mode, the BYPASS LED follows `mBypass` for insert slot 1 (`accessSlotAtIndex(0)`) through the `Stereo Out Insert 1` viewer on that first output channel. It lights when that slot is **not bypassed**. This reports slot 1's state, while the button command targets all Main Mix inserts. In Link and Pan, the LED follows selected-track send 1's `mOn`; in Channel, it follows the high-pass filter's `mLowCutOn`; in Click, it follows the metronome's `mMetronomeActive`. Across these modes, **LED on means enabled; off means bypassed/disabled**. Feedback follows Cubase edits, track selection, and mode changes; the LED is off in other modes. SHIFT does not change this LED feedback. Link/Pan toggle the send to the FX destination, not the FX return channel or its inserts.
+In Master mode, the BYPASS LED follows `mBypass` for insert slot 1 (`accessSlotAtIndex(0)`) through the `Stereo Out Insert 1` viewer on that first output channel. It lights when that slot is **not bypassed**. This reports slot 1's state, while the button command targets all Main Mix inserts. In Link and Pan, the LED follows selected-track send 1's `mOn`; in Channel, it follows the high-pass filter's `mLowCutOn`; in Click, Scroll, Section, and Marker, it follows the metronome's `mMetronomeActive`. Across these modes, **LED on means enabled; off means bypassed/disabled**. Feedback follows Cubase edits, track selection, and mode changes; the LED is off in other modes. SHIFT does not change this LED feedback. Link/Pan toggle the send to the FX destination, not the FX return channel or its inserts.
 
-The active Link, Pan or Scroll mode is white; active Channel uses the high-pass colors below. The other buttons in this four-button group pulse red while recording when `ENABLE_NUCLEAR_RECORD_BLINK = true` (the default), regardless of metronome state. Set `ENABLE_NUCLEAR_METRONOME_LEDS = true` to also show solid `METRONOME_PULSE_COLOR` (blue by default) when the metronome is enabled; this option defaults to `false`. Recording indication takes priority. Otherwise, inactive buttons are off. In Master, Click, Section or Marker mode, these options apply to all four buttons. Neither flag changes the CLICK-mode BYPASS LED or the transport RECORD LED. Master, Click, Section and Marker LEDs indicate only their respective active modes.
+The active Link, Pan or Scroll mode is white; active Channel uses the high-pass colors below. The other buttons in this four-button group pulse red while recording when `ENABLE_NUCLEAR_RECORD_BLINK = true` (the default), regardless of metronome state. Set `ENABLE_NUCLEAR_METRONOME_LEDS = true` to also show solid `METRONOME_PULSE_COLOR` (blue by default) when the metronome is enabled; this option defaults to `false`. Recording indication takes priority. Otherwise, inactive buttons are off. In Master, Click, Section or Marker mode, these options apply to all four buttons. Neither flag changes the CLICK/SCROLL/SECTION/MARKER BYPASS LED or the transport RECORD LED. Master, Click, Section and Marker LEDs indicate only their respective active modes.
 
 The recording-only red brightness pulse uses the Tascam script's tempo callback and idle-timer pattern: `60000 / BPM`, with a 120 BPM fallback and a 150 ms minimum interval. A smooth brightness cycle runs once per beat, from 15% to full brightness. It follows tempo rate, not the transport's beat position, and returns to solid blue only if the metronome and `ENABLE_NUCLEAR_METRONOME_LEDS` are both enabled; otherwise it turns off when recording stops. Set `METRONOME_PULSE_COLOR` to choose the normal metronome color. Set `ENABLE_NUCLEAR_RECORD_BLINK = false` to disable the recording indication on this group entirely. With that flag enabled, set `ENABLE_METRONOME_PULSE = false` for steady red during recording; adjust `METRONOME_PULSE_MIN_BRIGHTNESS` to change the pulse floor. Hardware smoothness depends on Cubase's idle callback cadence.
 
@@ -72,7 +72,7 @@ Link controls send slot 1 (`mSends.getByIndex(0)`) on the selected track. Assign
 - With SHIFT enabled, Prev triggers Undo and Next triggers Redo, following the printed labels.
 - With SHIFT off, Click selects the knob’s Click mode; encoder push toggles Cubase's metronome. Knob rotation adjusts metronome click level.
 - With SHIFT off, Marker selects Marker mode; Prev/Next locate the previous/next marker, and encoder push inserts a marker.
-- Metronome feedback follows Cubase state, including mouse changes, on the CLICK-mode BYPASS LED and, when enabled by `ENABLE_NUCLEAR_METRONOME_LEDS`, the inactive Link/Pan/Channel/Scroll LEDs. Click lights only while Click mode is active.
+- Metronome feedback follows Cubase state, including mouse changes, on the CLICK/SCROLL/SECTION/MARKER BYPASS LED and, when enabled by `ENABLE_NUCLEAR_METRONOME_LEDS`, the inactive Link/Pan/Channel/Scroll LEDs. Click lights only while Click mode is active.
 - With SHIFT enabled, Click reaches the unassigned F2 path; it does not select Click mode or toggle the metronome.
 - Cycle toggles loop mode and follows Cubase's cycle state with its LED. Cycle feedback remains live during Save confirmation blinking.
 
@@ -94,6 +94,8 @@ Button release follows whichever path received the press, even if SHIFT changes 
 
 The original custom modes, QuickTracks, EQ, broader send controls, meters and footswitch gestures are omitted. Selected hardware refinements are available through the settings below.
 
+With `ENABLE_METRONOME_FADER = true`, leaving Click for Scroll, Section, or Marker retains the metronome fader assignment, following the existing keep-previous-target behavior.
+
 ## Hardware settings
 
 These are top-level `const` settings; edit and reload the script.
@@ -111,7 +113,7 @@ These are top-level `const` settings; edit and reload the script.
 
 Motor protection remembers the latest deferred target. A newer manual movement clears an older deferred target. Output caches reset on activation/deactivation and manual fader movement invalidates the motor cache. Incoming fader movement does not immediately echo back to the motor.
 
-Calibration uses two straight segments that preserve both travel endpoints. Set FADER_HOST_UNITY to match Cubase's volume range (the original script uses 0.789087 for +6 dB and 0.748222 for +12 dB). Set FADER_HARDWARE_UNITY to the measured normalized raw input at your unit's printed U mark. Its default equals the host setting and makes no correction. Calibration and bottom snap are intended for volume mappings; leave them off for arbitrary parameters. Pan, Link and Channel assign selected-track volume; Master and Click assign Stereo Out; Scroll, Section and Marker retain the preceding target.
+Calibration uses two straight segments that preserve both travel endpoints. Set FADER_HOST_UNITY to match Cubase's volume range (the original script uses 0.789087 for +6 dB and 0.748222 for +12 dB). Set FADER_HARDWARE_UNITY to the measured normalized raw input at your unit's printed U mark. Its default equals the host setting and makes no correction. Calibration and bottom snap are intended for volume mappings; leave them off for arbitrary parameters. Pan, Link and Channel assign selected-track volume; Master assigns Stereo Out; Click assigns metronome level (Stereo Out when `ENABLE_METRONOME_FADER = false`); Scroll, Section and Marker retain the preceding target.
 
 Use `var_footswitchPressed` for future pedal assignments. Toggle mode uses the first received message as a baseline, so that message produces no action; if the hardware supplies no initial state, the first physical switch change establishes it. Disabling normalization forwards raw 0/1 values. No pedal action is assigned yet.
 

@@ -19,6 +19,7 @@ RGB-capable buttons (Werner reference):
 //-----------------------------------------------------------------------------
 
 const CYCLE_MARKER_MAX = 9
+const ENABLE_METRONOME_FADER = true // CLICK fader controls metronome level; false: Stereo Out
 
 var ENABLE_STOP_HOLD_SAVE = true
 var STOP_SAVE_HOLD_MS = 1500
@@ -729,6 +730,8 @@ function assignSelectedTrackControls() {
         .setSubPage(faderModes.Track)
     page.makeValueBinding(fader.mSurfaceValue, hostStereoOut.mValue.mVolume)
         .setSubPage(faderModes.StereoOut)
+    page.makeValueBinding(fader.mSurfaceValue, hostTransport.mMetronomeClickLevel)
+        .setSubPage(faderModes.Metronome)
 }
 
 //-----------------------------------------------------------------------------
@@ -907,7 +910,8 @@ var knob = mSection.knob_vis.mSurfaceValue
 var faderModeArea = page.makeSubPageArea('Fader Target')
 var faderModes = {
     Track: faderModeArea.makeSubPage('Selected Track'),
-    StereoOut: faderModeArea.makeSubPage('Stereo Out')
+    StereoOut: faderModeArea.makeSubPage('Stereo Out'),
+    Metronome: faderModeArea.makeSubPage('Metronome Level')
 }
 var knobModeArea = page.makeSubPageArea('Knob Mode')
 var knobModes = {
@@ -953,6 +957,10 @@ masterInsertBypassFeedback.mOnProcessValueChange = function(context) {
 var hostMixerZoneFX = page.mHostAccess.mMixConsole.makeMixerBankZone().includeFXChannels()
 var fxChannel = hostMixerZoneFX.makeMixerBankChannel()
 
+function isMetronomeBypassMode(mode) {
+    return mode === 'Click' || mode === 'Zoom' || mode === 'Section' || mode === 'Marker'
+}
+
 function updateBypassLED(context) {
     var mode = context.getState('knobMode')
     var enabled = false
@@ -960,7 +968,7 @@ function updateBypassLED(context) {
         enabled = masterInsertBypassFeedback.getProcessValue(context) === 0
     } else if (mode === 'Link' || mode === 'Pan') {
         enabled = firstSendEnabledFeedbackValue && firstSendEnabledFeedbackValue.getProcessValue(context) > 0
-    } else if (mode === 'Click') {
+    } else if (isMetronomeBypassMode(mode)) {
         enabled = metronomeFeedbackValue && metronomeFeedbackValue.getProcessValue(context) > 0
     } else if (mode === 'HighPass') {
         enabled = highPassEnabledFeedbackValue && highPassEnabledFeedbackValue.getProcessValue(context) > 0
@@ -971,7 +979,7 @@ function updateBypassLED(context) {
 // Both physical controls toggle the same host-bound value in these modes.
 function toggleModeEffect(context) {
     var mode = context.getState('knobMode')
-    if (mode === 'Click') {
+    if (isMetronomeBypassMode(mode)) {
         toggleMetronome(context)
         return
     }
@@ -996,7 +1004,8 @@ function activateKnobMode(context, mode, activeMapping) {
     // Scroll, Section and Marker leave the current fader target active.
     if (mode !== 'Zoom' && mode !== 'Section' && mode !== 'Marker') {
         var target = mode === 'Pan' || mode === 'Link' || mode === 'HighPass'
-            ? faderModes.Track : faderModes.StereoOut
+            ? faderModes.Track
+            : mode === 'Click' && ENABLE_METRONOME_FADER ? faderModes.Metronome : faderModes.StereoOut
         target.mAction.mActivate.trigger(activeMapping)
     }
     context.setState('knobMode', mode)
