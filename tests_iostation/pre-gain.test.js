@@ -9,7 +9,7 @@ s.polarityFeedbackValue.getProcessValue=()=>polarity;
 s.polarityFeedbackValue.setProcessValue=(_,v)=>polarity=v;
 s.setRGBLED_color=(_,note,color)=>colors.push(Array.from(color));s.onLED=()=>{};
 let bypass;s.setTransportLed=(_,note,on)=>{if(note===s.cBypass)bypass=on};
-for(const [v,c] of [[0,[0,0,127]],[.25,[63.5,63.5,127]],[.5,[127,127,127]],[.75,[127,63.5,127]],[1,[127,0,127]]])assert.deepEqual(Array.from(s.getPreGainColor(v)),c);
+for(const [v,c] of [[0,[0,0,127]],[.25,[63.5,63.5,127]],[.5,[127,127,127]],[.75,[127,63.5,63.5]],[1,[127,0,0]]])assert.deepEqual(Array.from(s.getPreGainColor(v)),c);
 state.knobMode='PreGain';s.preGainFeedbackValue.mOnProcessValueChange(ctx);assert.deepEqual(colors.pop(),[127,127,127]);
 s.toggleModeEffect(ctx);s.updateBypassLED(ctx);assert.equal(polarity,1);assert.equal(bypass,true);
 s.toggleModeEffect(ctx);s.updateBypassLED(ctx);assert.equal(polarity,0);assert.equal(bypass,false);

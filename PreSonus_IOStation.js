@@ -1280,7 +1280,7 @@ function getPreGainColor(value) {
     if (!isFinite(value)) return WHITE
     var gain = Math.max(0, Math.min(1, value))
     var amount = Math.abs(gain - 0.5) * 2
-    var extreme = gain < 0.5 ? BLUE : MAGENTA
+    var extreme = gain < 0.5 ? BLUE : RED
     return WHITE.map(function(component, i) { return component + (extreme[i] - component) * amount })
 }
 
