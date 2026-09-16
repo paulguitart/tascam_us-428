@@ -79,6 +79,7 @@ TRANSPORT / FADER / KNOB : Keep their direct functions in either layer
 
 ACTIVE PRINTED BUTTONS:
 ----------------------------------------------------------------------------------------------------
+WRITE / READ (Normal)    : Toggle selected-track automation Write / Read; LEDs red / green
 SOLO / MUTE / ARM (Normal): Toggle selected-track Solo / Mute / Record Enable
                            : LEDs follow the selected-track state
 PREV / NEXT              : Select Previous / Next Track
@@ -113,7 +114,7 @@ FOOTSWITCH               : Normalized to normally-closed press/release behavior 
 
 UNASSIGNED BUTTON PATHS:
 ----------------------------------------------------------------------------------------------------
-BYPASS / TOUCH / WRITE / READ                  : Normal paths
+BYPASS / TOUCH                                : Normal paths
 SHIFT + BYPASS / TOUCH / WRITE / READ          : BypassAll / Latch / Trim / Off
 SHIFT + LINK             : LinkLock
 SHIFT + PAN              : Flip
@@ -514,6 +515,8 @@ deviceDriver.mOnActivate = function(context) {
     for (var i = 0; i < rgbNotes.length; i++) {
         setRGBLED(context, rgbNotes[i], 127, 127, 127)
     }
+    setRGBLED_color(context, cWrite, RED)
+    setRGBLED_color(context, cRead, GREEN)
     updateClickLED(context)
 }
 deviceDriver.mOnDeactivate = function(context) {
@@ -818,12 +821,15 @@ function setupTransportFeedback() {
 	sendTransportFeedback(hostTransport.mCycleActive, cCycle, 'Cycle')
 }
 
-function sendSelectedTrackFeedback(hostValue, note, name) {
+function sendSelectedTrackFeedback(hostValue, note, name, color) {
     var ledValue = surface.makeCustomValueVariable(name + ' LED Feedback')
     page.makeValueBinding(ledValue, hostValue)
     ledValue.mOnProcessValueChange = function(context, newValue) {
         if (note === cArm) {
             context.setState('disarmAllNext', newValue > 0 ? '1' : '0')
+        }
+        if (color) {
+            setRGBLED_color(context, note, color)
         }
         setTransportLed(context, note, newValue > 0)
     }
@@ -835,6 +841,8 @@ function setupSelectedTrackFeedback() {
 	selectedTrackToggleValues.Solo = sendSelectedTrackFeedback(selectedTrack.mSolo, cSolo, 'Selected Track Solo')
 	selectedTrackToggleValues.Mute = sendSelectedTrackFeedback(selectedTrack.mMute, cMute, 'Selected Track Mute')
 	selectedTrackToggleValues.Arm = sendSelectedTrackFeedback(selectedTrack.mRecordEnable, cArm, 'Selected Track Record Enable')
+    selectedTrackToggleValues.Write = sendSelectedTrackFeedback(selectedTrack.mAutomationWrite, cWrite, 'Selected Track Automation Write', RED)
+    selectedTrackToggleValues.Read = sendSelectedTrackFeedback(selectedTrack.mAutomationRead, cRead, 'Selected Track Automation Read', GREEN)
 }
 
 function setConfirmTransportLEDs(context, isOn) {
