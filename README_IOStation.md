@@ -31,7 +31,7 @@ LED feedback follows Cubase transport state independently of physical button pre
 
 - With SHIFT off, Prev/Next select the previous/next Cubase track in the other knob modes. Marker mode assigns them to previous/next marker instead.
 - With SHIFT off, Solo/Mute/Arm toggle Solo, Mute and Record Enable for the selected track. Their LEDs follow the selected track's state, including changes made in Cubase.
-- The fader controls the selected track's volume outside Master mode. In Master mode it controls the first Stereo Out channel using the same FaderPort unity and motor calibration path as the track faders. Host changes and track selection feed its motor through the existing touch-protection and calibration helpers.
+- The fader controls the selected track's volume outside Master mode. In Master mode it controls the first Stereo Out channel using the same FaderPort unity and motor calibration path as the track faders. The Master encoder controls the first FX Return channel. Host changes and track selection feed the fader motor through the existing touch-protection and calibration helpers.
 - SHIFT does not change the fader assignment. Shifted Prev/Next retain Undo/Redo.
 - Encoder rotation uses the knob modes below. Encoder push toggles Cubase's metronome in Click mode, the high-pass filter in Channel mode, toggles Main Mix insert bypass in Master mode, and inserts a marker in Marker mode.
 
@@ -43,12 +43,12 @@ Pan is selected when the Hardware page activates. The fader controls selected-tr
 |---|---|
 | Pan | Selected-track pan |
 | Scroll or SHIFT + Scroll (Zoom) | Horizontal zoom using the Korg position-comparison pattern |
-| Master | Encoder controls the first output channel; fader controls Stereo Out up to 0 dB; encoder push toggles Main Mix inserts |
+| Master | Encoder controls FX Return 1; fader controls Stereo Out; encoder push toggles Main Mix inserts |
 | Click | Metronome level; encoder push toggles the metronome |
 | Channel | Selected-track high-pass cutoff; knob push toggles the filter |
 | Marker | Prev/Next locate markers; encoder push inserts a marker |
 
-Master controls an output channel, not Control Room. With multiple output buses, put the intended Stereo Out first in the output bank. The API binding does not identify a bus by its name or Main Mix designation. The fader uses the same FaderPort unity calibration as track faders. Encoder rotation remains full-range.
+Master fader controls an output channel, not Control Room. With multiple output buses, put the intended Stereo Out first in the output bank. The API binding does not identify a bus by its name or Main Mix designation. The encoder uses the first FX channel, so the intended FX Return 1 must be first in the FX bank. The fader uses the same FaderPort unity calibration as track faders. Encoder rotation remains full-range.
 
 Pan, Scroll, Master, Channel and Marker LEDs identify their active modes. Click's RGB LED shows both mode and metronome state: blue means Click mode selected with the metronome off, green means Click mode selected with the metronome on, amber means the metronome is on in another mode, and off means neither. SHIFT + Pan (Flip), SHIFT + Master (F1) and SHIFT + Click (F2) keep their separate, unassigned paths. SHIFT + Scroll selects the same Zoom mode as Scroll. Changing SHIFT alone does not change the current knob mode.
 

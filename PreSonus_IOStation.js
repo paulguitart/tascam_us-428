@@ -69,7 +69,7 @@ PREV / NEXT              : Select Previous / Next Track
 SHIFT + PREV / NEXT      : Undo / Redo
 PAN (Normal)             : Select Pan knob mode
 SCROLL / SHIFT + SCROLL  : Select Zoom knob mode
-MASTER (Normal)          : Select Stereo Out mode; encoder/fader control output, push toggles inserts
+MASTER (Normal)          : Select Master mode; encoder controls FX Return 1, fader controls Stereo Out
 CLICK (Normal)           : Select Click Level knob mode
 KNOB PUSH (Click Mode)   : Metronome on/off; Click LED color shows mode and state
 CHANNEL (Normal)         : Select High Pass (Low Cut) knob mode for the selected track
@@ -79,7 +79,7 @@ KNOB MODES:
 ----------------------------------------------------------------------------------------------------
 PAN                      : Selected Track Pan
 ZOOM                     : Horizontal Zoom In / Out commands
-MASTER                   : Stereo Out Volume
+MASTER                   : Encoder controls FX Return 1; fader controls Stereo Out Volume
 CLICK                    : Metronome Click Level
 HIGH PASS                : Selected Track Low Cut Frequency; press knob for filter on/off
 HIGH PASS LED            : Green when disabled; color indicates frequency when enabled
@@ -757,6 +757,8 @@ var var_masterInsertPressed = surface.makeCustomValueVariable('Master Insert Pre
 // Projects with multiple output buses must place the intended master first.
 var hostStereoOutZone = page.mHostAccess.mMixConsole.makeMixerBankZone().includeOutputChannels()
 var hostStereoOut = hostStereoOutZone.makeMixerBankChannel()
+var hostMixerZoneFX = page.mHostAccess.mMixConsole.makeMixerBankZone().includeFXChannels()
+var fxChannel = hostMixerZoneFX.makeMixerBankChannel()
 
 function updateKnobModeLEDs(context) {
     var mode = context.getState('knobMode')
@@ -848,10 +850,11 @@ function assignKnobControls() {
     }
     page.makeValueBinding(knob, page.mHostAccess.mTrackSelection.mMixerChannel.mValue.mPan)
         .setSubPage(knobModes.Pan)
-    page.makeValueBinding(knob, hostStereoOut.mValue.mVolume)
+    // Master-mode encoder controls the first FX Return channel.
+    page.makeValueBinding(knob, fxChannel.mValue.mVolume)
+        .setValueTakeOverModeScaled()
         .setSubPage(knobModes.Master)
     page.makeValueBinding(fader.mSurfaceValue, hostStereoOut.mValue.mVolume)
-        .setValueTakeOverModeScaled()
         .setSubPage(knobModes.Master)
     page.makeValueBinding(knob, hostTransport.mMetronomeClickLevel)
         .setSubPage(knobModes.Click)
