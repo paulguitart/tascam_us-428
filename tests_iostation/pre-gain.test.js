@@ -20,3 +20,18 @@ state.shiftEnabled='1';s.buttons.Bypass.setProcessValue=()=>{};
 const press=s.uSection.btn_Bypass.mSurfaceValue.mOnProcessValueChange;press(ctx,1);press(ctx,1);press(ctx,0);assert.equal(polarity,1);
 state.knobMode='Pan';s.preGainFeedbackValue.mOnProcessValueChange(ctx);assert.equal(colors.length,0);
 console.log('PASS: pre-gain gradient, host feedback, reset, polarity LED/toggle, shifted BYPASS and track fader');
+
+// Exercise Channel/SHIFT transitions with action bindings simulated by their targets.
+s.buttons.Channel.setProcessValue=(ctx,v)=>{if(v)s.activateKnobMode(ctx,'HighPass',{})};
+s.buttons.PreGain.setProcessValue=(ctx,v)=>{if(v)s.activateKnobMode(ctx,'PreGain',{})};
+let shiftLED=false;s.onLED=(_,note)=>{if(note===s.cShift)shiftLED=true};s.offLED=(_,note)=>{if(note===s.cShift)shiftLED=false};
+s.activateKnobMode(ctx,'HighPass',{});assert.equal(state.shiftEnabled,'0');assert.equal(shiftLED,false);
+const channel=s.mSection.btn_Channel.mSurfaceValue.mOnProcessValueChange;
+channel(ctx,1);channel(ctx,1);channel(ctx,0);assert.equal(state.knobMode,'PreGain');assert.equal(state.shiftEnabled,'1');assert.equal(shiftLED,true);
+channel(ctx,1);channel(ctx,0);assert.equal(state.knobMode,'HighPass');assert.equal(shiftLED,false);
+const shift=s.uSection.btn_Shift.mSurfaceValue.mOnProcessValueChange;
+shift(ctx,1);shift(ctx,1);shift(ctx,0);assert.equal(state.knobMode,'PreGain');assert.equal(shiftLED,true);
+shift(ctx,1);shift(ctx,0);assert.equal(state.knobMode,'HighPass');assert.equal(shiftLED,false);
+s.activateKnobMode(ctx,'PreGain',{});s.activateKnobMode(ctx,'Pan',{});state.shiftEnabled='0';
+assert.equal(s.resolveKnobModeButton(ctx,'Pan'),'PreGain');s.buttons.PreGain.setProcessValue(ctx,1);assert.equal(state.shiftEnabled,'1');assert.equal(shiftLED,true);
+console.log('PASS: Channel toggles, immediate SHIFT transitions, duplicate presses and restored SHIFT LED');

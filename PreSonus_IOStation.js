@@ -392,6 +392,10 @@ uSection.btn_Shift.mSurfaceValue.mOnProcessValueChange = function(context, value
     var enabled = context.getState('shiftEnabled') !== '1'
     context.setState('shiftEnabled', enabled ? '1' : '0')
     if (enabled) { onLED(context, cShift) } else { offLED(context, cShift) }
+    var mode = context.getState('knobMode')
+    if (mode === 'HighPass' || mode === 'PreGain') {
+        pulseVar(context, enabled ? buttons.PreGain : buttons.Channel)
+    }
 }
 
 function resetButtonRouting(context) {
@@ -1162,6 +1166,11 @@ function updateKnobModeLEDs(context) {
 function resolveKnobModeButton(context, name) {
     var modeNames = { Link: 'Link', Pan: 'Pan', Scroll: 'Zoom', Zoom: 'Zoom',
         Master: 'Master', Click: 'Click', Channel: 'HighPass', PreGain: 'PreGain', Section: 'Section', Marker: 'Marker' }
+    // Channel always alternates its two functions, independent of mode history.
+    var current = context.getState('knobMode')
+    if ((name === 'Channel' || name === 'PreGain') && (current === 'HighPass' || current === 'PreGain')) {
+        return current === 'HighPass' ? 'PreGain' : 'Channel'
+    }
     var previous = context.getState('previousKnobMode')
     var requestedMode = modeNames[name]
     // Non-mode buttons keep their normal action.
@@ -1189,6 +1198,11 @@ function activateKnobMode(context, mode, activeMapping) {
         target.mAction.mActivate.trigger(activeMapping)
     }
     context.setState('knobMode', mode)
+    if (mode === 'HighPass' || mode === 'PreGain') {
+        context.setState('shiftEnabled', mode === 'PreGain' ? '1' : '0')
+        if (mode === 'PreGain') onLED(context, cShift)
+        else offLED(context, cShift)
+    }
     updateTouchLED(context)
     // Seed zoom from the current knob value so switching modes doesn't zoom.
     context.setState('lastZoomValue', String(Math.floor((knob.getProcessValue(context) || 0) * 1000)))

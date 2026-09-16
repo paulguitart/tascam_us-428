@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync(require('node:path').join(__dirname, '..', 'PreSonus_IOStation.js'), 'utf8');
 const scope = {
-    ENABLE_METRONOME_FADER: true,
+    ENABLE_METRONOME_FADER: true, onLED() {}, offLED() {}, cShift: 6,
     faderModes: Object.fromEntries(['Track', 'StereoOut', 'Metronome'].map(name =>
         [name, { mAction: { mActivate: { trigger() {} } } }])),
     knob: { getProcessValue: () => 0.5 },
@@ -28,7 +28,7 @@ assert.equal(a.getState('previousKnobMode'), 'Click');
 for (const [button, mode] of Object.entries({ Link: 'Link', Scroll: 'Zoom', Zoom: 'Zoom', Master: 'Master', Click: 'Click', Channel: 'HighPass', Section: 'Section', Marker: 'Marker' })) {
     scope.activateKnobMode(a, 'Pan');
     scope.activateKnobMode(a, mode);
-    assert.equal(scope.resolveKnobModeButton(a, button), 'Pan');
+    assert.equal(scope.resolveKnobModeButton(a, button), button === 'Channel' ? 'PreGain' : 'Pan');
     assert.equal(scope.resolveKnobModeButton(a, 'F2'), 'F2');
     assert.equal(scope.resolveKnobModeButton(b, button), button);
 }
@@ -64,7 +64,8 @@ for (const name of ['Link', 'Pan', 'Channel', 'Scroll', 'Master', 'Click', 'Sect
         context.setState('shiftEnabled', shift);
         events.length = 0;
         press(context, 1); press(context, 0);
-        assert.deepEqual(events, [['Pan', 1], ['Pan', 0]]);
+        const target = name === 'Channel' ? (shift === '1' ? 'Channel' : 'PreGain') : 'Pan';
+        assert.deepEqual(events, [[target, 1], [target, 0]]);
         context.setState('knobMode', '');
     }
 }
