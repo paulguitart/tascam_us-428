@@ -362,6 +362,7 @@ function assignButtonRouting(mapping) {
                 // Route the physical press directly, just like the knob push.
                 toggleModeEffect(context)
             }
+            if (activeName === 'Touch') resetCurrentFader(context)
             buttons[activeName].setProcessValue(context, 1)
         } else if (activeName) {
             // Release the path that received the press, even if SHIFT changed meanwhile.
@@ -734,6 +735,43 @@ function assignUtilityControls() {
 	page.makeCommandBinding(buttons.Redo, 'Edit', 'Redo')
 }
 
+var faderTargetFeedback = {}
+
+function updateTouchLED(context) {
+    var target = context.getState('faderTarget')
+    var value = faderTargetFeedback[target]
+    var atReset = false
+    if (value) {
+        atReset = target === 'Metronome'
+            ? value.getProcessValue(context) >= 1 - 0.000001
+            : context.getState('faderZero.' + target) === '1'
+    }
+    setRGBLED_color(context, cTouch, WHITE)
+    setTransportLed(context, cTouch, atReset)
+}
+
+function resetCurrentFader(context) {
+    var target = context.getState('faderTarget')
+    var value = faderTargetFeedback[target]
+    if (value) value.setProcessValue(context, target === 'Metronome' ? 1 : FADER_HOST_UNITY)
+}
+
+function setupFaderTargetFeedback(name, hostValue) {
+    var value = surface.makeCustomValueVariable(name + ' Fader Reset Feedback')
+    faderTargetFeedback[name] = value
+    page.makeValueBinding(value, hostValue)
+    value.mOnProcessValueChange = function(context) {
+        if (context.getState('faderTarget') === name) updateTouchLED(context)
+    }
+    value.mOnDisplayValueChange = function(context, text, units) {
+        var display = String(text).replace(/\s/g, '').replace(',', '.')
+        var match = display.match(/^([+-]?[0-9]+(?:\.[0-9]+)?)(?:dB)?$/i)
+        var isDb = /^db$/i.test(String(units || '').replace(/\s/g, '')) || /db$/i.test(display)
+        context.setState('faderZero.' + name, match && isDb && Number(match[1]) === 0 ? '1' : '0')
+        if (context.getState('faderTarget') === name) updateTouchLED(context)
+    }
+}
+
 function assignSelectedTrackControls() {
     var hostTrackSelection = page.mHostAccess.mTrackSelection
     var hostSelectedTrack = hostTrackSelection.mMixerChannel
@@ -747,6 +785,9 @@ function assignSelectedTrackControls() {
         .setSubPage(faderModes.StereoOut)
     page.makeValueBinding(fader.mSurfaceValue, hostTransport.mMetronomeClickLevel)
         .setSubPage(faderModes.Metronome)
+    setupFaderTargetFeedback('Track', hostSelectedTrack.mValue.mVolume)
+    setupFaderTargetFeedback('StereoOut', hostStereoOut.mValue.mVolume)
+    setupFaderTargetFeedback('Metronome', hostTransport.mMetronomeClickLevel)
 }
 
 //-----------------------------------------------------------------------------
@@ -1021,9 +1062,12 @@ function activateKnobMode(context, mode, activeMapping) {
         var target = mode === 'Pan' || mode === 'Link' || mode === 'HighPass'
             ? faderModes.Track
             : mode === 'Click' && ENABLE_METRONOME_FADER ? faderModes.Metronome : faderModes.StereoOut
+        context.setState('faderTarget', target === faderModes.Track ? 'Track'
+            : target === faderModes.Metronome ? 'Metronome' : 'StereoOut')
         target.mAction.mActivate.trigger(activeMapping)
     }
     context.setState('knobMode', mode)
+    updateTouchLED(context)
     // Seed zoom from the current knob value so switching modes doesn't zoom.
     context.setState('lastZoomValue', String(Math.floor((knob.getProcessValue(context) || 0) * 1000)))
     updateKnobModeLEDs(context)
