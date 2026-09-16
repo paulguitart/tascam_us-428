@@ -13,21 +13,37 @@ var SAVE_BLINK_INTERVAL_MS = 140
 var SAVE_BLINK_TOGGLES = 10             // 5 full blinks, like the Korg
 
 // Hardware refinements. Volume-specific options stay off until we need them.
-const ENABLE_FADER_TOUCH_INPUT = true       // ignore motor-generated input when not touched
-const ENABLE_FADER_TOUCH_PROTECTION = true // don't drive the motor under your finger
-const ENABLE_MIDI_OUTPUT_CACHE = true      // skip identical LED/motor messages
+const ENABLE_FADER_TOUCH_INPUT = true        // ignore motor-generated input when not touched
+const ENABLE_FADER_TOUCH_PROTECTION = true   // don't drive the motor under your finger
+const ENABLE_MIDI_OUTPUT_CACHE = true        // skip identical LED/motor messages
 const ENABLE_FADER_LOW_END_SNAP = false
-const FADER_LOW_END_THRESHOLD = 0.012       // inherited from fp-wizard; normalized travel
-const ENABLE_FADER_UNITY_CALIBRATION = false
-const FADER_HOST_UNITY = 0.789087           // original +6 dB setting; +12 dB uses 0.748222
-const FADER_HARDWARE_UNITY = 0.789087       // measure your unit's U position before enabling
 const ENABLE_FOOTSWITCH_NORMALIZATION = true
 const FOOTSWITCH_NORMALLY_CLOSED = true
-const FOOTSWITCH_IS_TOGGLE = false         // false: press/release; true: pulse on each edge
+const FOOTSWITCH_IS_TOGGLE = false           // false: press/release; true: pulse on each edge
 const ENABLE_HIGH_PASS_COLOR_GRADIENT = true // false: solid red when enabled
+
+// Calibration values
+const FADER_LOW_END_THRESHOLD = 0.012        // inherited from fp-wizard; normalized travel
+const FADER_HOST_UNITY = 0.789087            // original +6 dB setting; +12 dB uses 0.748222
+const FADER_HARDWARE_UNITY = 0.789087        // measure your unit's U position before enabling
+const ENABLE_FADER_UNITY_CALIBRATION = false
+// 0.75 caps the master fader at 0 dB; 1.0 uses the full Stereo Out range.
+const MASTER_FADER_SCALE = 0.75
+
+// LED color values
 const FULL_BRIGHTNESS = 1
 const HALF_BRIGHTNESS = 0.5
+const LED_OFF_COLOR = [0, 0, 0]
+const RED = [127, 0, 0]
 const GREEN = [0, 127, 0]
+const BLUE =  [0, 0, 127]
+const AMBER =  [127, 48, 0]
+const MAGENTA = [127, 0, 127]
+
+// button color values
+const CLICK_MODE_COLOR = BLUE
+const METRONOME_ON_COLOR= AMBER
+const CLICK_MODE_AND_METRONOME_ON_COLOR= GREEN
 
 /*
 ====================================================================================================
@@ -55,22 +71,26 @@ PREV / NEXT              : Select Previous / Next Track
 SHIFT + PREV / NEXT      : Undo / Redo
 PAN (Normal)             : Select Pan knob mode
 SCROLL / SHIFT + SCROLL  : Select Zoom knob mode
-MASTER (Normal)          : Select Stereo Out Volume knob mode (first output bus)
-CLICK (Normal)           : Metronome on/off; select Click Level knob mode
+MASTER (Normal)          : Select Stereo Out mode; encoder/fader control output, push toggles inserts
+CLICK (Normal)           : Select Click Level knob mode
+KNOB PUSH (Click Mode)   : Metronome on/off; Click LED color shows mode and state
 CHANNEL (Normal)         : Select High Pass (Low Cut) knob mode for the selected track
+MARKER (Normal)          : Select Marker mode; Prev/Next locate markers; knob push inserts marker
 
 KNOB MODES:
 ----------------------------------------------------------------------------------------------------
 PAN                      : Selected Track Pan
 ZOOM                     : Horizontal Zoom In / Out commands
-MASTER                   : Stereo Out Volume
+MASTER                   : Stereo Out Volume; fader range is capped at 0 dB
 CLICK                    : Metronome Click Level
 HIGH PASS                : Selected Track Low Cut Frequency; press knob for filter on/off
 HIGH PASS LED            : Green when disabled; color indicates frequency when enabled
+MARKER                    : Prev/Next locate previous/next marker; knob push inserts marker
 
 FADER / FOOTSWITCH:
 ----------------------------------------------------------------------------------------------------
-FADER                    : Selected Track Volume; input is ignored until touched
+FADER                    : Selected Track Volume; MASTER mode uses scaled Stereo Out volume
+                         : Input is ignored until touched; limited to 0 dB in MASTER mode
                          : Motor waits while touched, then applies any pending position
 FOOTSWITCH               : Normalized to normally-closed press/release behavior by default
 
@@ -83,7 +103,8 @@ LINK / SHIFT + LINK      : Link / LinkLock
 SHIFT + PAN              : Flip
 SHIFT + CHANNEL          : ChannelLock
 SHIFT + MASTER / CLICK   : F1 / F2
-SECTION / MARKER         : Section / Marker; SHIFT gives F3 / F4
+SECTION                  : Named path for later assignment; SHIFT gives F3
+MARKER                   : Marker mode; SHIFT gives F4
 FOOTSWITCH PRESS         : Logical press path available for a future assignment
 
 ====================================================================================================
@@ -128,7 +149,8 @@ var var_faderInput = surface.makeCustomValueVariable('Raw Fader Input')
 var_faderInput.mMidiBinding.setInputPort(midiIn).bindToPitchBend(0)
 var faderTouch = surface.makeCustomValueVariable('Fader Touch')
 faderTouch.mMidiBinding.setInputPort(midiIn).bindToNote(0, cFaderTouch)
-if (fader.mSurfaceValue.mTouchState) {
+var cubase13OrHigher = !!fader.mSurfaceValue.mTouchState
+if (cubase13OrHigher) {
     fader.mSurfaceValue.mTouchState.bindTo(faderTouch)
 }
 
@@ -433,6 +455,7 @@ function resetHardwareState(context) {
     context.setState('pendingMotorPosition', '')
     context.setState('processingFaderInput', '')
     context.setState('footswitchLastState', '')
+    context.setState('knobPressRouted', '')
     var_footswitchPressed.setProcessValue(context, 0)
     // Clear cached output so reconnect/reload always refreshes the hardware.
     for (var i = 0; i < ledNotes.length; i++) {
@@ -445,7 +468,7 @@ function resetHardwareState(context) {
 var ledNotes = [cSolo, cMute, cArm, cShift, cBypass, cTouch, cWrite, cRead,
     cPrev, cNext, cLink, cPan, cChannel, cScroll, cMaster, cClick, cSection,
     cMarker, cCycle, cRWD, cFWD, cStop, cPlay, cRecord]
-var rgbNotes = [cTouch, cWrite, cRead, cLink, cPan, cChannel, cScroll]
+var rgbNotes = [cTouch, cWrite, cRead, cLink, cPan, cChannel, cScroll, cClick]
 function allLEDsOff(context) {
     for (var i = 0; i < ledNotes.length; i++) { offLED(context, ledNotes[i]) }
 }
@@ -458,6 +481,7 @@ deviceDriver.mOnActivate = function(context) {
     for (var i = 0; i < rgbNotes.length; i++) {
         setRGBLED(context, rgbNotes[i], 127, 127, 127)
     }
+    updateClickLED(context)
 }
 deviceDriver.mOnDeactivate = function(context) {
     resetHardwareState(context)
@@ -486,6 +510,9 @@ var var_rewPressed = surface.makeCustomValueVariable('REW Pressed')
 var var_RTZPressed = surface.makeCustomValueVariable('RTZ Pressed')
 var var_savePressed = surface.makeCustomValueVariable('Save Pressed')
 var transportFeedback = []
+var hostMetronomeActive = hostTransport.mMetronomeActive
+var metronomeFeedbackValue = null
+var highPassEnabledFeedbackValue = null
 var confirmTransportNotes = [cRWD, cFWD, cPlay, cRecord]
 
 function resetStopProgress(context) {
@@ -549,16 +576,31 @@ function assignTransportControls() {
 function assignUtilityControls() {
 	page.makeCommandBinding(buttons.Undo, 'Edit', 'Undo')
 	page.makeCommandBinding(buttons.Redo, 'Edit', 'Redo')
-	page.makeValueBinding(buttons.Click, hostTransport.mMetronomeActive).setTypeToggle()
 }
 
 function assignSelectedTrackControls() {
-	var hostTrackSelection = page.mHostAccess.mTrackSelection
-	var hostSelectedTrack = hostTrackSelection.mMixerChannel
+    var hostTrackSelection = page.mHostAccess.mTrackSelection
+    var hostSelectedTrack = hostTrackSelection.mMixerChannel
 
-	page.makeActionBinding(buttons.Prev, hostTrackSelection.mAction.mPrevTrack)
-	page.makeActionBinding(buttons.Next, hostTrackSelection.mAction.mNextTrack)
-	page.makeValueBinding(fader.mSurfaceValue, hostSelectedTrack.mValue.mVolume)
+    // Marker mode gives Prev/Next to marker navigation, so scope track stepping
+    // to every other knob mode instead of leaving a competing page-wide action.
+    var trackNavigationModes = [
+        knobModes.Pan, knobModes.Zoom, knobModes.Master, knobModes.Click, knobModes.HighPass
+    ]
+    for (var i = 0; i < trackNavigationModes.length; i++) {
+        page.makeActionBinding(buttons.Prev, hostTrackSelection.mAction.mPrevTrack)
+            .setSubPage(trackNavigationModes[i])
+        page.makeActionBinding(buttons.Next, hostTrackSelection.mAction.mNextTrack)
+            .setSubPage(trackNavigationModes[i])
+    }
+    // Master mode has a separate scaled Stereo Out fader binding.
+    var selectedTrackFaderModes = [
+        knobModes.Pan, knobModes.Zoom, knobModes.Click, knobModes.HighPass, knobModes.Marker
+    ]
+    for (var faderModeIndex = 0; faderModeIndex < selectedTrackFaderModes.length; faderModeIndex++) {
+        page.makeValueBinding(fader.mSurfaceValue, hostSelectedTrack.mValue.mVolume)
+            .setSubPage(selectedTrackFaderModes[faderModeIndex])
+    }
 }
 
 //-----------------------------------------------------------------------------
@@ -580,6 +622,42 @@ function sendTransportFeedback(hostValue, note, name) {
 	}
 }
 
+function updateClickLED(context, isMetronomeActive) {
+    var isClickMode = context.getState('knobMode') === 'Click'
+    if (isMetronomeActive === undefined) {
+        isMetronomeActive = metronomeFeedbackValue
+            && Number(metronomeFeedbackValue.getProcessValue(context)) > 0
+    } else {
+        isMetronomeActive = Number(isMetronomeActive) > 0
+    }
+
+    var color = LED_OFF_COLOR
+    if (isClickMode && isMetronomeActive) {
+		color = CLICK_MODE_AND_METRONOME_ON_COLOR
+	} else if (isMetronomeActive) {
+		color = METRONOME_ON_COLOR
+	} else if (isClickMode) {
+		color = CLICK_MODE_COLOR
+	}
+    setRGBLED_color(context, cClick, color)
+    // RGB color and the button's lit state are separate MIDI messages.
+    if (isClickMode || isMetronomeActive) onLED(context, cClick)
+    else offLED(context, cClick)
+}
+
+function setupMetronomeFeedback() {
+    metronomeFeedbackValue = surface.makeCustomValueVariable('Metronome LED Feedback')
+    page.makeValueBinding(metronomeFeedbackValue, hostMetronomeActive)
+    hostMetronomeActive.mOnProcessValueChange = function(context, activeMapping, newValue) {
+        updateClickLED(context, newValue)
+    }
+}
+
+function toggleMetronome(context) {
+    var currentValue = Number(metronomeFeedbackValue.getProcessValue(context))
+    metronomeFeedbackValue.setProcessValue(context, currentValue > 0 ? 0 : 1)
+}
+
 function setupTransportFeedback() {
 	sendTransportFeedback(hostTransport.mRewind, cRWD, 'Rewind')
 	sendTransportFeedback(hostTransport.mForward, cFWD, 'Fast Forward')
@@ -587,8 +665,6 @@ function setupTransportFeedback() {
 	sendTransportFeedback(hostTransport.mStart, cPlay, 'Play')
 	sendTransportFeedback(hostTransport.mRecord, cRecord, 'Record')
 	sendTransportFeedback(hostTransport.mCycleActive, cCycle, 'Cycle')
-	// CLICK shows metronome state in either SHIFT layer; F2 remains unassigned.
-	sendTransportFeedback(hostTransport.mMetronomeActive, cClick, 'Metronome')
 }
 
 function sendSelectedTrackFeedback(hostValue, note, name) {
@@ -662,7 +738,8 @@ var knobModes = {
     Zoom: knobModeArea.makeSubPage('Zoom'),
     Master: knobModeArea.makeSubPage('Master'),
     Click: knobModeArea.makeSubPage('Click'),
-    HighPass: knobModeArea.makeSubPage('High Pass')
+    HighPass: knobModeArea.makeSubPage('High Pass'),
+    Marker: knobModeArea.makeSubPage('Marker')
 }
 var knobModeButtons = [
     { button: buttons.Pan, mode: knobModes.Pan },
@@ -670,10 +747,13 @@ var knobModeButtons = [
     { button: buttons.Zoom, mode: knobModes.Zoom },
     { button: buttons.Master, mode: knobModes.Master },
     { button: buttons.Click, mode: knobModes.Click },
-    { button: buttons.Channel, mode: knobModes.HighPass }
+    { button: buttons.Channel, mode: knobModes.HighPass },
+    { button: buttons.Marker, mode: knobModes.Marker }
 ]
 var var_zoomIn = surface.makeCustomValueVariable('Zoom In')
 var var_zoomOut = surface.makeCustomValueVariable('Zoom Out')
+var var_markerInsertPressed = surface.makeCustomValueVariable('Marker Insert Pressed')
+var var_masterInsertPressed = surface.makeCustomValueVariable('Master Insert Pressed')
 
 // Same output-bank approach as the Korg: the FIRST output channel is Stereo Out.
 // Projects with multiple output buses must place the intended master first.
@@ -685,8 +765,9 @@ function updateKnobModeLEDs(context) {
     setTransportLed(context, cPan, mode === 'Pan')
     setTransportLed(context, cScroll, mode === 'Zoom')
     setTransportLed(context, cMaster, mode === 'Master')
+    setTransportLed(context, cMarker, mode === 'Marker')
+    updateClickLED(context)
     updateHighPassLED(context)
-    // CLICK continues to indicate metronome on/off. Cubase displays the Click subpage.
 }
 
 function activateKnobMode(context, mode) {
@@ -696,34 +777,27 @@ function activateKnobMode(context, mode) {
     updateKnobModeLEDs(context)
 }
 
-// More color landmarks below 300 Hz, where we normally use the high-pass.
-// Enabled colors never pass through green; green means selected but disabled.
+// Blend only red to magenta through the useful low-cut range; clamp above 300 Hz.
+// Green is reserved for selected mode with the filter disabled.
 var highPassColors = [
-    { hz: 20,   red: 127, green: 0,  blue: 0 },   // red
-    { hz: 80,   red: 127, green: 40, blue: 0 },   // orange
-    { hz: 150,  red: 127, green: 0,  blue: 45 },  // pink
-    { hz: 300,  red: 127, green: 0,  blue: 127 }, // magenta
-    { hz: 1000, red: 48,  green: 0,  blue: 127 } // violet; clamp above this
+    { hz: 20, red: RED[0], green: RED[1], blue: RED[2] },
+    { hz: 300, red: MAGENTA[0], green: MAGENTA[1], blue: MAGENTA[2] }
 ]
 
 function getHighPassColor(hz) {
     if (!ENABLE_HIGH_PASS_COLOR_GRADIENT || !isFinite(hz) || hz <= highPassColors[0].hz) {
         return highPassColors[0]
     }
-    for (var i = 1; i < highPassColors.length; i++) {
-        var upper = highPassColors[i]
-        var lower = highPassColors[i - 1]
-        if (hz <= upper.hz) {
-            // Log frequency spacing gives more detail at the low end.
-            var blend = Math.log(hz / lower.hz) / Math.log(upper.hz / lower.hz)
-            return {
-                red: lower.red + blend * (upper.red - lower.red),
-                green: lower.green + blend * (upper.green - lower.green),
-                blue: lower.blue + blend * (upper.blue - lower.blue)
-            }
-        }
+    if (hz >= highPassColors[1].hz) return highPassColors[1]
+
+    // Log spacing gives more detail at low cutoffs while blending red into magenta.
+    var blend = Math.log(hz / highPassColors[0].hz)
+        / Math.log(highPassColors[1].hz / highPassColors[0].hz)
+    return {
+        red: highPassColors[0].red + blend * (highPassColors[1].red - highPassColors[0].red),
+        green: highPassColors[0].green + blend * (highPassColors[1].green - highPassColors[0].green),
+        blue: highPassColors[0].blue + blend * (highPassColors[1].blue - highPassColors[0].blue)
     }
-    return highPassColors[highPassColors.length - 1]
 }
 
 function parseFrequencyHz(value, units) {
@@ -753,6 +827,7 @@ function setupHighPassFeedback() {
     var preFilter = page.mHostAccess.mTrackSelection.mMixerChannel.mPreFilter
     var enabled = surface.makeCustomValueVariable('High Pass Enabled Feedback')
     var frequency = surface.makeCustomValueVariable('High Pass Frequency Feedback')
+    highPassEnabledFeedbackValue = enabled
     // Always follow the selected track, including when another knob mode is active.
     page.makeValueBinding(enabled, preFilter.mLowCutOn)
     page.makeValueBinding(frequency, preFilter.mLowCutFreq)
@@ -777,22 +852,66 @@ function assignKnobControls() {
         .setSubPage(knobModes.Pan)
     page.makeValueBinding(knob, hostStereoOut.mValue.mVolume)
         .setSubPage(knobModes.Master)
+    page.makeValueBinding(fader.mSurfaceValue, hostStereoOut.mValue.mVolume)
+        .setValueTakeOverModeScaled()
+        .setSubPage(knobModes.Master)
+        .mapToValueRange(0, MASTER_FADER_SCALE)
     page.makeValueBinding(knob, hostTransport.mMetronomeClickLevel)
         .setSubPage(knobModes.Click)
+    // The encoder push is routed below so it remains a momentary press path;
+    // mode-specific host values are toggled explicitly by the handler.
     // Cubase calls its high-pass filter "Low Cut" in the Pre section.
     var hostPreFilter = page.mHostAccess.mTrackSelection.mMixerChannel.mPreFilter
     page.makeValueBinding(knob, hostPreFilter.mLowCutFreq)
         .setSubPage(knobModes.HighPass)
-    page.makeValueBinding(mSection.knob_Press.mSurfaceValue, hostPreFilter.mLowCutOn)
-        .setTypeToggle().setSubPage(knobModes.HighPass)
     page.makeCommandBinding(var_zoomIn, 'Zoom', 'Zoom In').setSubPage(knobModes.Zoom)
     page.makeCommandBinding(var_zoomOut, 'Zoom', 'Zoom Out').setSubPage(knobModes.Zoom)
+    if (cubase13OrHigher) {
+        page.makeCommandBinding(var_markerInsertPressed,
+            'Marker', 'Insert Marker').setSubPage(knobModes.Marker)
+    } else {
+        page.makeCommandBinding(var_markerInsertPressed,
+            'Transport', 'Insert Marker').setSubPage(knobModes.Marker)
+    }
+    page.makeCommandBinding(var_masterInsertPressed,
+        'Mixer', 'Bypass: Inserts on Main Mix').setSubPage(knobModes.Master)
+    page.makeCommandBinding(buttons.Prev,
+        'Transport', 'Locate Previous Marker').setSubPage(knobModes.Marker)
+    page.makeCommandBinding(buttons.Next,
+        'Transport', 'Locate Next Marker').setSubPage(knobModes.Marker)
 
     knobModes.Pan.mOnActivate = function(context) { activateKnobMode(context, 'Pan') }
     knobModes.Zoom.mOnActivate = function(context) { activateKnobMode(context, 'Zoom') }
     knobModes.Master.mOnActivate = function(context) { activateKnobMode(context, 'Master') }
     knobModes.Click.mOnActivate = function(context) { activateKnobMode(context, 'Click') }
     knobModes.HighPass.mOnActivate = function(context) { activateKnobMode(context, 'HighPass') }
+    knobModes.Marker.mOnActivate = function(context) { activateKnobMode(context, 'Marker') }
+
+    // Route encoder pushes for the active command mode. Click uses the
+    // host-bound custom metronome variable rather than a page binding.
+    // Cubase 12 and 13+ expose Insert Marker under different command categories.
+    mSection.knob_Press.mSurfaceValue.mOnProcessValueChange = function(context, value) {
+        if (value <= 0) {
+            context.setState('knobPressRouted', '')
+            return
+        }
+        if (context.getState('knobPressRouted') === '1') return
+        context.setState('knobPressRouted', '1')
+
+        var mode = context.getState('knobMode')
+        if (mode === 'Click') {
+            toggleMetronome(context)
+        } else if (mode === 'HighPass') {
+            var highPassEnabled = Number(highPassEnabledFeedbackValue.getProcessValue(context)) > 0
+            highPassEnabledFeedbackValue.setProcessValue(context, highPassEnabled ? 0 : 1)
+        } else if (mode === 'Marker') {
+            var_markerInsertPressed.setProcessValue(context, 1)
+            var_markerInsertPressed.setProcessValue(context, 0)
+        } else if (mode === 'Master') {
+            var_masterInsertPressed.setProcessValue(context, 1)
+            var_masterInsertPressed.setProcessValue(context, 0)
+        }
+    }
 
     // Korg zoom pattern: compare successive knob positions and fire zoom commands.
     // Pulse each command so consecutive detents in the same direction retrigger.
@@ -822,9 +941,10 @@ page.mOnActivate = function(context, activeMapping) {
 
 assignTransportControls()
 assignUtilityControls()
-assignSelectedTrackControls()
 assignKnobControls()
+assignSelectedTrackControls()
 setupTransportFeedback()
+setupMetronomeFeedback()
 setupSelectedTrackFeedback()
 setupHighPassFeedback()
 
