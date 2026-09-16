@@ -52,6 +52,8 @@ const AMBER =  [127, 48, 0]
 const MAGENTA = [127, 0, 127]
 
 // button color values
+const ENABLE_NUCLEAR_METRONOME_LEDS = false // spread metronome status across inactive mode buttons
+const ENABLE_NUCLEAR_RECORD_BLINK = true    // spread recording red pulse across inactive mode buttons
 const METRONOME_PULSE_COLOR = BLUE
 const ENABLE_METRONOME_PULSE = true
 const METRONOME_PULSE_MIN_BRIGHTNESS = 0.15
@@ -89,7 +91,7 @@ PAN (Normal)             : Select Pan knob mode; knob push toggles send 1 on/off
 SCROLL / SHIFT + SCROLL  : Select Zoom knob mode
 MASTER (Normal)          : Select Master mode; encoder controls FX Return 1, fader controls Stereo Out
 CLICK (Normal)           : Select Click Level knob mode
-KNOB PUSH (Click Mode)   : Metronome on/off; Click LED shows Click mode; inactive RGB mode LEDs show metronome
+KNOB PUSH (Click Mode)   : Metronome on/off; Click LED shows Click mode; inactive RGB mode LEDs optionally show metronome
 CHANNEL (Normal)         : Select High Pass (Low Cut) knob mode for the selected track
 SECTION (Normal)         : Prev/Next recall cycle markers (wrap); keep current fader target
 MARKER (Normal)          : Select Marker mode; Prev/Next locate markers; knob push inserts marker
@@ -767,8 +769,8 @@ hostTimeDisplay.mOnChangeTempoBPM = function(context, activeMapping, tempoBPM) {
 }
 
 function updateMetronomeModeLEDs(context, now) {
-    var enabled = context.getState('metronomeEnabled') === '1'
-    var recording = context.getState('metronomeRecording') === '1'
+    var enabled = ENABLE_NUCLEAR_METRONOME_LEDS && context.getState('metronomeEnabled') === '1'
+    var recording = ENABLE_NUCLEAR_RECORD_BLINK && context.getState('metronomeRecording') === '1'
     var color = recording ? RED : METRONOME_PULSE_COLOR
     var brightness = 1
     if (recording && ENABLE_METRONOME_PULSE) {
@@ -1004,7 +1006,7 @@ function activateKnobMode(context, mode, activeMapping) {
 }
 
 // Blend only red to magenta through the useful low-cut range; clamp above 300 Hz.
-// White marks a disabled filter; inactive mode buttons carry metronome feedback.
+// White marks a disabled filter; inactive mode buttons follow the nuclear LED flags.
 var highPassColors = [
     { hz: 20, red: RED[0], green: RED[1], blue: RED[2] },
     { hz: 300, red: MAGENTA[0], green: MAGENTA[1], blue: MAGENTA[2] }
