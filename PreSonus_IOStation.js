@@ -18,6 +18,8 @@ RGB-capable buttons (Werner reference):
 // 0. CUSTOM SETTINGS
 //-----------------------------------------------------------------------------
 
+const CYCLE_MARKER_MAX = 9
+
 var ENABLE_STOP_HOLD_SAVE = true
 var STOP_SAVE_HOLD_MS = 1500
 var SAVE_BLINK_INTERVAL_MS = 140
@@ -86,7 +88,7 @@ MASTER (Normal)          : Select Master mode; encoder controls FX Return 1, fad
 CLICK (Normal)           : Select Click Level knob mode
 KNOB PUSH (Click Mode)   : Metronome on/off; Click LED shows Click mode; inactive RGB mode LEDs show metronome
 CHANNEL (Normal)         : Select High Pass (Low Cut) knob mode for the selected track
-SECTION (Normal)         : Keep current fader target; knob rotation/push unassigned
+SECTION (Normal)         : Prev/Next recall cycle markers (wrap); keep current fader target
 MARKER (Normal)          : Select Marker mode; Prev/Next locate markers; knob push inserts marker
 
 KNOB MODES:
@@ -585,6 +587,50 @@ function assignTransportControls() {
 	}
 }
 
+//-----------------------------------------------------------------------------
+// CYCLE MARKERS - Korg recall/wrap pattern, independent of Cycle on/off
+//-----------------------------------------------------------------------------
+var var_cycleMarkers = new Array(CYCLE_MARKER_MAX + 1)
+
+function setupCycleMarkerCommands() {
+    for (var i = 1; i <= CYCLE_MARKER_MAX; i++) {
+        var_cycleMarkers[i] = surface.makeCustomValueVariable('Cycle Marker ' + i)
+        page.makeCommandBinding(var_cycleMarkers[i], 'Transport', 'Recall Cycle Marker ' + i)
+            .setSubPage(knobModes.Section)
+    }
+    buttons.Prev.mOnProcessValueChange = function(context, value) {
+        if (value > 0 && context.getState('knobMode') === 'Section') recallPrevCycle(context)
+    }
+    buttons.Next.mOnProcessValueChange = function(context, value) {
+        if (value > 0 && context.getState('knobMode') === 'Section') recallNextCycle(context)
+    }
+}
+
+function wrapCycleNumber(n) {
+    if (n < 1) return CYCLE_MARKER_MAX
+    if (n > CYCLE_MARKER_MAX) return 1
+    return n
+}
+
+function fireCycleRecall(context, number) {
+    var v = var_cycleMarkers[number]
+    if (!v) return
+    v.setProcessValue(context, 1.0)
+    v.setProcessValue(context, 0.0)
+}
+
+function recallPrevCycle(context) {
+    var number = wrapCycleNumber((Number(context.getState('activeCycleMarker')) || 1) - 1)
+    context.setState('activeCycleMarker', String(number))
+    fireCycleRecall(context, number)
+}
+
+function recallNextCycle(context) {
+    var number = wrapCycleNumber((Number(context.getState('activeCycleMarker')) || 1) + 1)
+    context.setState('activeCycleMarker', String(number))
+    fireCycleRecall(context, number)
+}
+
 // Printed functions use the logical button paths, so SHIFT routing stays in one place.
 function assignUtilityControls() {
 	page.makeCommandBinding(buttons.Undo, 'Edit', 'Undo')
@@ -595,10 +641,10 @@ function assignSelectedTrackControls() {
     var hostTrackSelection = page.mHostAccess.mTrackSelection
     var hostSelectedTrack = hostTrackSelection.mMixerChannel
 
-    // Marker mode gives Prev/Next to marker navigation, so scope track stepping
-    // to every other knob mode instead of leaving a competing page-wide action.
+    // Marker and Section use Prev/Next for marker navigation, so track stepping
+    // is scoped to the remaining modes.
     var trackNavigationModes = [
-        knobModes.Pan, knobModes.Link, knobModes.Zoom, knobModes.Master, knobModes.Click, knobModes.HighPass, knobModes.Section
+        knobModes.Pan, knobModes.Link, knobModes.Zoom, knobModes.Master, knobModes.Click, knobModes.HighPass
     ]
     for (var i = 0; i < trackNavigationModes.length; i++) {
         page.makeActionBinding(buttons.Prev, hostTrackSelection.mAction.mPrevTrack)
@@ -1010,6 +1056,7 @@ assignTransportControls()
 assignUtilityControls()
 assignKnobControls()
 assignSelectedTrackControls()
+setupCycleMarkerCommands()
 setupTransportFeedback()
 setupMetronomeFeedback()
 setupSelectedTrackFeedback()

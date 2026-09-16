@@ -29,7 +29,7 @@ LED feedback follows Cubase transport state independently of physical button pre
 
 ## Selected track
 
-- With SHIFT off, Prev/Next select the previous/next Cubase track in the other knob modes. Marker mode assigns them to previous/next marker instead.
+- With SHIFT off, Prev/Next select the previous/next Cubase track in the other knob modes. Marker mode assigns them to previous/next marker; Section assigns them to previous/next cycle-marker recall.
 - With SHIFT off, Solo/Mute/Arm toggle Solo, Mute and Record Enable for the selected track. Their LEDs follow the selected track's state, including changes made in Cubase.
 - Pan, Link and Channel assign the fader to selected-track volume. Scroll, Section and Marker retain the previous fader assignment. In Master and Click modes it controls the first Stereo Out channel using the same FaderPort unity and motor calibration path as the track faders. The Master encoder controls the first FX Return channel. Host changes and track selection feed the fader motor through the existing touch-protection and calibration helpers.
 - SHIFT does not change the fader assignment. Shifted Prev/Next retain Undo/Redo.
@@ -47,7 +47,7 @@ Pan is selected when the Hardware page activates. Pan, Link and Channel assign s
 | Master | Encoder controls FX Return 1; fader controls Stereo Out; encoder push toggles Main Mix inserts |
 | Click | Metronome level; fader controls Stereo Out; encoder push toggles the metronome |
 | Channel | Selected-track high-pass cutoff; knob push toggles the filter |
-| Section | Fader retains its previous target; knob rotation and push unassigned |
+| Section | Prev/Next recall cycle markers with wrapping; fader retains its previous target; knob rotation and push unassigned |
 | Marker | Fader retains its previous target; Prev/Next locate markers; encoder push inserts a marker |
 
 Master fader controls an output channel, not Control Room. With multiple output buses, put the intended Stereo Out first in the output bank. The API binding does not identify a bus by its name or Main Mix designation. The encoder uses the first FX channel, so the intended FX Return 1 must be first in the FX bank. The fader uses the same FaderPort unity calibration as track faders. Encoder rotation remains full-range.
@@ -62,7 +62,7 @@ Zoom pulses commands for repeated movement and seeds its comparison value on mod
 
 Channel mode uses Cubase’s Pre section Low Cut (high-pass) frequency and on/off controls. Selecting Channel does not enable the filter automatically; press the knob to toggle it. Cutoff adjustment leaves the current enable state and slope intact. The Channel LED shows metronome status outside High Pass mode, white when that mode is active with the filter disabled, and a cutoff-dependent color when enabled. SHIFT + Channel remains the unassigned ChannelLock path. In Master mode, encoder push runs Cubase's `Mixer > Bypass: Inserts on Main Mix` command. Marker mode uses Prev/Next to locate the previous/next marker and encoder push to insert one; encoder rotation is unused in that mode. Cubase 12 and 13+ use different command categories for marker insertion, which the script selects based on API feature availability. Knob push has no assigned action in Zoom or Section mode.
 
-Link controls send slot 1 (`mSends.getByIndex(0)`) on the selected track. Assign the intended FX destination to that slot in Cubase. Turning the knob changes its level without changing its enabled state; pressing the knob toggles its current on/off state. Pan mode also toggles this same send with knob push, while rotation adjusts pan. The fader and Prev/Next behave as in Pan mode. SHIFT + Link remains the unassigned LinkLock path. Section retains the current fader target; its knob rotation and push remain unassigned. SHIFT + Section remains the unassigned F3 path. Quick Controls are left for later.
+Link controls send slot 1 (`mSends.getByIndex(0)`) on the selected track. Assign the intended FX destination to that slot in Cubase. Turning the knob changes its level without changing its enabled state; pressing the knob toggles its current on/off state. Pan mode also toggles this same send with knob push, while rotation adjusts pan. The fader and Prev/Next behave as in Pan mode. SHIFT + Link remains the unassigned LinkLock path. Section uses Prev/Next to recall cycle markers, whether Cycle is on or off. It uses the Korg command-pulse and wrap pattern with `CYCLE_MARKER_MAX = 7`. The per-device counter starts at 1, so the first Next recalls 2 and the first Prev wraps to 7. The counter persists across mode changes; it does not track recalls made elsewhere in Cubase or skip missing markers. Set the maximum to match your numbered cycle markers. Section retains the current fader target; its knob rotation and push remain unassigned. SHIFT + Section remains the unassigned F3 path. Quick Controls are left for later.
 
 ## Basic editing and metronome
 
