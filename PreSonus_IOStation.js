@@ -1,13 +1,3 @@
-/*
-RGB-capable buttons (Werner reference):
-- TOUCH
-- WRITE
-- READ
-- LINK
-- PAN
-- CHANNEL
-- SCROLL
-*/
 
 // PreSonus IO Station / Faderport V2 - Cubase MIDI Remote - by Paul Warner.
 //
@@ -60,6 +50,11 @@ const ENABLE_METRONOME_PULSE = true
 const METRONOME_PULSE_MIN_BRIGHTNESS = 0.15
 const WHITE = [127, 127, 127]
 
+// RGB-capable buttons (for reference):
+//
+// TOUCH, WRITE, READ
+// LINK, PAN, CHANNEL, SCROLL
+
 /*
 ====================================================================================================
 PRESONUS IO STATION / FADERPORT V2 BASIC | CURRENT USAGE SUMMARY
@@ -106,7 +101,7 @@ MASTER                   : Encoder controls FX Return 1; fader controls Stereo O
 CLICK                    : Metronome Click Level; fader controls Stereo Out Volume
 HIGH PASS                : Selected Track Low Cut Frequency; press knob for filter on/off
 HIGH PASS LED            : White when disabled; color indicates frequency when enabled
-MARKER                    : Prev/Next locate previous/next marker; knob push inserts marker
+MARKER                   : Prev/Next locate previous/next marker; knob push inserts marker
 
 FADER / FOOTSWITCH:
 ----------------------------------------------------------------------------------------------------
@@ -115,10 +110,16 @@ FADER                    : Selected Track Volume; MASTER / CLICK use Stereo Out;
                          : Motor waits while touched, then applies any pending position
 FOOTSWITCH               : Normalized to normally-closed press/release behavior by default
 
+BYPASS BUTTON PATHS:
+----------------------------------------------------------------------------------------------------
+BYPASS                   : LINK/PAN: send 1
+                         : CHANNEL: high pass
+						 : CLICK, SCROLL, SECTION, MARKER: metronome enabled
+                         : MASTER: Main Mix inserts (LED means not bypassed)
+						 
 UNASSIGNED BUTTON PATHS:
 ----------------------------------------------------------------------------------------------------
-BYPASS                                        : LINK/PAN: send 1; CHANNEL: high pass; MASTER: Main Mix inserts; LED means enabled
-TOUCH                                         : Normal path
+TOUCH                    : Normal path
 SHIFT + BYPASS / TOUCH / WRITE / READ          : BypassAll / Latch / Trim / Off
 SHIFT + LINK             : LinkLock
 SHIFT + PAN              : Flip
@@ -131,17 +132,23 @@ FOOTSWITCH PRESS         : Logical press path available for a future assignment
 ====================================================================================================
 */
 
+//-----------------------------------------------------------------------------
+// DRIVER SETUP - create driver object, midi ports and detection information
+//-----------------------------------------------------------------------------
+
 var deviceDriver = require('midiremote_api_v1')
     .makeDeviceDriver('PreSonus', 'IOStation', 'Paul Warner')
 var midiIn = deviceDriver.mPorts.makeMidiInput()
 var midiOut = deviceDriver.mPorts.makeMidiOutput()
-// The IOStation surface uses the FaderPort 2 map but exposes IOStation port names.
+
 deviceDriver.makeDetectionUnit().detectPortPair(midiIn, midiOut)
     .expectInputNameEquals('ioStation 24c MIDI In').expectOutputNameEquals('ioStation 24c MIDI Out')
 
-// MIDI channel arguments are zero-based. Keep the hardware in the same mode
-// used with the original script; this script does not change its DAW mode.
-// midi codes for controlling the IOStation/Faderport V2
+//-----------------------------------------------------------------------------
+// IOSTATION/FADERPORT v2 DEVICE CONSTANTS - device codes for MIDI messages
+//-----------------------------------------------------------------------------
+
+// MIDI channel arguments are zero-based. This script does not change its DAW mode.
 var cSolo = 0x08, cMute = 0x10, cArm = 0x00, cShift = 0x46
 var cBypass = 0x03, cTouch = 0x4D, cWrite = 0x4B, cRead = 0x4A
 var cPrev = 0x2E, cNext = 0x2F, cKnobRotate = 0x10, cKnobPress = 0x20
@@ -150,6 +157,9 @@ var cMaster = 0x3A, cClick = 0x3B, cSection = 0x3C, cMarker = 0x3D
 var cCycle = 0x56, cRWD = 0x5B, cFWD = 0x5C, cStop = 0x5D, cPlay = 0x5E, cRecord = 0x5F
 var cFootswitch = 0x66, cFaderTouch = 0x68
 
+//-----------------------------------------------------------------------------
+// SURFACE LAYOUT - create control elements
+//-----------------------------------------------------------------------------
 
 // surface & layers
 var surface = deviceDriver.mSurface
@@ -302,6 +312,11 @@ var buttonMappings = [
 // buttons.Flip. Physical surface buttons remain the single MIDI input source.
 var buttons = {}
 var selectedTrackToggleValues = {}
+
+//-----------------------------------------------------------------------------
+// HELPERS 
+//-----------------------------------------------------------------------------
+
 // Pulse command inputs without changing held-button or toggle behavior.
 function pulseVar(context, v) {
     v.setProcessValue(context, 1.0)
@@ -1200,15 +1215,3 @@ setupTransportFeedback()
 setupMetronomeFeedback()
 setupSelectedTrackFeedback()
 setupHighPassFeedback()
-
-//--------------------------------------------------------------------------------------------
-
-// Future mappings go here. Examples (inactive):
-// buttons.F1.mOnProcessValueChange = function(context, value) {
-//     if (value > 0) { /* Future F1 action. */ }
-// }
-// buttons.Solo.mOnProcessValueChange = function(context, value) {
-//     if (value > 0) { onLED(context, cSolo) } else { offLED(context, cSolo) }
-// }
-
-//--------------------------------------------------------------------------------------------
