@@ -296,6 +296,12 @@ var buttonMappings = [
 // buttons.Flip. Physical surface buttons remain the single MIDI input source.
 var buttons = {}
 var selectedTrackToggleValues = {}
+// Pulse command inputs without changing held-button or toggle behavior.
+function pulseVar(context, v) {
+    v.setProcessValue(context, 1.0)
+    v.setProcessValue(context, 0.0)
+}
+
 function toggleSelectedTrackValue(context, name) {
     var stateValue = selectedTrackToggleValues[name]
     if (!stateValue) return
@@ -460,8 +466,7 @@ fsSection.btn_Footswitch.mSurfaceValue.mOnProcessValueChange = function(context,
         context.setState('footswitchLastState', currentState)
         // First message establishes the pedal's state; it is not a press.
         if (previousState === '' || previousState === currentState) return
-        var_footswitchPressed.setProcessValue(context, 1)
-        var_footswitchPressed.setProcessValue(context, 0)
+        pulseVar(context, var_footswitchPressed)
     } else {
         var isPressed = FOOTSWITCH_NORMALLY_CLOSED ? !isOn : isOn
         var_footswitchPressed.setProcessValue(context, isPressed ? 1 : 0)
@@ -578,8 +583,7 @@ function assignTransportControls() {
 			context.setState('rewPressed', '1')
 			if (context.getState('stopPressed') === '1') {
 				resetStopProgress(context)
-				var_RTZPressed.setProcessValue(context, 1)
-				var_RTZPressed.setProcessValue(context, 0)
+				pulseVar(context, var_RTZPressed)
 			} else {
 				var_rewPressed.setProcessValue(context, 1)
 			}
@@ -612,19 +616,15 @@ function routeNavigationPress(context, direction) {
         }
     } else if (mode === 'Marker') {
         if (direction === 'Prev') {
-            var_markerPrev.setProcessValue(context, 1)
-            var_markerPrev.setProcessValue(context, 0)
+            pulseVar(context, var_markerPrev)
         } else {
-            var_markerNext.setProcessValue(context, 1)
-            var_markerNext.setProcessValue(context, 0)
+            pulseVar(context, var_markerNext)
         }
     } else {
         if (direction === 'Prev') {
-            var_trackPrev.setProcessValue(context, 1)
-            var_trackPrev.setProcessValue(context, 0)
+            pulseVar(context, var_trackPrev)
         } else {
-            var_trackNext.setProcessValue(context, 1)
-            var_trackNext.setProcessValue(context, 0)
+            pulseVar(context, var_trackNext)
         }
     }
 }
@@ -646,8 +646,7 @@ function wrapCycleNumber(n) {
 function fireCycleRecall(context, number) {
     var v = var_cycleMarkers[number]
     if (!v) return
-    v.setProcessValue(context, 1.0)
-    v.setProcessValue(context, 0.0)
+    pulseVar(context, v)
 }
 
 function recallPrevCycle(context) {
@@ -820,8 +819,7 @@ deviceDriver.mOnIdle = function(context) {
 	var holdStart = context.getState('stopHoldStartMs')
 	if (ENABLE_STOP_HOLD_SAVE && holdStart !== '' && now - Number(holdStart) >= STOP_SAVE_HOLD_MS) {
 		resetStopProgress(context)
-		var_savePressed.setProcessValue(context, 1)
-		var_savePressed.setProcessValue(context, 0)
+		pulseVar(context, var_savePressed)
 		blinkConfirmTransportLEDs(context)
 	}
 
@@ -1040,11 +1038,9 @@ function assignKnobControls() {
             var highPassEnabled = Number(highPassEnabledFeedbackValue.getProcessValue(context)) > 0
             highPassEnabledFeedbackValue.setProcessValue(context, highPassEnabled ? 0 : 1)
         } else if (mode === 'Marker') {
-            var_markerInsertPressed.setProcessValue(context, 1)
-            var_markerInsertPressed.setProcessValue(context, 0)
+            pulseVar(context, var_markerInsertPressed)
         } else if (mode === 'Master') {
-            var_masterInsertPressed.setProcessValue(context, 1)
-            var_masterInsertPressed.setProcessValue(context, 0)
+            pulseVar(context, var_masterInsertPressed)
         }
     }
 
@@ -1062,8 +1058,7 @@ function assignKnobControls() {
         }
         context.setState('lastZoomValue', String(newZoomValue))
         if (zoomCommand) {
-            zoomCommand.setProcessValue(context, 1)
-            zoomCommand.setProcessValue(context, 0)
+            pulseVar(context, zoomCommand)
         }
     }
 }
