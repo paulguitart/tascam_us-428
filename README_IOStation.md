@@ -29,10 +29,10 @@ LED feedback follows Cubase transport state independently of physical button pre
 
 ## Selected track
 
-- With SHIFT off, Prev/Next select the previous/next Cubase track in the other knob modes. Marker mode assigns them to previous/next marker; Section assigns them to previous/next cycle-marker recall.
+- With SHIFT off, Prev/Next select the previous/next Cubase track in the other knob modes. Marker mode assigns them to previous/next marker; Section assigns them to previous/next cycle-marker recall; Master assigns them to Set Left Locator / Set Right Locator.
 - With SHIFT off, Solo/Mute/Arm toggle Solo, Mute and Record Enable for the selected track. Their LEDs follow the selected track's state, including changes made in Cubase.
 - Pan, Link and Channel assign the fader to selected-track volume. Scroll, Section and Marker retain the previous fader assignment. In Master and Click modes it controls the first Stereo Out channel using the same FaderPort unity and motor calibration path as the track faders. The Master encoder controls the first FX Return channel. Host changes and track selection feed the fader motor through the existing touch-protection and calibration helpers.
-- SHIFT does not change the fader assignment. Shifted Prev/Next retain Undo/Redo.
+- SHIFT does not change the fader assignment. Shifted Prev/Next retain Undo/Redo. PREV/NEXT LEDs stay on while their physical buttons are held and turn off on release, in every mode and SHIFT layer.
 - Encoder rotation uses the knob modes below. Encoder push toggles the first send in Link and Pan modes, Cubase's metronome in Click mode, the high-pass filter in Channel mode, toggles Main Mix insert bypass in Master mode, and inserts a marker in Marker mode.
 
 ## Knob modes
@@ -44,7 +44,7 @@ Pan is selected when the Hardware page activates. Pan, Link and Channel assign s
 | Link | Selected-track send 1 level; encoder push toggles send on/off; fader controls selected-track volume |
 | Pan | Selected-track pan; encoder push toggles send 1 on/off |
 | Scroll or SHIFT + Scroll (Zoom) | Horizontal zoom using the Korg position-comparison pattern; fader retains its previous target |
-| Master | Encoder controls FX Return 1; fader controls Stereo Out; encoder push toggles Main Mix inserts |
+| Master | Encoder controls FX Return 1; fader controls Stereo Out; encoder push toggles Main Mix inserts; Prev/Next set left/right locators |
 | Click | Metronome level; fader controls Stereo Out; encoder push toggles the metronome |
 | Channel | Selected-track high-pass cutoff; knob push toggles the filter |
 | Section | Prev/Next recall cycle markers with wrapping; fader retains its previous target; knob rotation and push unassigned |
@@ -161,4 +161,4 @@ These colors indicate cutoff frequency, not measured attenuation or slope. The `
 
 This applies to Touch, Write, Read, Link, Pan, Channel and Scroll. The [PreSonus manual, sections 8.2.4 and LED tables](https://pae-web.presonusmusic.com/downloads/products/pdf/FaderPort_OwnersManual_V2_EN_051023.pdf) distinguishes these RGB buttons from the fixed-color transport LEDs and documents only off/on/flashing for the latter. A 50%-idle/full-on transport brightness effect is therefore not implemented; transport LEDs continue to show host state.
 
-PREV/NEXT presses are routed directly to separate track, marker, or cycle-recall inputs according to the active mode. SECTION never sends a track-navigation action; SHIFT still routes to Undo/Redo.
+PREV/NEXT presses are routed directly to separate track, marker, cycle-recall, or locator-setting inputs according to the active mode. SECTION never sends a track-navigation action; SHIFT still routes to Undo/Redo.

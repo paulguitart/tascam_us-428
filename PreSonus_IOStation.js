@@ -316,6 +316,12 @@ function assignButtonRouting(mapping) {
     buttons[shiftedName] = surface.makeCustomValueVariable(shiftedName)
     var stateKey = 'held.' + normalName
     mapping.physicalButton.mSurfaceValue.mOnProcessValueChange = function(context, value) {
+        // Navigation LEDs follow the physical buttons in every mode and SHIFT layer.
+        if (normalName === 'Prev') {
+            setTransportLed(context, cPrev, value > 0)
+        } else if (normalName === 'Next') {
+            setTransportLed(context, cNext, value > 0)
+        }
         var activeName = context.getState(stateKey)
         if (value > 0) {
             if (activeName) { return } // Ignore repeated press messages.
@@ -604,6 +610,8 @@ var var_trackPrev = surface.makeCustomValueVariable('Previous Track Pressed')
 var var_trackNext = surface.makeCustomValueVariable('Next Track Pressed')
 var var_markerPrev = surface.makeCustomValueVariable('Previous Marker Pressed')
 var var_markerNext = surface.makeCustomValueVariable('Next Marker Pressed')
+var var_setLeftLocatorPressed = surface.makeCustomValueVariable('Set Left Locator Pressed')
+var var_setRightLocatorPressed = surface.makeCustomValueVariable('Set Right Locator Pressed')
 
 function routeNavigationPress(context, direction) {
     var mode = context.getState('knobMode')
@@ -619,6 +627,12 @@ function routeNavigationPress(context, direction) {
             pulseVar(context, var_markerPrev)
         } else {
             pulseVar(context, var_markerNext)
+        }
+    } else if (mode === 'Master') {
+        if (direction === 'Prev') {
+            pulseVar(context, var_setLeftLocatorPressed)
+        } else {
+            pulseVar(context, var_setRightLocatorPressed)
         }
     } else {
         if (direction === 'Prev') {
@@ -663,6 +677,8 @@ function recallNextCycle(context) {
 
 // Printed functions use the logical button paths, so SHIFT routing stays in one place.
 function assignUtilityControls() {
+	page.makeCommandBinding(var_setLeftLocatorPressed, 'Transport', 'Set Left Locator')
+	page.makeCommandBinding(var_setRightLocatorPressed, 'Transport', 'Set Right Locator')
 	page.makeCommandBinding(buttons.Undo, 'Edit', 'Undo')
 	page.makeCommandBinding(buttons.Redo, 'Edit', 'Redo')
 }
