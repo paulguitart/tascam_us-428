@@ -340,6 +340,10 @@ function assignButtonRouting(mapping) {
             if (activeName === 'ArmAll') {
                 toggleArmAll(context)
             }
+            if (activeName === 'Bypass') {
+                // Route the physical press directly, just like the knob push.
+                toggleModeEffect(context)
+            }
             buttons[activeName].setProcessValue(context, 1)
         } else if (activeName) {
             // Release the path that received the press, even if SHIFT changed meanwhile.
@@ -926,6 +930,7 @@ var knobModeButtons = [
 ]
 var var_zoomIn = surface.makeCustomValueVariable('Zoom In')
 var var_zoomOut = surface.makeCustomValueVariable('Zoom Out')
+var var_zoomToLocators = surface.makeCustomValueVariable('Zoom to Locators')
 var var_markerInsertPressed = surface.makeCustomValueVariable('Marker Insert Pressed')
 var var_masterInsertPressed = surface.makeCustomValueVariable('Master Insert Pressed')
 
@@ -1071,9 +1076,6 @@ function assignKnobControls() {
     sendEnabled.mOnProcessValueChange = function(context) {
         updateBypassLED(context)
     }
-    buttons.Bypass.mOnProcessValueChange = function(context, value) {
-        if (value > 0) toggleModeEffect(context)
-    }
     // Master-mode encoder controls the first FX Return channel.
     page.makeValueBinding(knob, fxChannel.mValue.mVolume)
         .setValueTakeOverModeScaled()
@@ -1088,6 +1090,7 @@ function assignKnobControls() {
         .setSubPage(knobModes.HighPass)
     page.makeCommandBinding(var_zoomIn, 'Zoom', 'Zoom In').setSubPage(knobModes.Zoom)
     page.makeCommandBinding(var_zoomOut, 'Zoom', 'Zoom Out').setSubPage(knobModes.Zoom)
+    page.makeCommandBinding(var_zoomToLocators, 'Zoom', 'Zoom to Locators').setSubPage(knobModes.Zoom)
     if (cubase13OrHigher) {
         page.makeCommandBinding(var_markerInsertPressed,
             'Marker', 'Insert Marker').setSubPage(knobModes.Marker)
@@ -1133,6 +1136,8 @@ function assignKnobControls() {
             toggleModeEffect(context)
         } else if (mode === 'Marker') {
             pulseVar(context, var_markerInsertPressed)
+        } else if (mode === 'Zoom') {
+            pulseVar(context, var_zoomToLocators)
         } else if (mode === 'Master') {
             pulseVar(context, var_masterInsertPressed)
         }
