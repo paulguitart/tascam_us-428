@@ -33,3 +33,39 @@ for (const [button, mode] of Object.entries({ Link: 'Link', Scroll: 'Zoom', Zoom
     assert.equal(scope.resolveKnobModeButton(b, button), button);
 }
 console.log('PASS: previous-mode toggling, repeated activation, aliases, shifted paths and device isolation');
+
+// Exercise the actual physical-button router, including held-button releases.
+const events = [];
+scope.buttons = {};
+scope.selectedTrackToggleValues = {};
+scope.surface = { makeCustomValueVariable: name => ({
+    setProcessValue(context, value) { events.push([name, value]); }
+}) };
+scope.buttons.Pan = scope.surface.makeCustomValueVariable('Pan');
+vm.runInContext(source.slice(source.indexOf('function assignButtonRouting('), source.indexOf('for (var buttonIndex =')).trimEnd(), scope);
+for (const name of ['Link', 'Pan', 'Channel', 'Scroll', 'Master', 'Click', 'Section', 'Marker']) {
+    const match = source.match(new RegExp("normalName: '" + name + "', shiftedName: '([^']+)'"));
+    const mapping = { normalName: name, shiftedName: match[1], physicalButton: { mSurfaceValue: {} } };
+    scope.assignButtonRouting(mapping);
+    const context = device();
+    for (const shift of ['0', '1']) {
+        context.setState('shiftEnabled', shift);
+        events.length = 0;
+        const press = mapping.physicalButton.mSurfaceValue.mOnProcessValueChange;
+        press(context, 1);
+        press(context, 1);
+        context.setState('shiftEnabled', shift === '1' ? '0' : '1');
+        press(context, 0);
+        const expected = name === 'Scroll' && shift === '1' ? 'Zoom' : name;
+        assert.deepEqual(events, [[expected, 1], [expected, 0]]);
+        // Pressing the active mode returns to Pan in either SHIFT state.
+        context.setState('knobMode', name === 'Channel' ? 'HighPass' : name === 'Scroll' ? 'Zoom' : name);
+        context.setState('previousKnobMode', 'Pan');
+        context.setState('shiftEnabled', shift);
+        events.length = 0;
+        press(context, 1); press(context, 0);
+        assert.deepEqual(events, [['Pan', 1], ['Pan', 0]]);
+        context.setState('knobMode', '');
+    }
+}
+console.log('PASS: all mode buttons ignore SHIFT, toggle back, suppress duplicate presses and release across SHIFT changes');

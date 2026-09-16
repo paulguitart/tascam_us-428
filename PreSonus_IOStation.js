@@ -123,12 +123,12 @@ UNASSIGNED BUTTON PATHS:
 ----------------------------------------------------------------------------------------------------
 TOUCH                    : Normal path
 SHIFT + BYPASS / TOUCH / WRITE / READ          : BypassAll / Latch / Trim / Off
-SHIFT + LINK             : LinkLock
-SHIFT + PAN              : Flip
-SHIFT + CHANNEL          : ChannelLock
-SHIFT + MASTER / CLICK   : F1 / F2
-SHIFT + SECTION          : F3
-MARKER                   : Marker mode; SHIFT gives F4
+SHIFT + LINK             : Link mode
+SHIFT + PAN              : Pan mode
+SHIFT + CHANNEL          : High Pass mode
+SHIFT + MASTER / CLICK   : Master / Click modes
+SHIFT + SECTION          : Section mode
+MARKER                   : Marker mode with or without SHIFT
 FOOTSWITCH PRESS         : Logical press path available for a future assignment
 
 ====================================================================================================
@@ -300,18 +300,18 @@ var buttonMappings = [
     { physicalButton: uSection.btn_Read, normalName: 'Read', shiftedName: 'Off' },
     { physicalButton: mSection.btn_Prev, normalName: 'Prev', shiftedName: 'Undo' },
     { physicalButton: mSection.btn_Next, normalName: 'Next', shiftedName: 'Redo' },
-    { physicalButton: mSection.btn_Link, normalName: 'Link', shiftedName: 'LinkLock' },
-    { physicalButton: mSection.btn_Pan, normalName: 'Pan', shiftedName: 'Flip' },
-    { physicalButton: mSection.btn_Channel, normalName: 'Channel', shiftedName: 'ChannelLock' },
+    { physicalButton: mSection.btn_Link, normalName: 'Link', shiftedName: 'Link' },
+    { physicalButton: mSection.btn_Pan, normalName: 'Pan', shiftedName: 'Pan' },
+    { physicalButton: mSection.btn_Channel, normalName: 'Channel', shiftedName: 'Channel' },
     { physicalButton: mSection.btn_Scroll, normalName: 'Scroll', shiftedName: 'Zoom' },
-    { physicalButton: mSection.btn_Master, normalName: 'Master', shiftedName: 'F1' },
-    { physicalButton: mSection.btn_Click, normalName: 'Click', shiftedName: 'F2' },
-    { physicalButton: mSection.btn_Section, normalName: 'Section', shiftedName: 'F3' },
-    { physicalButton: mSection.btn_Marker, normalName: 'Marker', shiftedName: 'F4' }
+    { physicalButton: mSection.btn_Master, normalName: 'Master', shiftedName: 'Master' },
+    { physicalButton: mSection.btn_Click, normalName: 'Click', shiftedName: 'Click' },
+    { physicalButton: mSection.btn_Section, normalName: 'Section', shiftedName: 'Section' },
+    { physicalButton: mSection.btn_Marker, normalName: 'Marker', shiftedName: 'Marker' }
 ]
 
-// Bind future Cubase actions to these logical values, e.g. buttons.F1 or
-// buttons.Flip. Physical surface buttons remain the single MIDI input source.
+// Mode buttons behave the same in both SHIFT layers.
+// Physical surface buttons remain the single MIDI input source.
 var buttons = {}
 var selectedTrackToggleValues = {}
 
@@ -336,7 +336,7 @@ function assignButtonRouting(mapping) {
     var normalName = mapping.normalName
     var shiftedName = mapping.shiftedName
     buttons[normalName] = surface.makeCustomValueVariable(normalName)
-    buttons[shiftedName] = surface.makeCustomValueVariable(shiftedName)
+    if (shiftedName !== normalName) buttons[shiftedName] = surface.makeCustomValueVariable(shiftedName)
     var stateKey = 'held.' + normalName
     mapping.physicalButton.mSurfaceValue.mOnProcessValueChange = function(context, value) {
         // Navigation LEDs follow the physical buttons in every mode and SHIFT layer.
@@ -400,7 +400,7 @@ function resetButtonRouting(context) {
 
         context.setState('held.' + mapping.normalName, '')
         normalButton.setProcessValue(context, 0)
-        shiftedButton.setProcessValue(context, 0)
+        if (shiftedButton !== normalButton) shiftedButton.setProcessValue(context, 0)
     }
 }
 
