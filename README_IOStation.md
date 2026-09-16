@@ -160,15 +160,15 @@ Actual port detection, Cubase command execution, surface rendering, encoder dire
 
 ### High-pass color feedback
 
-With High Pass mode selected, disabled is white. When enabled, the color follows a saturated green → cyan → blue → magenta gradient with logarithmic frequency spacing, then stays magenta at and above 300 Hz:
+With High Pass mode selected, disabled is white. When enabled, the color follows a saturated green → amber → purple → magenta gradient with logarithmic frequency spacing, then stays magenta at and above 300 Hz:
 
 | Cutoff | Color |
 |---|---|
 | 20 Hz and below | Green |
-| 20–300 Hz | Green → cyan → blue → magenta |
+| 20–300 Hz | Green → amber → purple → magenta |
 | 300 Hz and above | Magenta |
 
-These colors indicate cutoff frequency, not measured attenuation or slope. The gradient keeps one RGB component at full brightness and one at zero to avoid a dim gray/white midpoint. Set `ENABLE_HIGH_PASS_COLOR_GRADIENT = false` for solid green whenever enabled. The state and frequency follow the selected track and mouse edits even outside this mode; the cutoff color appears only while this mode is selected; otherwise Channel follows the nuclear LED flags. Cubase's displayed Hz/kHz is used rather than assuming a normalized frequency curve. Missing/unrecognized display text falls back to green. Actual color appearance and host display callbacks need live verification.
+These colors indicate cutoff frequency, not measured attenuation or slope. The gradient keeps one RGB component at full brightness and uses color stops away from white and blue to avoid a dim gray/white midpoint. Set `ENABLE_HIGH_PASS_COLOR_GRADIENT = false` for solid green whenever enabled. The state and frequency follow the selected track and mouse edits even outside this mode; the cutoff color appears only while this mode is selected; otherwise Channel follows the nuclear LED flags. Cubase's displayed Hz/kHz is used rather than assuming a normalized frequency curve. Missing/unrecognized display text falls back to green. Actual color appearance and host display callbacks need live verification.
 
 ### RGB brightness
 
