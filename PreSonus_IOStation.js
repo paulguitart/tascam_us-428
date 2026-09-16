@@ -68,7 +68,7 @@ SOLO / MUTE / ARM (Normal): Toggle selected-track Solo / Mute / Record Enable
 PREV / NEXT              : Select Previous / Next Track
 SHIFT + PREV / NEXT      : Undo / Redo
 LINK (Normal)            : Select first-send knob mode; knob push toggles send on/off
-PAN (Normal)             : Select Pan knob mode
+PAN (Normal)             : Select Pan knob mode; knob push toggles send 1 on/off
 SCROLL / SHIFT + SCROLL  : Select Zoom knob mode
 MASTER (Normal)          : Select Master mode; encoder controls FX Return 1, fader controls Stereo Out
 CLICK (Normal)           : Select Click Level knob mode
@@ -79,7 +79,7 @@ MARKER (Normal)          : Select Marker mode; Prev/Next locate markers; knob pu
 KNOB MODES:
 ----------------------------------------------------------------------------------------------------
 LINK                     : Selected Track Send 1 Level; press knob for send on/off
-PAN                      : Selected Track Pan
+PAN                      : Selected Track Pan; press knob for send 1 on/off
 ZOOM                     : Horizontal Zoom In / Out commands
 MASTER                   : Encoder controls FX Return 1; fader controls Stereo Out Volume
 CLICK                    : Metronome Click Level
@@ -910,7 +910,7 @@ function assignKnobControls() {
         context.setState('knobPressRouted', '1')
 
         var mode = context.getState('knobMode')
-        if (mode === 'Link') {
+        if (mode === 'Link' || mode === 'Pan') {
             var enabled = Number(sendEnabled.getProcessValue(context)) > 0
             sendEnabled.setProcessValue(context, enabled ? 0 : 1)
         } else if (mode === 'Click') {
