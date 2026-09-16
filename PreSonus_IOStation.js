@@ -1215,7 +1215,9 @@ function activateKnobMode(context, mode, activeMapping) {
         target.mAction.mActivate.trigger(activeMapping)
     }
     context.setState('knobMode', mode)
-    if (mode === 'HighPass' || mode === 'PreGain' || mode === 'Link' || mode === 'Mouse') {
+    // These normal modes clear SHIFT; recalled alternates restore it from their mode.
+    if (mode === 'HighPass' || mode === 'PreGain' || mode === 'Link' || mode === 'Mouse'
+        || mode === 'Master' || mode === 'Click' || mode === 'Section' || mode === 'Marker') {
         var alternate = mode === 'PreGain' || mode === 'Mouse'
         context.setState('shiftEnabled', alternate ? '1' : '0')
         if (alternate) onLED(context, cShift)

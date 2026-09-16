@@ -70,3 +70,23 @@ for (const name of ['Link', 'Pan', 'Channel', 'Scroll', 'Master', 'Click', 'Sect
     }
 }
 console.log('PASS: mode buttons respect the Channel SHIFT alternate, toggle back, suppress duplicate presses and release across SHIFT changes');
+
+// Normal lower modes clear both the SHIFT routing state and LED; history restores alternates.
+let shiftLed = false;
+scope.onLED = (_, note) => { if (note === scope.cShift) shiftLed = true; };
+scope.offLED = (_, note) => { if (note === scope.cShift) shiftLed = false; };
+for (const alternate of ['PreGain', 'Mouse']) {
+    for (const normal of ['Master', 'Click', 'Section', 'Marker']) {
+        const context = device();
+        scope.activateKnobMode(context, alternate);
+        assert.equal(context.getState('shiftEnabled'), '1'); assert.equal(shiftLed, true);
+        scope.activateKnobMode(context, normal);
+        assert.equal(context.getState('shiftEnabled'), '0'); assert.equal(shiftLed, false);
+        const recalled = scope.resolveKnobModeButton(context, normal);
+        assert.equal(recalled, alternate);
+        scope.activateKnobMode(context, recalled);
+        assert.equal(context.getState('shiftEnabled'), '1'); assert.equal(shiftLed, true);
+        assert.equal(context.getState('previousKnobMode'), normal);
+    }
+}
+console.log('PASS: Master/Click/Section/Marker clear SHIFT and history restores both alternate modes and LED');
