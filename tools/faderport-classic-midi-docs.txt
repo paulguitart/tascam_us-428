@@ -1,0 +1,129 @@
+FaderPort Classic: Packet Messaging
+Published July 11, 2018
+
+
+
+This SDK applies to this model FaderPort:
+
+ 
+
+Overview
+
+This page describes the messaging over USB used on the Faderport to communicate with DAWs
+Faderport sends messages using a standard MIDI packet format. This only applies to the original gray single channel FaderPort.
+ 
+
+
+Native Mode
+
+To put the faderport into Native mode the following message must be sent.
+
+0x91, 0x00, 0x64
+Once in Native Mode the Faderport Messages are as follows:
+
+ 
+
+Fader Movements
+
+Fader Movements Messages are sent using two consecutive messages with the Status byte of 0xB0. The two messages for either sending or receiving will look like this:
+
+0xB0, id_byte, data_high Byte
+0xB0, id_byte| 0x20, data_low Byte
+     or
+
+0xB0, 0x00, 7F
+0xB0, 0x00, 3E
+There is only one Fader on the Faderport, the ID is 0x00
+
+ 
+
+Encoder Movements
+
+Encoder Movements Messages are sent using the Status byte of 0xE0. The data byte from the encoder message using 2s complement coding of 7bit (0x7f is -1, 0x01 is 1). Only the value of the delta range is transmitted for the encoder message.
+
+Typical Encoder message may look like this: 0xE0, 0x00, 7F
+There is only one Encoder on the Faderport, the ID is 0x00
+
+ 
+
+Switch Movements 
+
+Switch Communication Messages begin with the 0xA0 as the status byte. The second Byte is the switch ID, and the third byte is the Status.
+
+Therefore, if a switched is pushed it will send a message to the computer similar to: 0xA0, 0x07, 0x01
+To light the LED of that switch by initiating a message from the computer, the same message can be sent from the Host.
+
+ 
+
+The list of Switch IDs is the following:
+
+     #define OUT_SWITCH 0x00
+     #define IN_SWITCH 0x01
+     #define SHIFT_SWITCH 0x02
+     #define REW_SWITCH 0x03
+     #define FFWD_SWITCH 0x04
+     #define STOP_SWITCH 0x05
+     #define PLAY_SWITCH 0x06
+     #define MREC_SWITCH 0x07
+     #define TOUCH_SWITCH 0x08
+     #define WRITE_SWITCH 0x09
+     #define READ_SWITCH 0x0A
+     #define MIX_SWITCH 0x0B
+     #define EDIT_SWITCH 0x0C
+     #define TRNS_SWITCH 0x0D
+     #define UNDO_SWITCH 0x0E
+     #define LOOP_SWITCH 0x0F
+     #define REC_SWITCH 0x10
+     #define SOLO_SWITCH 0x11
+     #define MUTE_SWITCH 0x12
+     #define LEFT_SWITCH 0x13
+     #define BANK_SWITCH 0x14
+     #define RIGHT_SWITCH 0x15
+     #define OUTPUT_SWITCH 0x16
+     #define OFF_SWITCH 0x17
+     #define NUM_SWITCHES 0x18
+     #define NATIVE_FOOTSWITCH_MSG 126
+
+ 
+
+Universal Device Request Message
+
+The faderport will report back information using the Universal Device Request Sys Ex Message F0 7E 7F 06 01 F7
+
+ 
+
+In which case the Faderport will respond with the following message
+
+     u8 responseData[] = {         0xF0,
+
+                                               0x7E,
+
+                                               0x7F,
+
+                                               0x06,
+
+                                               0x02,
+
+                                               0x00, //manuf ID
+
+                                               0x01, //add two bytes since manuf ID == 0
+
+                                               0x06,
+
+                                               0x02, // family
+
+                                               0x00,
+
+                                               0x01, // member
+
+                                               0x00,
+
+                                               /*0x01,//*/FIRMWARE_VERSION_CHAR0,                                 
+
+                                               /*0x00,//*/FIRMWARE_VERSION_CHAR1,
+
+                                               /*0x00,//*/FIRMWARE_VERSION_CHAR2,
+
+                                               /*0x01,//*/FIRMWARE_VERSION_CHAR3,
+
+                                               0xF7};
