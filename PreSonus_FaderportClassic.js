@@ -62,6 +62,10 @@ var surface = deviceDriver.mSurface
 //-----------------------------------------------------------------------------
 
 var FP_NATIVE_MODE = [0x91, 0x00, 0x64]
+var STOP_SAVE_HOLD_MS = 1500
+var STOP_SAVE_PREDELAY_MS = 500
+var SAVE_BLINK_INTERVAL_MS = 140
+var SAVE_BLINK_TOGGLES = 10 // Five full blinks, matching IOStation/Korg.
 
 var FP = {
     // Top-left utility row
@@ -403,6 +407,7 @@ mouseKnobMode.mOnActivate = function(activeDevice) {
     sendButtonLed(activeDevice, FP.PROJECT, true)
 }
 deviceDriver.mOnIdle = function(activeDevice) {
+    updateStopHoldSave(activeDevice, Date.now())
     var lockAt = activeDevice.getState('classic.mouseLockAt')
     if (lockAt === '' || Date.now() < Number(lockAt)) return
     activeDevice.setState('classic.mouseLockAt', '')
@@ -458,6 +463,7 @@ page.mOnActivate = function(activeDevice, activeMapping) {
     panKnobMode.mAction.mActivate.trigger(activeMapping)
 }
 page.mOnDeactivate = function(activeDevice) {
+    cancelStopHoldSave(activeDevice)
     leaveMouseFaderMode(activeDevice)
     leaveMouseKnobMode(activeDevice)
     var key = activeDevice.getState('classic.mappingIndex')
@@ -468,6 +474,9 @@ page.mOnDeactivate = function(activeDevice) {
 // selection. Button releases must not extinguish an active host state.
 function followHostLed(switchId, hostValue) {
     hostValue.mOnProcessValueChange = function(activeDevice, activeMapping, value) {
+        // Keep the latest host state while the save animation owns these LEDs.
+        activeDevice.setState('classic.led.' + switchId, value > 0 ? '1' : '')
+        if (saveLedIsOwned(activeDevice, switchId)) return
         sendButtonLed(activeDevice, switchId, value > 0)
     }
 }
@@ -495,7 +504,8 @@ btnShift.mSurfaceValue.mOnProcessValueChange = function(activeDevice, value) {
 var shortcutStateKeys = ['classic.shift', 'classic.stop', 'classic.rew', 'classic.unityLed',
     'classic.faderOff', 'classic.faderWaitRelease', 'classic.output', 'classic.sendMode',
     'classic.mouseMode', 'classic.mouseReturnSend', 'classic.mouseLockAt',
-    'classic.mouseFader', 'classic.exitMouseOff', 'classic.mouseSavedValue']
+    'classic.mouseFader', 'classic.exitMouseOff', 'classic.mouseSavedValue',
+    'classic.stopHoldStart', 'classic.stopProgress', 'classic.saveBlinkCount', 'classic.saveBlinkAt']
 var rewindInput = surface.makeCustomValueVariable('Rewind Held')
 
 function resetShortcutState(activeDevice) {
@@ -669,14 +679,88 @@ routeShortcut(btnTransport, 'resetKnob', function(activeDevice) {
 }, makeCommandTrigger('Zoom to Locators', 'Zoom', 'Zoom to Locators'))
 
 var stopCommand = makeCommandTrigger('Stop', 'Transport', 'Stop')
+var saveCommand = makeCommandTrigger('Save', 'File', 'Save')
+var saveLedButtons = [FP.REW, FP.FFWD, FP.PLAY, FP.RECORD]
+var stopProgressButtons = [FP.FFWD, FP.REW, FP.PLAY, FP.RECORD]
+
+function saveLedIsOwned(activeDevice, switchId) {
+    return saveLedButtons.indexOf(switchId) >= 0
+        && (activeDevice.getState('classic.stopProgress') !== ''
+            || activeDevice.getState('classic.saveBlinkCount') !== '')
+}
+
+function restoreSaveLeds(activeDevice) {
+    for (var i = 0; i < saveLedButtons.length; ++i) {
+        var id = saveLedButtons[i]
+        sendButtonLed(activeDevice, id, activeDevice.getState('classic.led.' + id) === '1')
+    }
+}
+
+function resetStopProgress(activeDevice) {
+    activeDevice.setState('classic.stopHoldStart', '')
+    var hadProgress = activeDevice.getState('classic.stopProgress') !== ''
+    activeDevice.setState('classic.stopProgress', '')
+    if (hadProgress && activeDevice.getState('classic.saveBlinkCount') === '') restoreSaveLeds(activeDevice)
+}
+
+function cancelStopHoldSave(activeDevice) {
+    var hadAnimation = activeDevice.getState('classic.saveBlinkCount') !== ''
+    resetStopProgress(activeDevice)
+    activeDevice.setState('classic.saveBlinkCount', '')
+    activeDevice.setState('classic.saveBlinkAt', '')
+    if (hadAnimation) restoreSaveLeds(activeDevice)
+}
+
+function updateStopHoldSave(activeDevice, now) {
+    var start = activeDevice.getState('classic.stopHoldStart')
+    if (start !== '') {
+        var elapsed = now - Number(start)
+        if (elapsed >= STOP_SAVE_HOLD_MS) {
+            activeDevice.setState('classic.saveBlinkCount', '0')
+            activeDevice.setState('classic.saveBlinkAt', '')
+            resetStopProgress(activeDevice)
+            saveCommand(activeDevice)
+        } else if (elapsed >= STOP_SAVE_PREDELAY_MS
+                && activeDevice.getState('classic.saveBlinkCount') === '') {
+            var duration = Math.max(1, STOP_SAVE_HOLD_MS - STOP_SAVE_PREDELAY_MS)
+            var progress = Math.min(stopProgressButtons.length,
+                1 + Math.floor((elapsed - STOP_SAVE_PREDELAY_MS) * stopProgressButtons.length / duration))
+            if (activeDevice.getState('classic.stopProgress') !== String(progress)) {
+                activeDevice.setState('classic.stopProgress', String(progress))
+                for (var i = 0; i < stopProgressButtons.length; ++i) {
+                    sendButtonLed(activeDevice, stopProgressButtons[i], i < progress)
+                }
+            }
+        }
+    }
+    var blink = activeDevice.getState('classic.saveBlinkCount')
+    if (blink === '') return
+    var last = activeDevice.getState('classic.saveBlinkAt')
+    if (last !== '' && now - Number(last) < SAVE_BLINK_INTERVAL_MS) return
+    var count = Number(blink)
+    for (var j = 0; j < saveLedButtons.length; ++j) {
+        sendButtonLed(activeDevice, saveLedButtons[j], count % 2 === 0)
+    }
+    activeDevice.setState('classic.saveBlinkAt', String(now))
+    activeDevice.setState('classic.saveBlinkCount', String(count + 1))
+    if (count + 1 >= SAVE_BLINK_TOGGLES) {
+        activeDevice.setState('classic.saveBlinkCount', '')
+        restoreSaveLeds(activeDevice)
+    }
+}
+
 var returnToZero = makeCommandTrigger('Return to Zero', 'Transport', 'Return to Zero')
 btnStop.mSurfaceValue.mOnProcessValueChange = function(activeDevice, value) {
     if (value > 0) {
         if (activeDevice.getState('classic.stop') === '1') return
         activeDevice.setState('classic.stop', '1')
         stopCommand(activeDevice)
+        if (activeDevice.getState('classic.rew') !== '1') {
+            activeDevice.setState('classic.stopHoldStart', String(Date.now()))
+        }
     } else {
         activeDevice.setState('classic.stop', '')
+        resetStopProgress(activeDevice)
     }
 }
 btnRew.mSurfaceValue.mOnProcessValueChange = function(activeDevice, value) {
@@ -684,6 +768,7 @@ btnRew.mSurfaceValue.mOnProcessValueChange = function(activeDevice, value) {
         if (activeDevice.getState('classic.rew') === '1') return
         activeDevice.setState('classic.rew', '1')
         if (activeDevice.getState('classic.stop') === '1') {
+            resetStopProgress(activeDevice)
             returnToZero(activeDevice)
         } else {
             rewindInput.setProcessValue(activeDevice, 1)
@@ -834,6 +919,7 @@ page.makeValueBinding(
 // In PROJ/BANK mode, TRNS restores the mouse parameter value saved on mode entry.
 // SHIFT + LOOP = Insert Marker, SHIFT + SOLO/MUTE = clear solos/unmute all.
 // Hold STOP, then press REW = Return to Zero. SHIFT alone only lights its LED.
+// Hold STOP for 1.5 seconds = Save once, with progress and five confirmation blinks.
 //
 //-----------------------------------------------------------------------------
 // END
