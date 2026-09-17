@@ -7,6 +7,7 @@ const vm = require('vm')
 
 function load(hasTouch = true) {
     const commands = [], midi = [], bindings = []
+    const activeModes = new WeakMap()
     const chain = new Proxy({}, { get: () => () => chain })
     function value() {
         const states = new WeakMap()
@@ -17,6 +18,9 @@ function load(hasTouch = true) {
                 const previous = states.get(device) || 0
                 states.set(device, next)
                 for (const binding of bindings.filter(b => b.input === this)) {
+                    if (binding.subpage && activeModes.get(device) !== binding.subpage) continue
+                    // Do not assume that a custom-value pulse synchronously
+                    // executes a Cubase action. OUTPUT must use direct activation.
                     if (binding.command && next === 1) commands.push(binding.command)
                     if (binding.host) {
                         if (!binding.toggle) binding.host.setProcessValue(device, next)
@@ -40,20 +44,34 @@ function load(hasTouch = true) {
     const page = {
         mHostAccess: {
             mTransport: { mValue: hostValues() },
+            mMixConsole: { makeMixerBankZone: () => ({
+                includeOutputChannels: () => ({ makeMixerBankChannel: () => ({ mValue: hostValues() }) })
+            }) },
             mTrackSelection: { mMixerChannel: { mValue: hostValues() }, mAction: {} }
         },
         makeValueBinding(input, host) {
             const binding = { input, host }
             bindings.push(binding)
-            return new Proxy({}, { get: (_, key) => () => {
+            const result = new Proxy({}, { get: (_, key) => arg => {
                 if (key === 'setTypeToggle') binding.toggle = true
-                return chain
+                if (key === 'setSubPage') binding.subpage = arg
+                return result
             } })
+            return result
         },
         makeCommandBinding(input, category, command) {
             bindings.push({ input, command: category + '/' + command }); return chain
         },
-        makeActionBinding() { return chain }
+        makeActionBinding(input, action) { bindings.push({ input, action }); return chain },
+        makeSubPageArea() { return { makeSubPage() {
+            const mode = { mAction: { mActivate: { trigger(mapping) {
+                assert(mapping && mapping.device, 'Subpage activation requires ActiveMapping, not ActiveDevice')
+                const device = mapping.device
+                activeModes.set(device, mode)
+                if (mode.mOnActivate) mode.mOnActivate(device, mapping)
+            } } } }
+            return mode
+        } } }
     }
     const driver = {
         mPorts: {
@@ -73,9 +91,11 @@ function load(hasTouch = true) {
     }
     const d = device()
     driver.mOnActivate(d)
+    const mapping = { device: d }
+    page.mOnActivate(d, mapping)
     const press = (name, v = 1, target = d) => ctx[name].mSurfaceValue.mOnProcessValueChange(target, v)
     const tap = name => { press(name); press(name, 0) }
-    return { ctx, d, device, press, tap, commands, midi, driver, bindings }
+    return { ctx, d, device, press, tap, commands, midi, driver, bindings, page, mapping }
 }
 
 const t = load()
@@ -241,3 +261,49 @@ off.driver.mOnDeactivate(od)
 off.driver.mOnActivate(od)
 assert.strictEqual(c.isFaderEnabled(od), true)
 console.log('PASS: OFF gates input, touch automation, reset and motor; safe re-enable and lifecycle reset')
+
+const output = load(), oc = output.ctx, outDevice = output.d
+oc.trackVolumeFeedback.setProcessValue(outDevice, 0.4)
+oc.outputVolumeFeedback.setProcessValue(outDevice, 0.8)
+output.tap('btnOff')
+output.tap('btnOutput')
+assert.strictEqual(oc.isFaderEnabled(outDevice), true)
+assert.strictEqual(outDevice.getState('classic.output'), '1')
+assert.strictEqual(oc.lastHostVolume, 0.8)
+oc.rawFaderValue.mOnProcessValueChange(outDevice, 0.7)
+assert.strictEqual(oc.stereoOut.mValue.mVolume.getProcessValue(outDevice), 0.7)
+assert.strictEqual(oc.selectedValues.mVolume.getProcessValue(outDevice), 0.4)
+output.tap('btnTouchMode')
+assert.strictEqual(oc.stereoOut.mValue.mVolume.getProcessValue(outDevice), oc.FADER_HOST_UNITY)
+output.midi.length = 0
+oc.selectedValues.mVolume.mOnProcessValueChange(outDevice, {}, 0.2)
+assert.strictEqual(output.midi.length, 0, 'Inactive track must not move output fader')
+output.tap('btnOff')
+assert.strictEqual(oc.isFaderEnabled(outDevice), false)
+output.tap('btnOutput')
+assert.strictEqual(oc.isFaderEnabled(outDevice), true)
+assert.strictEqual(outDevice.getState('classic.output'), '1', 'OUTPUT after OFF restores output')
+oc.faderTouchValue.mOnProcessValueChange(outDevice, 1)
+output.midi.length = 0
+output.tap('btnOutput') // Return to track, but wait for the held fader to release.
+assert.strictEqual(outDevice.getState('classic.output'), '')
+oc.rawFaderValue.mOnProcessValueChange(outDevice, 0.1)
+assert.strictEqual(oc.selectedValues.mVolume.getProcessValue(outDevice), 0.4)
+assert(output.midi.every(msg => msg[0] !== 0xB0))
+oc.faderTouchValue.mOnProcessValueChange(outDevice, 0)
+oc.rawFaderValue.mOnProcessValueChange(outDevice, 0.5)
+assert.strictEqual(oc.selectedValues.mVolume.getProcessValue(outDevice), 0.5)
+assert.strictEqual(oc.stereoOut.mValue.mVolume.getProcessValue(outDevice), oc.FADER_HOST_UNITY)
+console.log('PASS: OUTPUT target isolation, OFF precedence, output unity reset, inactive feedback, held target switch')
+
+output.page.mOnDeactivate(outDevice)
+assert.strictEqual(oc.getFaderTargetMapping(outDevice), null)
+output.tap('btnOutput')
+assert.strictEqual(outDevice.getState('classic.output'), '')
+const replacementMapping = { device: outDevice }
+output.page.mOnActivate(outDevice, replacementMapping)
+assert.strictEqual(oc.getFaderTargetMapping(outDevice), replacementMapping)
+output.tap('btnOutput')
+assert.strictEqual(outDevice.getState('classic.output'), '1')
+assert(output.midi.some(msg => msg.join() === '160,17,1'), 'OUTPUT sends its measured LED address')
+console.log('PASS: direct OUTPUT subpage activation with distinct mapping context and page lifecycle')

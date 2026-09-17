@@ -21,6 +21,7 @@ the held state; SHIFT alone performs no Cubase action.
 | PLAY | Toggle playback; releasing the button keeps playback running |
 | TOUCH | Reset selected-track volume to 0 dB |
 | OFF | Toggle physical fader control and motor feedback off/on |
+| OUTPUT | Toggle fader between selected track and Stereo Out; re-enable if OFF |
 
 OFF lights while the fader is disabled. Physical movement and capacitive touch
 then send no volume or touch changes to Cubase, and motor output is suppressed.
@@ -28,6 +29,17 @@ TOUCH reset is disabled and its LED is dark. Other controls keep working.
 Re-enabling catches the motor up to the latest host volume; if the fader is
 held, input and motor resume after release. Script activation starts enabled.
 BANK remains unassigned.
+
+OUTPUT lights when the fader targets Stereo Out. It uses the first output bus,
+as in IOStation; place the intended master first if the project has multiple
+output buses. TOUCH resets the active target to 0 dB. Pan and track buttons
+still control the selected track. Switching targets while held waits for release
+before accepting fader movement or moving the motor.
+
+OUTPUT overrides OFF and restores output control. OFF can subsequently disable
+that target again; it does not forget the selected target. OUTPUT pressed after
+OFF restores Stereo Out even if it was already selected. When enabled, OUTPUT
+toggles back to selected-track control. Page activation starts on selected track.
 
 PUNCH and USER navigate markers with or without SHIFT. Shortcuts are chosen
 when the action button is pressed; releasing SHIFT first does not trigger the

@@ -327,6 +327,52 @@ var trackSelection = page.mHostAccess.mTrackSelection
 var selectedChannel = trackSelection.mMixerChannel
 var selectedValues = selectedChannel.mValue
 
+// Same output-bank selection as IOStation: the first output bus is Stereo Out.
+var outputZone = page.mHostAccess.mMixConsole.makeMixerBankZone().includeOutputChannels()
+var stereoOut = outputZone.makeMixerBankChannel()
+var faderTargetArea = page.makeSubPageArea('Fader Target')
+var trackFaderMode = faderTargetArea.makeSubPage('Selected Track')
+var outputFaderMode = faderTargetArea.makeSubPage('Stereo Out')
+var trackVolumeFeedback = surface.makeCustomValueVariable('Track Volume Feedback')
+var outputVolumeFeedback = surface.makeCustomValueVariable('Output Volume Feedback')
+page.makeValueBinding(trackVolumeFeedback, selectedValues.mVolume)
+page.makeValueBinding(outputVolumeFeedback, stereoOut.mValue.mVolume)
+// Retain the real ActiveMapping supplied by Cubase. A surface callback only
+// receives ActiveDevice; subpage actions require ActiveMapping (as in IOStation).
+var faderTargetMappings = []
+
+function getFaderTargetMapping(activeDevice) {
+    var key = activeDevice.getState('classic.mappingIndex')
+    return key === '' ? null : faderTargetMappings[Number(key)]
+}
+
+function activateFaderTarget(activeDevice, output) {
+    enabledFaderTouch.setProcessValue(activeDevice, 0)
+    activeDevice.setState('classic.output', output ? '1' : '')
+    activeDevice.setState('classic.faderOff', '')
+    activeDevice.setState('classic.faderWaitRelease', faderIsTouched ? '1' : '')
+    lastHostVolume = (output ? outputVolumeFeedback : trackVolumeFeedback).getProcessValue(activeDevice)
+    sendButtonLed(activeDevice, FP.OUTPUT, output)
+    sendButtonLed(activeDevice, FP.OFF, false)
+    updateUnityLed(activeDevice, lastHostVolume)
+    sendFaderMotor(activeDevice, lastHostVolume)
+}
+trackFaderMode.mOnActivate = function(activeDevice) { activateFaderTarget(activeDevice, false) }
+outputFaderMode.mOnActivate = function(activeDevice) { activateFaderTarget(activeDevice, true) }
+page.mOnActivate = function(activeDevice, activeMapping) {
+    var key = activeDevice.getState('classic.mappingIndex')
+    if (key === '') {
+        key = String(faderTargetMappings.length)
+        activeDevice.setState('classic.mappingIndex', key)
+    }
+    faderTargetMappings[Number(key)] = activeMapping
+    trackFaderMode.mAction.mActivate.trigger(activeMapping)
+}
+page.mOnDeactivate = function(activeDevice) {
+    var key = activeDevice.getState('classic.mappingIndex')
+    if (key !== '') faderTargetMappings[Number(key)] = null
+}
+
 // Stateful LEDs follow Cubase, including changes made with the mouse and track
 // selection. Button releases must not extinguish an active host state.
 function followHostLed(switchId, hostValue) {
@@ -356,7 +402,7 @@ btnShift.mSurfaceValue.mOnProcessValueChange = function(activeDevice, value) {
 // Physical inputs stay separate from host feedback. Resolve shortcuts only on
 // press so releasing SHIFT before the other button cannot fire its normal action.
 var shortcutStateKeys = ['classic.shift', 'classic.stop', 'classic.rew', 'classic.unityLed',
-    'classic.faderOff', 'classic.faderWaitRelease']
+    'classic.faderOff', 'classic.faderWaitRelease', 'classic.output']
 var rewindInput = surface.makeCustomValueVariable('Rewind Held')
 
 function resetShortcutState(activeDevice) {
@@ -432,6 +478,19 @@ routeShortcut(btnOff, 'faderOff', function(activeDevice) {
     updateUnityLed(activeDevice, lastHostVolume)
     if (!turnOff) sendFaderMotor(activeDevice, lastHostVolume)
 })
+routeShortcut(btnOutput, 'output', function(activeDevice) {
+    var activeMapping = getFaderTargetMapping(activeDevice)
+    if (!activeMapping) return
+    // OFF followed by OUTPUT always restores the output target, even if its
+    // subpage was already selected (re-activating it may not fire a callback).
+    if (activeDevice.getState('classic.faderOff') === '1'
+            && activeDevice.getState('classic.output') === '1') {
+        activateFaderTarget(activeDevice, true)
+        return
+    }
+    var target = activeDevice.getState('classic.output') === '1' ? trackFaderMode : outputFaderMode
+    target.mAction.mActivate.trigger(activeMapping)
+})
 
 var stopCommand = makeCommandTrigger('Stop', 'Transport', 'Stop')
 var returnToZero = makeCommandTrigger('Return to Zero', 'Transport', 'Return to Zero')
@@ -480,6 +539,11 @@ page.makeValueBinding(
     mainFader.mSurfaceValue,
     selectedValues.mVolume
 ).setValueTakeOverModeJump()
+    .setSubPage(trackFaderMode)
+
+page.makeValueBinding(mainFader.mSurfaceValue, stereoOut.mValue.mVolume)
+    .setValueTakeOverModeJump()
+    .setSubPage(outputFaderMode)
 
 // Manual motor feedback is necessary because the Classic's host->motor packet
 // format is NOT the same as its fader->host 14-bit CC encoding.
@@ -488,6 +552,16 @@ selectedValues.mVolume.mOnProcessValueChange = function(
     activeMapping,
     value
 ) {
+    if (activeDevice.getState('classic.output') === '1') return
+    updateFaderHostVolume(activeDevice, value)
+}
+
+stereoOut.mValue.mVolume.mOnProcessValueChange = function(activeDevice, activeMapping, value) {
+    if (activeDevice.getState('classic.output') !== '1') return
+    updateFaderHostVolume(activeDevice, value)
+}
+
+function updateFaderHostVolume(activeDevice, value) {
     lastHostVolume = value
     // Do not fight the user's finger.
     if (!faderIsTouched) {
@@ -569,7 +643,6 @@ page.makeValueBinding(
 //     btnProject       // A0 0C
 //     btnTransport     // A0 0D
 //     btnBank          // A0 14
-//     btnOutput        // A0 16
 //
 // Shortcuts: PUNCH/USER = previous/next marker; held SHIFT + UNDO = Redo,
 // SHIFT + LOOP = Insert Marker, SHIFT + SOLO/MUTE = clear solos/unmute all.
