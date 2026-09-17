@@ -400,6 +400,7 @@ const mouse = load(), mc = mouse.ctx, md = mouse.d
 const hovered = mouse.page.mHostAccess.mMouseCursor.mValueUnderMouse
 const locked = mouse.page.mHostAccess.mMouseCursor.mValueLocked
 hovered.setProcessValue(md, 0.42)
+mc.mouseFaderFeedback.receiveHostValue(md, 0.42)
 mouse.tap('btnProject')
 assert.strictEqual(locked.getProcessValue(md), 0, 'Lock waits until after mode activation')
 mc.panKnobRaw.mOnProcessValueChange(md, 0.01)
@@ -414,7 +415,7 @@ mc.panKnobRaw.mOnProcessValueChange(md, 0.01)
 assert.strictEqual(hovered.getProcessValue(md), 0.42 + mc.FP_KNOB_STEP)
 assert.strictEqual(mc.selectedValues.mPan.getProcessValue(md), 0)
 mouse.tap('btnTransport')
-assert.strictEqual(hovered.getProcessValue(md), 0.42 + mc.FP_KNOB_STEP, 'No arbitrary mouse reset')
+assert.strictEqual(hovered.getProcessValue(md), 0.42, 'TRNS restores the PROJ entry value')
 mouse.tap('btnOutput'); mouse.tap('btnOff')
 assert.strictEqual(locked.getProcessValue(md), 1)
 mouse.tap('btnProject')
@@ -434,7 +435,7 @@ assert.strictEqual(md.getState('classic.mouseMode'), '')
 mouse.tap('btnProject')
 mouse.driver.mOnDeactivate(md)
 assert.strictEqual(locked.getProcessValue(md), 0)
-console.log('PASS: PROJ locks mouse target, routes knob exclusively, restores prior mode, preserves value on TRNS, unlocks on exit')
+console.log('PASS: PROJ locks mouse target, routes knob exclusively, restores prior mode and saved value on TRNS, unlocks on exit')
 
 const pendingMouse = load(), pm = pendingMouse.ctx, pd = pendingMouse.d
 const requests = []
@@ -571,3 +572,62 @@ sc.mouseFaderFeedback.receiveHostValue(sd, 0.75) // Actual mouse parameter feedb
 stale.idle()
 assert.strictEqual(sc.lastHostVolume, 0.75, 'Mouse lock must not initialize motor from stale track value')
 console.log('PASS: delayed OFF/BANK exits and independent mouse feedback for initial motor position')
+
+const snapshot = load(), sn = snapshot.ctx, snd = snapshot.d
+const snHost = snapshot.page.mHostAccess.mMouseCursor.mValueUnderMouse
+for (const initial of [0.37, 0, 1]) {
+    snHost.setProcessValue(snd, initial)
+    sn.mouseFaderFeedback.receiveHostValue(snd, initial)
+    snapshot.tap('btnProject')
+    snapshot.tap('btnTransport')
+    assert.strictEqual(snHost.getProcessValue(snd), initial, 'No reset before snapshot')
+    snapshot.idle()
+    snHost.setProcessValue(snd, 0.63)
+    sn.mouseFaderFeedback.receiveHostValue(snd, 0.63)
+    snapshot.idle()
+    snapshot.press('btnShift'); snapshot.tap('btnTransport'); snapshot.press('btnShift', 0)
+    assert.strictEqual(snHost.getProcessValue(snd), 0.63, 'Shift zoom must not restore snapshot')
+    snapshot.tap('btnTransport')
+    assert.strictEqual(snHost.getProcessValue(snd), initial, 'Each PROJ entry captures a fresh value, including zero')
+    snHost.setProcessValue(snd, 0.8)
+    snapshot.tap('btnTransport')
+    assert.strictEqual(snHost.getProcessValue(snd), initial, 'Repeated TRNS restores the same snapshot')
+    snapshot.tap('btnProject')
+    assert.strictEqual(snd.getState('classic.mouseSavedValue'), '')
+}
+console.log('PASS: PROJ snapshots persist across edits, refresh on re-entry, handle zero/one and preserve SHIFT+TRNS')
+
+const bankReset = load(), br = bankReset.ctx, brd = bankReset.d
+const brHost = bankReset.page.mHostAccess.mMouseCursor.mValueUnderMouse
+for (const initial of [0.28, 0, 1]) {
+    brHost.setProcessValue(brd, initial)
+    br.mouseFaderFeedback.receiveHostValue(brd, initial)
+    bankReset.tap('btnBank')
+    bankReset.tap('btnTransport')
+    assert.strictEqual(brHost.getProcessValue(brd), initial, 'BANK reset waits for snapshot')
+    bankReset.idle()
+    br.rawFaderValue.mOnProcessValueChange(brd, 0.63)
+    br.mouseFaderFeedback.receiveHostValue(brd, 0.63)
+    bankReset.idle()
+    bankReset.press('btnShift'); bankReset.tap('btnTransport'); bankReset.press('btnShift', 0)
+    assert.strictEqual(brHost.getProcessValue(brd), 0.63)
+    br.faderTouchValue.mOnProcessValueChange(brd, 1)
+    bankReset.midi.length = 0
+    bankReset.tap('btnTransport')
+    assert.strictEqual(brHost.getProcessValue(brd), initial)
+    brHost.mOnProcessValueChange(brd, {}, initial)
+    assert(bankReset.midi.every(msg => msg[0] !== 0xB0), 'Restore must not fight held fader')
+    br.faderTouchValue.mOnProcessValueChange(brd, 0)
+    const position = Math.round(initial * 1023)
+    assert.deepStrictEqual(bankReset.midi.slice(-2),
+        [[0xB0, 0, position >> 7], [0xB0, 0x20, position & 127]])
+    assert.strictEqual(br.selectedValues.mPan.getProcessValue(brd), 0)
+    assert.strictEqual(br.selectedValues.mVolume.getProcessValue(brd), 0)
+    bankReset.tap('btnTouchMode')
+    assert.strictEqual(brHost.getProcessValue(brd), br.FADER_HOST_UNITY)
+    bankReset.tap('btnTransport')
+    assert.strictEqual(brHost.getProcessValue(brd), initial, 'TOUCH must not replace the snapshot')
+    bankReset.tap('btnBank')
+    assert.strictEqual(brd.getState('classic.mouseSavedValue'), '')
+}
+console.log('PASS: BANK TRNS restores fresh snapshots through fader, protects held motor, isolates track/pan, preserves TOUCH and SHIFT+TRNS')

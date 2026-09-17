@@ -364,6 +364,7 @@ sendKnobMode.mOnActivate = function(activeDevice) {
 }
 function leaveMouseKnobMode(activeDevice) {
     if (activeDevice.getState('classic.mouseFader') === '1') return
+    activeDevice.setState('classic.mouseSavedValue', '')
     activeDevice.setState('classic.mouseMode', '')
     activeDevice.setState('classic.mouseLockAt', '')
     mouseLockValue.setProcessValue(activeDevice, 0)
@@ -371,12 +372,14 @@ function leaveMouseKnobMode(activeDevice) {
 }
 function leaveMouseFaderMode(activeDevice) {
     if (activeDevice.getState('classic.mouseFader') !== '1') return
+    activeDevice.setState('classic.mouseSavedValue', '')
     activeDevice.setState('classic.mouseFader', '')
     activeDevice.setState('classic.mouseLockAt', '')
     mouseLockValue.setProcessValue(activeDevice, 0)
     sendButtonLed(activeDevice, FP.BANK, false)
 }
 mouseFaderMode.mOnActivate = function(activeDevice) {
+    activeDevice.setState('classic.mouseSavedValue', '')
     activeDevice.setState('classic.mouseFader', '1')
     activeDevice.setState('classic.output', '')
     activeDevice.setState('classic.faderOff', '')
@@ -389,6 +392,7 @@ mouseFaderMode.mOnActivate = function(activeDevice) {
     sendButtonLed(activeDevice, FP.BANK, true)
 }
 mouseKnobMode.mOnActivate = function(activeDevice) {
+    activeDevice.setState('classic.mouseSavedValue', '')
     activeDevice.setState('classic.mouseMode', '1')
     activeDevice.setState('classic.sendMode', '')
     // IOStation locks on a later knob press, after the mouse subpage is active.
@@ -407,6 +411,9 @@ deviceDriver.mOnIdle = function(activeDevice) {
             || !getFaderTargetMapping(activeDevice)) return
     // Same sustained value write as IOStation's mouse-mode knob press.
     mouseLockValue.setProcessValue(activeDevice, 1)
+    // Snapshot once per PROJ/BANK entry, after the mouse binding has settled.
+    activeDevice.setState('classic.mouseSavedValue',
+        String(mouseFaderFeedback.getProcessValue(activeDevice)))
     if (activeDevice.getState('classic.mouseFader') === '1') {
         updateFaderHostVolume(activeDevice, mouseFaderFeedback.getProcessValue(activeDevice))
     }
@@ -488,7 +495,7 @@ btnShift.mSurfaceValue.mOnProcessValueChange = function(activeDevice, value) {
 var shortcutStateKeys = ['classic.shift', 'classic.stop', 'classic.rew', 'classic.unityLed',
     'classic.faderOff', 'classic.faderWaitRelease', 'classic.output', 'classic.sendMode',
     'classic.mouseMode', 'classic.mouseReturnSend', 'classic.mouseLockAt',
-    'classic.mouseFader', 'classic.exitMouseOff']
+    'classic.mouseFader', 'classic.exitMouseOff', 'classic.mouseSavedValue']
 var rewindInput = surface.makeCustomValueVariable('Rewind Held')
 
 function resetShortcutState(activeDevice) {
@@ -641,9 +648,18 @@ routeShortcut(btnProject, 'mouseMode', function(activeDevice) {
 })
 routeShortcut(btnTransport, 'resetKnob', function(activeDevice) {
     if (!getFaderTargetMapping(activeDevice)) return
-    // HostValueAtMouseCursor exposes no generic default/reset operation.
-    // A normalized midpoint or channel-unity constant is not a parameter default.
-    if (activeDevice.getState('classic.mouseMode') === '1') return
+    if (activeDevice.getState('classic.mouseMode') === '1'
+            || activeDevice.getState('classic.mouseFader') === '1') {
+        var saved = activeDevice.getState('classic.mouseSavedValue')
+        if (activeDevice.getState('classic.mouseLockAt') !== '' || saved === '') return
+        if (activeDevice.getState('classic.mouseFader') === '1') {
+            if (!isFaderEnabled(activeDevice)) return
+            mainFader.mSurfaceValue.setProcessValue(activeDevice, Number(saved))
+        } else {
+            panKnob.mSurfaceValue.setProcessValue(activeDevice, Number(saved))
+        }
+        return
+    }
     panKnob.mSurfaceValue.setProcessValue(activeDevice,
         activeDevice.getState('classic.sendMode') === '1' ? SEND_HOST_UNITY : 0.5)
 }, makeCommandTrigger('Zoom to Locators', 'Zoom', 'Zoom to Locators'))
@@ -811,6 +827,7 @@ page.makeValueBinding(
 // Shortcuts: PUNCH/USER = previous/next marker; held SHIFT + UNDO = Redo,
 // SHIFT + PUNCH/USER = previous/next cycle marker (wraps 1..9, as in IOStation).
 // SHIFT + TRNS = Zoom to Locators; TRNS alone resets the current pan/send value.
+// In PROJ/BANK mode, TRNS restores the mouse parameter value saved on mode entry.
 // SHIFT + LOOP = Insert Marker, SHIFT + SOLO/MUTE = clear solos/unmute all.
 // Hold STOP, then press REW = Return to Zero. SHIFT alone only lights its LED.
 //
