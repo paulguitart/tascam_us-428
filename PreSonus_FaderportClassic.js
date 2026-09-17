@@ -267,7 +267,7 @@ panKnobRaw.mMidiBinding
 var FP_KNOB_STEP = 1 / 200
 
 panKnobRaw.mOnProcessValueChange = function(activeDevice, value) {
-    // Do not edit an unlocked hover target while BANK is acquiring its lock.
+    // Do not edit an unlocked hover target while PROJ is acquiring its lock.
     if (activeDevice.getState('classic.mouseMode') === '1'
             && activeDevice.getState('classic.mouseLockAt') !== '') return
     var cleanValue = panKnob.mSurfaceValue.getProcessValue(activeDevice)
@@ -360,7 +360,7 @@ function leaveMouseKnobMode(activeDevice) {
     activeDevice.setState('classic.mouseMode', '')
     activeDevice.setState('classic.mouseLockAt', '')
     mouseLockValue.setProcessValue(activeDevice, 0)
-    sendButtonLed(activeDevice, FP.BANK, false)
+    sendButtonLed(activeDevice, FP.PROJECT, false)
 }
 mouseKnobMode.mOnActivate = function(activeDevice) {
     activeDevice.setState('classic.mouseMode', '1')
@@ -370,7 +370,7 @@ mouseKnobMode.mOnActivate = function(activeDevice) {
     mouseLockValue.setProcessValue(activeDevice, 0)
     activeDevice.setState('classic.mouseLockAt', String(Date.now() + 100))
     sendButtonLed(activeDevice, FP.MIX, false)
-    sendButtonLed(activeDevice, FP.BANK, true)
+    sendButtonLed(activeDevice, FP.PROJECT, true)
 }
 deviceDriver.mOnIdle = function(activeDevice) {
     var lockAt = activeDevice.getState('classic.mouseLockAt')
@@ -499,13 +499,30 @@ function routeShortcut(button, name, normalAction, shiftedAction) {
     }
 }
 
+// Same numbered recall/wrap behavior as IOStation's SECTION mode.
+var CYCLE_MARKER_MAX = 9
+var cycleMarkerCommands = []
+for (var cycleNumber = 1; cycleNumber <= CYCLE_MARKER_MAX; ++cycleNumber) {
+    cycleMarkerCommands[cycleNumber] = makeCommandTrigger('Cycle Marker ' + cycleNumber,
+        'Transport', 'Recall Cycle Marker ' + cycleNumber)
+}
+function recallCycleMarker(activeDevice, direction) {
+    var number = (Number(activeDevice.getState('classic.activeCycleMarker')) || 1) + direction
+    if (number < 1) number = CYCLE_MARKER_MAX
+    if (number > CYCLE_MARKER_MAX) number = 1
+    activeDevice.setState('classic.activeCycleMarker', String(number))
+    cycleMarkerCommands[number](activeDevice)
+}
+
 routeShortcut(btnUndo, 'undo',
     makeCommandTrigger('Undo', 'Edit', 'Undo'),
     makeCommandTrigger('Redo', 'Edit', 'Redo'))
 routeShortcut(btnPunch, 'previousMarker',
-    makeCommandTrigger('Previous Marker', 'Transport', 'Locate Previous Marker'))
+    makeCommandTrigger('Previous Marker', 'Transport', 'Locate Previous Marker'),
+    function(activeDevice) { recallCycleMarker(activeDevice, -1) })
 routeShortcut(btnUser, 'nextMarker',
-    makeCommandTrigger('Next Marker', 'Transport', 'Locate Next Marker'))
+    makeCommandTrigger('Next Marker', 'Transport', 'Locate Next Marker'),
+    function(activeDevice) { recallCycleMarker(activeDevice, 1) })
 routeShortcut(btnLoop, 'loop',
     makeHostToggle('Cycle State', transportValues.mCycleActive),
     makeCommandTrigger('Insert Marker',
@@ -549,7 +566,7 @@ routeShortcut(btnMix, 'mix', function(activeDevice) {
     var target = activeDevice.getState('classic.sendMode') === '1' ? panKnobMode : sendKnobMode
     target.mAction.mActivate.trigger(activeMapping)
 })
-routeShortcut(btnBank, 'mouseMode', function(activeDevice) {
+routeShortcut(btnProject, 'mouseMode', function(activeDevice) {
     var activeMapping = getFaderTargetMapping(activeDevice)
     if (!activeMapping) return
     if (activeDevice.getState('classic.mouseMode') === '1') {
@@ -567,7 +584,7 @@ routeShortcut(btnTransport, 'resetKnob', function(activeDevice) {
     if (activeDevice.getState('classic.mouseMode') === '1') return
     panKnob.mSurfaceValue.setProcessValue(activeDevice,
         activeDevice.getState('classic.sendMode') === '1' ? SEND_HOST_UNITY : 0.5)
-})
+}, makeCommandTrigger('Zoom to Locators', 'Zoom', 'Zoom to Locators'))
 
 var stopCommand = makeCommandTrigger('Stop', 'Transport', 'Stop')
 var returnToZero = makeCommandTrigger('Return to Zero', 'Transport', 'Return to Zero')
@@ -720,9 +737,11 @@ page.makeValueBinding(
 //
 // These are ALREADY fully recognized by the surface and ready to map:
 //
-//     btnProject       // A0 0C
+//     btnBank          // A0 14
 //
 // Shortcuts: PUNCH/USER = previous/next marker; held SHIFT + UNDO = Redo,
+// SHIFT + PUNCH/USER = previous/next cycle marker (wraps 1..9, as in IOStation).
+// SHIFT + TRNS = Zoom to Locators; TRNS alone resets the current pan/send value.
 // SHIFT + LOOP = Insert Marker, SHIFT + SOLO/MUTE = clear solos/unmute all.
 // Hold STOP, then press REW = Return to Zero. SHIFT alone only lights its LED.
 //

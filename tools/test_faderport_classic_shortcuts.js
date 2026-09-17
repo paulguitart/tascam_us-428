@@ -130,9 +130,18 @@ for (const shifted of [false, true]) {
     tap('btnPunch'); tap('btnUser')
     if (shifted) press('btnShift', 0)
 }
-assert.deepStrictEqual(commands.splice(0), Array(2).fill([
-    'Transport/Locate Previous Marker', 'Transport/Locate Next Marker'
-]).flat())
+assert.deepStrictEqual(commands.splice(0), [
+    'Transport/Locate Previous Marker', 'Transport/Locate Next Marker',
+    'Transport/Recall Cycle Marker 9', 'Transport/Recall Cycle Marker 1'
+])
+press('btnShift')
+press('btnUser'); press('btnUser') // Duplicate press must recall only once.
+press('btnShift', 0); press('btnUser', 0)
+assert.deepStrictEqual(commands.splice(0), ['Transport/Recall Cycle Marker 2'])
+press('btnShift'); tap('btnPunch'); press('btnShift', 0)
+assert.deepStrictEqual(commands.splice(0), ['Transport/Recall Cycle Marker 1'])
+assert.strictEqual(ctx.transportValues.mCycleActive.getProcessValue(d), 0,
+    'Cycle marker navigation must not enable looping')
 
 for (const [button, host, command] of [
     ['btnLoop', ctx.transportValues.mCycleActive, 'Marker/Insert Marker'],
@@ -360,7 +369,7 @@ const mouse = load(), mc = mouse.ctx, md = mouse.d
 const hovered = mouse.page.mHostAccess.mMouseCursor.mValueUnderMouse
 const locked = mouse.page.mHostAccess.mMouseCursor.mValueLocked
 hovered.setProcessValue(md, 0.42)
-mouse.tap('btnBank')
+mouse.tap('btnProject')
 assert.strictEqual(locked.getProcessValue(md), 0, 'Lock waits until after mode activation')
 mc.panKnobRaw.mOnProcessValueChange(md, 0.01)
 assert.strictEqual(hovered.getProcessValue(md), 0.42, 'Do not edit while lock is pending')
@@ -369,7 +378,7 @@ assert.strictEqual(locked.getProcessValue(md), 0)
 mouse.idle(50)
 assert.strictEqual(locked.getProcessValue(md), 1)
 assert.strictEqual(md.getState('classic.mouseMode'), '1')
-assert.deepStrictEqual(mouse.midi.slice(-1)[0], [0xA0, 0x13, 1])
+assert.deepStrictEqual(mouse.midi.slice(-1)[0], [0xA0, 0x0B, 1])
 mc.panKnobRaw.mOnProcessValueChange(md, 0.01)
 assert.strictEqual(hovered.getProcessValue(md), 0.42 + mc.FP_KNOB_STEP)
 assert.strictEqual(mc.selectedValues.mPan.getProcessValue(md), 0)
@@ -377,24 +386,24 @@ mouse.tap('btnTransport')
 assert.strictEqual(hovered.getProcessValue(md), 0.42 + mc.FP_KNOB_STEP, 'No arbitrary mouse reset')
 mouse.tap('btnOutput'); mouse.tap('btnOff')
 assert.strictEqual(locked.getProcessValue(md), 1)
-mouse.tap('btnBank')
+mouse.tap('btnProject')
 assert.strictEqual(locked.getProcessValue(md), 0)
 assert.strictEqual(md.getState('classic.mouseMode'), '')
 assert.strictEqual(md.getState('classic.sendMode'), '')
-mouse.tap('btnMix'); mouse.tap('btnBank'); mouse.tap('btnBank')
-assert.strictEqual(md.getState('classic.sendMode'), '1', 'BANK restores prior send mode')
-mouse.tap('btnBank'); mouse.tap('btnMix')
+mouse.tap('btnMix'); mouse.tap('btnProject'); mouse.tap('btnProject')
+assert.strictEqual(md.getState('classic.sendMode'), '1', 'PROJ restores prior send mode')
+mouse.tap('btnProject'); mouse.tap('btnMix')
 assert.strictEqual(locked.getProcessValue(md), 0, 'MIX releases mouse lock')
 assert.strictEqual(md.getState('classic.sendMode'), '1')
-mouse.tap('btnBank')
+mouse.tap('btnProject')
 mouse.page.mOnDeactivate(md)
 assert.strictEqual(locked.getProcessValue(md), 0)
 mouse.page.mOnActivate(md, mouse.mapping)
 assert.strictEqual(md.getState('classic.mouseMode'), '')
-mouse.tap('btnBank')
+mouse.tap('btnProject')
 mouse.driver.mOnDeactivate(md)
 assert.strictEqual(locked.getProcessValue(md), 0)
-console.log('PASS: BANK locks mouse target, routes knob exclusively, restores prior mode, preserves value on TRNS, unlocks on exit')
+console.log('PASS: PROJ locks mouse target, routes knob exclusively, restores prior mode, preserves value on TRNS, unlocks on exit')
 
 const pendingMouse = load(), pm = pendingMouse.ctx, pd = pendingMouse.d
 const requests = []
@@ -403,15 +412,29 @@ pm.mouseLockValue.setProcessValue = function(device, next) {
     requests.push(next)
     originalLockWrite.call(this, device, next)
 }
-pendingMouse.tap('btnBank'); pendingMouse.tap('btnBank'); pendingMouse.idle()
-assert(!requests.includes(1), 'Leaving BANK must cancel delayed lock')
+pendingMouse.tap('btnProject'); pendingMouse.tap('btnProject'); pendingMouse.idle()
+assert(!requests.includes(1), 'Leaving PROJ must cancel delayed lock')
 requests.length = 0
-pendingMouse.tap('btnBank'); pendingMouse.tap('btnMix'); pendingMouse.idle()
+pendingMouse.tap('btnProject'); pendingMouse.tap('btnMix'); pendingMouse.idle()
 assert(!requests.includes(1), 'MIX must cancel delayed lock')
 requests.length = 0
-pendingMouse.tap('btnBank'); pendingMouse.idle(); pendingMouse.idle()
+pendingMouse.tap('btnProject'); pendingMouse.idle(); pendingMouse.idle()
 assert.strictEqual(requests.filter(v => v === 1).length, 1, 'Lock once; do not keep retargeting')
-pendingMouse.tap('btnBank'); requests.length = 0
-pendingMouse.tap('btnBank'); pendingMouse.page.mOnDeactivate(pd); pendingMouse.idle()
+pendingMouse.tap('btnProject'); requests.length = 0
+pendingMouse.tap('btnProject'); pendingMouse.page.mOnDeactivate(pd); pendingMouse.idle()
 assert(!requests.includes(1), 'Page deactivation must cancel delayed lock')
-console.log('PASS: deferred mouse lock fires once and cancels on BANK/MIX/page exit')
+console.log('PASS: deferred mouse lock fires once and cancels on PROJ/MIX/page exit')
+
+for (const modeButton of [null, 'btnMix', 'btnProject']) {
+    const zoom = load(), zc = zoom.ctx, zd = zoom.d
+    zc.selectedValues.mPan.setProcessValue(zd, 0.3)
+    zc.firstSend.mLevel.setProcessValue(zd, 0.65)
+    if (modeButton) zoom.tap(modeButton)
+    zoom.press('btnShift')
+    zoom.press('btnTransport'); zoom.press('btnTransport')
+    zoom.press('btnShift', 0); zoom.press('btnTransport', 0)
+    assert.deepStrictEqual(zoom.commands, ['Zoom/Zoom to Locators'])
+    assert.strictEqual(zc.selectedValues.mPan.getProcessValue(zd), 0.3)
+    assert.strictEqual(zc.firstSend.mLevel.getProcessValue(zd), 0.65)
+}
+console.log('PASS: SHIFT+TRNS zooms to locators in every knob mode without resetting pan/send or repeating on release')
