@@ -11,7 +11,7 @@ const scope = {
     updateTouchLED() {}, updateKnobModeLEDs() {}
 };
 vm.createContext(scope);
-vm.runInContext(source.slice(source.indexOf('function resolveKnobModeButton('), source.indexOf('// Blend only red')), scope);
+vm.runInContext(source.slice(source.indexOf('function resolveKnobModeButton('), source.indexOf('var highPassColors')), scope);
 function device() {
     const state = {};
     return { getState: key => state[key] || '', setState: (key, value) => { state[key] = value; } };
@@ -25,10 +25,10 @@ scope.activateKnobMode(a, 'Pan');
 assert.equal(scope.resolveKnobModeButton(a, 'Pan'), 'Click');
 scope.activateKnobMode(a, 'Pan');
 assert.equal(a.getState('previousKnobMode'), 'Click');
-for (const [button, mode] of Object.entries({ Link: 'Link', Scroll: 'Zoom', Zoom: 'Zoom', Master: 'Master', Click: 'Click', Channel: 'HighPass', Section: 'Section', Marker: 'Marker' })) {
+for (const [button, mode] of Object.entries({ Link: 'Mouse', Scroll: 'Zoom', Zoom: 'Zoom', Master: 'Master', Click: 'Click', Channel: 'HighPass', Section: 'Section', Marker: 'Marker' })) {
     scope.activateKnobMode(a, 'Pan');
     scope.activateKnobMode(a, mode);
-    assert.equal(scope.resolveKnobModeButton(a, button), button === 'Channel' ? 'PreGain' : button === 'Link' ? 'Mouse' : 'Pan');
+    assert.equal(scope.resolveKnobModeButton(a, button), button === 'Channel' ? 'PreGain' : 'Pan');
     assert.equal(scope.resolveKnobModeButton(a, 'F2'), 'F2');
     assert.equal(scope.resolveKnobModeButton(b, button), button);
 }
@@ -56,15 +56,15 @@ for (const name of ['Link', 'Pan', 'Channel', 'Scroll', 'Master', 'Click', 'Sect
         press(context, 1);
         context.setState('shiftEnabled', shift === '1' ? '0' : '1');
         press(context, 0);
-        const expected = name === 'Link' && shift === '1' ? 'Mouse' : name === 'Channel' && shift === '1' ? 'PreGain' : name === 'Scroll' && shift === '1' ? 'Zoom' : name;
+        const expected = name === 'Pan' && shift === '1' ? 'Send' : name === 'Channel' && shift === '1' ? 'PreGain' : name === 'Scroll' && shift === '1' ? 'Zoom' : name;
         assert.deepEqual(events, [[expected, 1], [expected, 0]]);
         // Pressing the active mode returns to Pan in either SHIFT state.
-        context.setState('knobMode', name === 'Link' ? (shift === '1' ? 'Mouse' : 'Link') : name === 'Channel' ? (shift === '1' ? 'PreGain' : 'HighPass') : name === 'Scroll' ? 'Zoom' : name);
+        context.setState('knobMode', name === 'Link' ? 'Mouse' : name === 'Pan' ? (shift === '1' ? 'Send' : 'Pan') : name === 'Channel' ? (shift === '1' ? 'PreGain' : 'HighPass') : name === 'Scroll' ? 'Zoom' : name);
         context.setState('previousKnobMode', 'Pan');
         context.setState('shiftEnabled', shift);
         events.length = 0;
         press(context, 1); press(context, 0);
-        const target = name === 'Link' ? (shift === '1' ? 'Link' : 'Mouse') : name === 'Channel' ? (shift === '1' ? 'Channel' : 'PreGain') : 'Pan';
+        const target = name === 'Channel' ? (shift === '1' ? 'Channel' : 'PreGain') : 'Pan';
         assert.deepEqual(events, [[target, 1], [target, 0]]);
         context.setState('knobMode', '');
     }
@@ -75,7 +75,7 @@ console.log('PASS: mode buttons respect the Channel SHIFT alternate, toggle back
 let shiftLed = false;
 scope.onLED = (_, note) => { if (note === scope.cShift) shiftLed = true; };
 scope.offLED = (_, note) => { if (note === scope.cShift) shiftLed = false; };
-for (const alternate of ['PreGain', 'Mouse']) {
+for (const alternate of ['PreGain', 'Send']) {
     for (const normal of ['Master', 'Click', 'Section', 'Marker', 'Pan', 'Zoom']) {
         const context = device();
         scope.activateKnobMode(context, alternate);
@@ -90,3 +90,28 @@ for (const alternate of ['PreGain', 'Mouse']) {
     }
 }
 console.log('PASS: Master/Click/Section/Marker/Pan/Zoom clear SHIFT and history restores both alternate modes and LED');
+
+// Exercise SHIFT itself: switching Pan/Send is immediate, and release is inert.
+scope.uSection={btn_Shift:{mSurfaceValue:{}}};
+scope.pulseVar=(context,button)=>{button.setProcessValue(context,1);button.setProcessValue(context,0);};
+for(const mode of ['Pan','Send'])scope.buttons[mode]={setProcessValue(context,value){if(value)scope.activateKnobMode(context,mode);}};
+const shiftStart=source.indexOf('uSection.btn_Shift.mSurfaceValue.mOnProcessValueChange =');
+vm.runInContext(source.slice(shiftStart,source.indexOf('function resetButtonRouting',shiftStart)),scope);
+const shift=scope.uSection.btn_Shift.mSurfaceValue.mOnProcessValueChange,context=device();
+scope.activateKnobMode(context,'Pan');
+shift(context,1);shift(context,1);assert.equal(context.getState('knobMode'),'Send');assert.equal(shiftLed,true);
+shift(context,0);assert.equal(context.getState('knobMode'),'Send');
+shift(context,1);shift(context,0);assert.equal(context.getState('knobMode'),'Pan');assert.equal(shiftLed,false);
+let toggles=0;scope.toggleModeEffect=()=>{toggles++;};
+const bypassMapping={normalName:'Bypass',shiftedName:'BypassAll',physicalButton:{mSurfaceValue:{}}};
+scope.assignButtonRouting(bypassMapping);
+for(const mode of ['Pan','Send'])for(const layer of ['0','1']){
+ scope.activateKnobMode(context,mode);context.setState('shiftEnabled',layer);events.length=0;
+ const press=bypassMapping.physicalButton.mSurfaceValue.mOnProcessValueChange;
+ press(context,1);press(context,1);press(context,0);
+ assert.deepEqual(events,[['Bypass',1],['Bypass',0]]);
+}
+assert.equal(toggles,4);
+scope.activateKnobMode(context,'Mouse');shift(context,1);shift(context,0);
+assert.equal(context.getState('knobMode'),'Mouse');
+console.log('PASS: immediate Pan/Send SHIFT switching, duplicate suppression, BYPASS in both layers and stable Mouse mode');

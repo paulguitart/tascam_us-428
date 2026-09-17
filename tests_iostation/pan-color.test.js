@@ -20,11 +20,27 @@ assert(scope.getPanColor(.500001)[1] > 63);
 scope.ENABLE_PAN_COLOR=false;assert.deepEqual(Array.from(scope.getPanColor(0)),[127,127,127]);scope.ENABLE_PAN_COLOR=true;
 const state={knobMode:'Pan'}, ctx={getState:k=>state[k]||'',setState:(k,v)=>state[k]=v};
 pan=0;scope.panFeedbackValue.mOnProcessValueChange(ctx);assert.deepEqual(leds.pop(),[0,0,127]);
-state.knobMode='Link';scope.panFeedbackValue.mOnProcessValueChange(ctx);assert.equal(leds.length,0);
+state.knobMode='Send';scope.panFeedbackValue.mOnProcessValueChange(ctx);assert.equal(leds.length,0);
 pan=1;state.knobMode='Pan';scope.updatePanLED(ctx);assert.deepEqual(leds.pop(),[127,0,127]);
 const start=source.indexOf('    mSection.knob_Press.mSurfaceValue.mOnProcessValueChange =');
 vm.runInContext(source.slice(start,source.indexOf('    // Korg zoom pattern:',start)),scope);
 const press=v=>scope.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(ctx,v);
 press(1);press(1);press(0);assert.deepEqual(writes,[.5]);assert.equal(pan,.5);
-state.knobMode='Link';press(1);press(0);assert.deepEqual(writes,[.5,'send']);
-console.log('PASS: pan gradient, color flag, host feedback, inactive LEDs, center push and Link send toggle');
+scope.FADER_HOST_UNITY=.789087;
+scope.knob={setProcessValue:(_,v)=>writes.push(v)};
+state.knobMode='Send';press(1);press(1);press(0);assert.deepEqual(writes,[.5,.789087]);
+console.log('PASS: pan gradient, color flag, host feedback, inactive LEDs, center push and Send level reset');
+// Resetting level preserves either send enable state; the existing BYPASS handler still toggles it.
+let sendEnabled=0,sendLevel=.2;
+scope.isMetronomeBypassMode=()=>false;
+scope.firstSendEnabledFeedbackValue={getProcessValue:()=>sendEnabled,setProcessValue:(_,v)=>{sendEnabled=v;}};
+scope.knob.setProcessValue=(_,v)=>{sendLevel=v;};
+const toggleStart=source.indexOf('function toggleModeEffect(context)');
+vm.runInContext(source.slice(toggleStart,source.indexOf('function updateKnobModeLEDs',toggleStart)),scope);
+for(const initial of [0,1]){
+ sendEnabled=initial;sendLevel=.2;press(1);press(1);press(0);
+ assert.equal(sendEnabled,initial);assert.equal(sendLevel,.789087);
+ scope.toggleModeEffect(ctx);assert.equal(sendEnabled,1-initial);assert.equal(sendLevel,.789087);
+ scope.toggleModeEffect(ctx);assert.equal(sendEnabled,initial);
+}
+console.log('PASS: Send reset preserves send enable state; BYPASS toggles without changing level');
