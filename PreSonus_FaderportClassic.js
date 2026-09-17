@@ -348,6 +348,9 @@ var sendKnobMode = knobTargetArea.makeSubPage('Send 1')
 var mouseKnobMode = knobTargetArea.makeSubPage('Mouse Parameter')
 var mouseLockValue = surface.makeCustomValueVariable('Mouse Parameter Locked')
 page.makeValueBinding(mouseLockValue, page.mHostAccess.mMouseCursor.mValueLocked)
+// Keep mouse feedback separate from the fader's previous track/output value.
+var mouseFaderFeedback = surface.makeCustomValueVariable('Mouse Fader Feedback')
+page.makeValueBinding(mouseFaderFeedback, page.mHostAccess.mMouseCursor.mValueUnderMouse)
 var firstSend = selectedChannel.mSends.getByIndex(0)
 panKnobMode.mOnActivate = function(activeDevice) {
     leaveMouseKnobMode(activeDevice)
@@ -405,7 +408,7 @@ deviceDriver.mOnIdle = function(activeDevice) {
     // Same sustained value write as IOStation's mouse-mode knob press.
     mouseLockValue.setProcessValue(activeDevice, 1)
     if (activeDevice.getState('classic.mouseFader') === '1') {
-        updateFaderHostVolume(activeDevice, mainFader.mSurfaceValue.getProcessValue(activeDevice))
+        updateFaderHostVolume(activeDevice, mouseFaderFeedback.getProcessValue(activeDevice))
     }
 }
 var trackVolumeFeedback = surface.makeCustomValueVariable('Track Volume Feedback')
@@ -426,6 +429,8 @@ function activateFaderTarget(activeDevice, output) {
     enabledFaderTouch.setProcessValue(activeDevice, 0)
     activeDevice.setState('classic.output', output ? '1' : '')
     activeDevice.setState('classic.faderOff', activeDevice.getState('classic.exitMouseOff'))
+    // Cubase may activate the requested subpage after the button callback returns.
+    activeDevice.setState('classic.exitMouseOff', '')
     activeDevice.setState('classic.faderWaitRelease', faderIsTouched ? '1' : '')
     lastHostVolume = (output ? outputVolumeFeedback : trackVolumeFeedback).getProcessValue(activeDevice)
     sendButtonLed(activeDevice, FP.OUTPUT, output)
@@ -577,8 +582,8 @@ routeShortcut(btnOff, 'faderOff', function(activeDevice) {
     var turnOff = activeDevice.getState('classic.faderOff') !== '1'
     if (activeDevice.getState('classic.mouseFader') === '1') {
         activeDevice.setState('classic.exitMouseOff', '1')
+        leaveMouseFaderMode(activeDevice)
         trackFaderMode.mAction.mActivate.trigger(getFaderTargetMapping(activeDevice))
-        activeDevice.setState('classic.exitMouseOff', '')
     }
     activeDevice.setState('classic.faderOff', turnOff ? '1' : '')
     // Re-enabling under a finger must not jump Cubase to the parked position.

@@ -475,6 +475,7 @@ const bh = bank.page.mHostAccess.mMouseCursor.mValueUnderMouse
 const bl = bank.page.mHostAccess.mMouseCursor.mValueLocked
 bc.trackVolumeFeedback.setProcessValue(bd, 0.3)
 bh.setProcessValue(bd, 0.6)
+bc.mouseFaderFeedback.receiveHostValue(bd, 0.6)
 bank.tap('btnBank')
 assert.strictEqual(bd.getState('classic.mouseFader'), '1')
 assert.deepStrictEqual(bank.midi.slice(-1)[0], [0xA0, 0x13, 1])
@@ -534,3 +535,39 @@ bank.tap('btnBank'); bank.page.mOnDeactivate(bd); bank.idle()
 assert.strictEqual(bl.getProcessValue(bd), 0)
 assert.strictEqual(bd.getState('classic.mouseFader'), '')
 console.log('PASS: BANK fader routing, reset, motor protection, exclusive PROJ, exit targets and pending-lock cancellation')
+
+// A subpage action is asynchronous in Cubase; do not rely on immediate activation.
+for (const exitButton of ['btnOff', 'btnBank']) {
+    const delayed = load(), dc = delayed.ctx, dd = delayed.d
+    dc.trackVolumeFeedback.setProcessValue(dd, 0.25)
+    dc.mouseFaderFeedback.receiveHostValue(dd, 0.6)
+    delayed.tap('btnBank'); delayed.idle()
+    const activate = dc.trackFaderMode.mAction.mActivate
+    const originalTrigger = activate.trigger
+    let pendingMapping
+    activate.trigger = mapping => { pendingMapping = mapping }
+    delayed.tap(exitButton)
+    if (exitButton === 'btnOff') {
+        assert.strictEqual(dd.getState('classic.mouseFader'), '', 'OFF releases BANK immediately')
+        assert.strictEqual(delayed.page.mHostAccess.mMouseCursor.mValueLocked.getProcessValue(dd), 0)
+    }
+    delayed.midi.length = 0
+    originalTrigger(pendingMapping)
+    assert.strictEqual(dd.getState('classic.mouseFader'), '')
+    assert.strictEqual(dd.getState('classic.faderOff'), exitButton === 'btnOff' ? '1' : '')
+    assert.strictEqual(dd.getState('classic.exitMouseOff'), '')
+    dc.rawFaderValue.mOnProcessValueChange(dd, 0.8)
+    assert.strictEqual(dc.selectedValues.mVolume.getProcessValue(dd), exitButton === 'btnOff' ? 0.25 : 0.8)
+    if (exitButton === 'btnOff') {
+        dc.selectedValues.mVolume.mOnProcessValueChange(dd, {}, 0.4)
+        dc.faderTouchValue.mOnProcessValueChange(dd, 0)
+        assert(delayed.midi.every(msg => msg[0] !== 0xB0), 'Delayed OFF exit keeps the motor disabled')
+    }
+}
+const stale = load(), sc = stale.ctx, sd = stale.d
+stale.tap('btnBank')
+sc.mainFader.mSurfaceValue.receiveHostValue(sd, 0.15) // Old track value still on surface.
+sc.mouseFaderFeedback.receiveHostValue(sd, 0.75) // Actual mouse parameter feedback.
+stale.idle()
+assert.strictEqual(sc.lastHostVolume, 0.75, 'Mouse lock must not initialize motor from stale track value')
+console.log('PASS: delayed OFF/BANK exits and independent mouse feedback for initial motor position')
