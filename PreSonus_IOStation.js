@@ -1190,7 +1190,7 @@ function updateBypassLED(context) {
     } else if (isMetronomeBypassMode(mode)) {
         enabled = metronomeFeedbackValue && metronomeFeedbackValue.getProcessValue(context) > 0
     } else if (isMouseLinkMode(mode)) {
-        enabled = isMouseLinkControlEnabled(context)
+        enabled = context.getState('mouseBypassed') === '1'
     } else if (mode === 'PreGain') {
         enabled = polarityFeedbackValue && polarityFeedbackValue.getProcessValue(context) > 0
     } else if (mode === 'HighPass') {

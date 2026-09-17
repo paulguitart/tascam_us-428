@@ -82,3 +82,17 @@ assert.equal(state.faderTarget,'Track');assert.equal(locked,0);assert.equal(stat
 s.activateKnobMode(ctx,'MouseFader',{});assert.equal(locked,0);assert.equal(touchOn,false);
 assert(!source.includes('page.makeValueBinding(knob, page.mHostAccess.mMouseCursor.mValueUnderMouse)'));
 console.log('PASS: explicit TOUCH capture, clean/dirty LEDs, reset, bypass retains lock and blocks controls, SHIFT handoff and safe fader routing');
+
+// LINK's BYPASS lamp reports the bypass switch, independently of lock/capture.
+run('function updateBypassLED(', '// BYPASS toggles');
+for (const mode of ['Mouse','MouseFader']) {
+ state.knobMode=mode;
+ for (const lock of [0,1]) for (const bypass of ['', '1']) {
+  locked=lock;state.mouseBypassed=bypass;s.updateBypassLED(ctx);
+  assert.equal(bypassOn,bypass==='1');
+ }
+}
+s.firstSendEnabledFeedbackValue={getProcessValue:()=>1};
+state.knobMode='Pan';s.updateBypassLED(ctx);assert.equal(bypassOn,true);
+s.firstSendEnabledFeedbackValue.getProcessValue=()=>0;s.updateBypassLED(ctx);assert.equal(bypassOn,false);
+console.log('PASS: LINK BYPASS LED on means bypassed in both variants; Pan retains its enable indication');
