@@ -182,8 +182,8 @@ function makeFpButton(switchId, x, y, w, h) {
 // 5. SURFACE LAYOUT + MIDI BINDINGS
 //-----------------------------------------------------------------------------
 
-// Main motor fader
-var mainFader = surface.makeFader(0, 0, 2, 8).setTypeVertical()
+// Hardware layout: tall fader at left; six rows of controls at right.
+var mainFader = surface.makeFader(0, 0, 1.5, 11.5).setTypeVertical()
 
 mainFader.mSurfaceValue.mMidiBinding
     .setInputPort(midiInput)
@@ -226,7 +226,7 @@ faderTouchValue.mOnProcessValueChange = function(activeDevice, value, diff) {
 //
 // Decode that once here, then expose panKnob.mSurfaceValue
 // as a normal Cubase 0..1 control value.
-var panKnob = surface.makeKnob(2.5, 0, 2, 2)
+var panKnob = surface.makeKnob(2.2, 0, 1.2, 1.4)
 var panKnobRaw = surface.makeCustomValueVariable('FaderPort Knob RAW')
 
 panKnobRaw.mMidiBinding
@@ -252,41 +252,41 @@ panKnobRaw.mOnProcessValueChange = function(activeDevice, value) {
     panKnob.mSurfaceValue.setProcessValue(activeDevice, cleanValue)
 }
 
-// Utility / mode row
-var btnUser      = makeFpButton(FP.USER,       5.0, 0.0, 1, 1)
-var btnPunch     = makeFpButton(FP.PUNCH,      6.0, 0.0, 1, 1)
-var btnShift     = makeFpButton(FP.SHIFT,      7.0, 0.0, 1, 1)
-var btnLoop      = makeFpButton(FP.LOOP,       8.0, 0.0, 1, 1)
+// Top row: Pan knob (above), Mute, Solo, Rec
+var btnMute      = makeFpButton(FP.MUTE,       4.0, 0.2, 1.2, 1)
+var btnSolo      = makeFpButton(FP.SOLO,       5.8, 0.2, 1.2, 1)
+var btnTrackRec  = makeFpButton(FP.TRACK_REC,  7.6, 0.2, 1.2, 1)
 
-// View / utility
-var btnMix       = makeFpButton(FP.MIX,        5.0, 1.2, 1, 1)
-var btnProject   = makeFpButton(FP.PROJECT,    6.0, 1.2, 1, 1)
-var btnTransport = makeFpButton(FP.TRANSPORT,  7.0, 1.2, 1, 1)
-var btnUndo      = makeFpButton(FP.UNDO,       8.0, 1.2, 1, 1)
+// Channel Select: Left, Bank, Right, Output
+var btnPrevTrack = makeFpButton(FP.PREV_TRACK, 2.2, 2.3, 1.2, 1)
+var btnBank      = makeFpButton(FP.BANK,       4.0, 2.3, 1.2, 1)
+var btnNextTrack = makeFpButton(FP.NEXT_TRACK, 5.8, 2.3, 1.2, 1)
+var btnOutput    = makeFpButton(FP.OUTPUT,     7.6, 2.3, 1.2, 1)
 
-// Automation
-var btnRead      = makeFpButton(FP.READ,       5.0, 2.4, 1, 1)
-var btnWrite     = makeFpButton(FP.WRITE,      6.0, 2.4, 1, 1)
-var btnTouchMode = makeFpButton(FP.TOUCH_MODE, 7.0, 2.4, 1, 1)
-var btnOff       = makeFpButton(FP.OFF,        8.0, 2.4, 1, 1)
+// Fader Mode: Read, Write, Touch, Off
+var btnRead      = makeFpButton(FP.READ,       2.2, 4.4, 1.2, 1)
+var btnWrite     = makeFpButton(FP.WRITE,      4.0, 4.4, 1.2, 1)
+var btnTouchMode = makeFpButton(FP.TOUCH_MODE, 5.8, 4.4, 1.2, 1)
+var btnOff       = makeFpButton(FP.OFF,        7.6, 4.4, 1.2, 1)
 
-// Track navigation
-var btnPrevTrack = makeFpButton(FP.PREV_TRACK, 5.0, 3.6, 1, 1)
-var btnBank      = makeFpButton(FP.BANK,       6.0, 3.6, 1, 1)
-var btnNextTrack = makeFpButton(FP.NEXT_TRACK, 7.0, 3.6, 1, 1)
-var btnOutput    = makeFpButton(FP.OUTPUT,     8.0, 3.6, 1, 1)
+// Window View: Mix, Proj, Trns, Undo
+var btnMix       = makeFpButton(FP.MIX,        2.2, 6.5, 1.2, 1)
+var btnProject   = makeFpButton(FP.PROJECT,    4.0, 6.5, 1.2, 1)
+var btnTransport = makeFpButton(FP.TRANSPORT,  5.8, 6.5, 1.2, 1)
+var btnUndo      = makeFpButton(FP.UNDO,       7.6, 6.5, 1.2, 1)
 
-// Selected-track buttons
-var btnMute      = makeFpButton(FP.MUTE,       5.0, 4.8, 1, 1)
-var btnSolo      = makeFpButton(FP.SOLO,       6.0, 4.8, 1, 1)
-var btnTrackRec  = makeFpButton(FP.TRACK_REC,  7.0, 4.8, 1, 1)
+// Transport modifiers: Shift, Punch, User, Loop
+var btnShift     = makeFpButton(FP.SHIFT,      2.2, 8.6, 1.2, 1)
+var btnPunch     = makeFpButton(FP.PUNCH,      4.0, 8.6, 1.2, 1)
+var btnUser      = makeFpButton(FP.USER,       5.8, 8.6, 1.2, 1)
+var btnLoop      = makeFpButton(FP.LOOP,       7.6, 8.6, 1.2, 1)
 
-// Transport
-var btnRew       = makeFpButton(FP.REW,        4.0, 6.4, 1, 1)
-var btnFfwd      = makeFpButton(FP.FFWD,       5.2, 6.4, 1, 1)
-var btnStop      = makeFpButton(FP.STOP,       6.4, 6.4, 1, 1)
-var btnPlay      = makeFpButton(FP.PLAY,       7.6, 6.4, 1, 1)
-var btnRecord    = makeFpButton(FP.RECORD,     8.8, 6.4, 1, 1)
+// Bottom row: five transport buttons spanning the same width as the rows above.
+var btnRew       = makeFpButton(FP.REW,        2.20, 10.5, 1.2, 1)
+var btnFfwd      = makeFpButton(FP.FFWD,       3.55, 10.5, 1.2, 1)
+var btnStop      = makeFpButton(FP.STOP,       4.90, 10.5, 1.2, 1)
+var btnPlay      = makeFpButton(FP.PLAY,       6.25, 10.5, 1.2, 1)
+var btnRecord    = makeFpButton(FP.RECORD,     7.60, 10.5, 1.2, 1)
 
 //-----------------------------------------------------------------------------
 // 6. HOST MAPPING
