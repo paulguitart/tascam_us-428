@@ -879,15 +879,20 @@ page.makeValueBinding(
 
 // ----- Track selection ------------------------------------------------------
 
-page.makeActionBinding(
-    btnPrevTrack.mSurfaceValue,
-    trackSelection.mAction.mPrevTrack
-).filterByValue(1)
-
-page.makeActionBinding(
-    btnNextTrack.mSurfaceValue,
-    trackSelection.mAction.mNextTrack
-).filterByValue(1)
+function makeTrackNavigationTrigger(name, action) {
+    var input = surface.makeCustomValueVariable(name)
+    page.makeActionBinding(input, action).filterByValue(1)
+    return function(activeDevice) {
+        input.setProcessValue(activeDevice, 1)
+        input.setProcessValue(activeDevice, 0)
+    }
+}
+routeShortcut(btnPrevTrack, 'previousTrack',
+    makeTrackNavigationTrigger('Previous Track Pressed', trackSelection.mAction.mPrevTrack),
+    makeCommandTrigger('Zoom Out', 'Zoom', 'Zoom Out'))
+routeShortcut(btnNextTrack, 'nextTrack',
+    makeTrackNavigationTrigger('Next Track Pressed', trackSelection.mAction.mNextTrack),
+    makeCommandTrigger('Zoom In', 'Zoom', 'Zoom In'))
 
 // ----- Selected-track channel states ----------------------------------------
 
@@ -915,6 +920,7 @@ page.makeValueBinding(
 //
 // Shortcuts: PUNCH/USER = previous/next marker; held SHIFT + UNDO = Redo,
 // SHIFT + PUNCH/USER = previous/next cycle marker (wraps 1..9, as in IOStation).
+// SHIFT + channel LEFT/RIGHT = Zoom Out/In; unshifted buttons select tracks.
 // SHIFT + TRNS = Zoom to Locators; TRNS alone resets the current pan/send value.
 // In PROJ/BANK mode, TRNS restores the mouse parameter value saved on mode entry.
 // SHIFT + LOOP = Insert Marker, SHIFT + SOLO/MUTE = clear solos/unmute all.

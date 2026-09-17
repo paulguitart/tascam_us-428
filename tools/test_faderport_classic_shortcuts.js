@@ -7,7 +7,7 @@ const vm = require('vm')
 
 function load(hasTouch = true) {
     let now = 1000
-    const commands = [], midi = [], bindings = []
+    const commands = [], midi = [], bindings = [], actions = []
     const activeModes = new WeakMap()
     const chain = new Proxy({}, { get: () => () => chain })
     function value() {
@@ -25,6 +25,7 @@ function load(hasTouch = true) {
                     // Do not assume that a custom-value pulse synchronously
                     // executes a Cubase action. OUTPUT must use direct activation.
                     if (binding.command && next === 1) commands.push(binding.command)
+                    if (binding.action && next === 1) actions.push(binding.action)
                     if (binding.host) {
                         if (!binding.toggle) binding.host.setProcessValue(device, next)
                         else if (next > 0 && previous <= 0) {
@@ -56,7 +57,7 @@ function load(hasTouch = true) {
                     assert.strictEqual(index, 0)
                     return { mLevel: value(), mOn: value() }
                 } }
-            }, mAction: {} }
+            }, mAction: { mPrevTrack: 'previousTrack', mNextTrack: 'nextTrack' } }
         },
         makeValueBinding(input, host) {
             const binding = { input, host }
@@ -109,7 +110,7 @@ function load(hasTouch = true) {
     const press = (name, v = 1, target = d) => ctx[name].mSurfaceValue.mOnProcessValueChange(target, v)
     const tap = name => { press(name); press(name, 0) }
     const idle = (ms = 100) => { now += ms; driver.mOnIdle(d) }
-    return { ctx, d, device, press, tap, commands, midi, driver, bindings, page, mapping, idle }
+    return { ctx, d, device, press, tap, commands, midi, driver, bindings, page, mapping, idle, actions }
 }
 
 const t = load()
@@ -700,3 +701,20 @@ assert.strictEqual(hd.getState('classic.mouseSavedValue') !== '', true, 'Mouse l
 holdSave.idle(1400)
 assert.deepStrictEqual(holdSave.commands.splice(0), ['Transport/Stop', 'File/Save'])
 console.log('PASS: STOP immediate action, hold timing, progress/blinks, latest host LED restoration, once per hold, RTZ cancellation, lifecycle and mouse-lock coexistence')
+
+for (const mode of [null, 'btnMix', 'btnProject', 'btnBank', 'btnOutput', 'btnOff']) {
+    const nav = load()
+    if (mode) { nav.tap(mode); nav.idle() }
+    nav.tap('btnPrevTrack'); nav.tap('btnNextTrack')
+    assert.deepStrictEqual(nav.actions.splice(0), ['previousTrack', 'nextTrack'])
+    for (const button of ['btnPrevTrack', 'btnNextTrack']) {
+        nav.press('btnShift'); nav.press(button); nav.press(button)
+        nav.press('btnShift', 0); nav.press(button, 0)
+    }
+    assert.deepStrictEqual(nav.commands, ['Zoom/Zoom Out', 'Zoom/Zoom In'])
+    assert.deepStrictEqual(nav.actions, [], 'Shift zoom must never select a track')
+    nav.press('btnPrevTrack'); nav.press('btnShift'); nav.press('btnPrevTrack', 0); nav.press('btnShift', 0)
+    assert.deepStrictEqual(nav.actions, ['previousTrack'])
+    assert.strictEqual(nav.commands.length, 2, 'Changing SHIFT during release must not zoom')
+}
+console.log('PASS: SHIFT+channel arrows zoom exclusively in every mode; normal track navigation and release order preserved')
