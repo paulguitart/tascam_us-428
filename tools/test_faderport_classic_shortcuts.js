@@ -260,8 +260,7 @@ assert.strictEqual(c.enabledFaderTouch.getProcessValue(od), 0)
 assert(off.midi.some(msg => msg.join() === '160,16,1'), 'OFF LED must light')
 off.midi.length = 0
 c.rawFaderValue.mOnProcessValueChange(od, 0.2)
-off.tap('btnTouchMode')
-assert.strictEqual(c.selectedValues.mVolume.getProcessValue(od), 0.6, 'OFF blocks movement and unity reset')
+assert.strictEqual(c.selectedValues.mVolume.getProcessValue(od), 0.6, 'OFF blocks movement')
 c.selectedValues.mVolume.mOnProcessValueChange(od, {}, 0.8)
 c.faderTouchValue.mOnProcessValueChange(od, 0)
 assert(off.midi.every(msg => msg[0] !== 0xB0), 'OFF blocks motor including release')
@@ -283,7 +282,39 @@ off.tap('btnOff')
 off.driver.mOnDeactivate(od)
 off.driver.mOnActivate(od)
 assert.strictEqual(c.isFaderEnabled(od), true)
-console.log('PASS: OFF gates input, touch automation, reset and motor; safe re-enable and lifecycle reset')
+console.log('PASS: OFF gates input, touch automation and motor; safe re-enable and lifecycle reset')
+
+for (const useOutput of [false, true]) {
+    for (const held of [false, true]) {
+        const reset = load(), rc = reset.ctx, rd = reset.d
+        if (useOutput) reset.tap('btnOutput')
+        const target = useOutput ? rc.stereoOut.mValue.mVolume : rc.selectedValues.mVolume
+        target.setProcessValue(rd, 0.3)
+        reset.tap('btnOff')
+        if (held) rc.faderTouchValue.mOnProcessValueChange(rd, 1)
+        reset.midi.length = 0
+        reset.tap('btnTouchMode')
+        assert.strictEqual(rd.getState('classic.faderOff'), '')
+        assert.strictEqual(rd.getState('classic.output'), useOutput ? '1' : '')
+        assert.strictEqual(target.getProcessValue(rd), rc.FADER_HOST_UNITY)
+        assert(reset.midi.some(msg => msg.join() === '160,16,0'), 'TOUCH clears OFF LED')
+        target.mOnProcessValueChange(rd, {}, rc.FADER_HOST_UNITY)
+        if (held) {
+            rc.rawFaderValue.mOnProcessValueChange(rd, 0.1)
+            assert.strictEqual(target.getProcessValue(rd), rc.FADER_HOST_UNITY)
+            assert.strictEqual(rc.enabledFaderTouch.getProcessValue(rd), 0)
+            assert(reset.midi.every(msg => msg[0] !== 0xB0), 'Reset must not fight a held fader')
+            rc.faderTouchValue.mOnProcessValueChange(rd, 0)
+        }
+        assert.strictEqual(rc.isFaderEnabled(rd), true)
+        const unityPosition = Math.round(rc.FADER_HOST_UNITY * 1023)
+        assert.deepStrictEqual(reset.midi.filter(msg => msg[0] === 0xB0).slice(-2),
+            [[0xB0, 0, unityPosition >> 7], [0xB0, 0x20, unityPosition & 127]])
+        rc.rawFaderValue.mOnProcessValueChange(rd, 0.4)
+        assert.strictEqual(target.getProcessValue(rd), 0.4)
+    }
+}
+console.log('PASS: TOUCH overrides OFF and resets track/output to unity, with safe held-fader release and resumed input')
 
 const output = load(), oc = output.ctx, outDevice = output.d
 oc.trackVolumeFeedback.setProcessValue(outDevice, 0.4)

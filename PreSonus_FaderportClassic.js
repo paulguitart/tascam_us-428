@@ -534,7 +534,13 @@ routeShortcut(btnMute, 'mute',
     makeHostToggle('Selected Mute State', selectedValues.mMute),
     makeCommandTrigger('Unmute All', 'Edit', 'Unmute All'))
 routeShortcut(btnTouchMode, 'resetVolume', function(activeDevice) {
-    if (!isFaderEnabled(activeDevice)) return
+    if (activeDevice.getState('classic.faderOff') === '1') {
+        activeDevice.setState('classic.faderOff', '')
+        // Reset the host now, but keep a held fader gated until release.
+        activeDevice.setState('classic.faderWaitRelease', faderIsTouched ? '1' : '')
+        enabledFaderTouch.setProcessValue(activeDevice, 0)
+        sendButtonLed(activeDevice, FP.OFF, false)
+    } else if (!isFaderEnabled(activeDevice)) return
     mainFader.mSurfaceValue.setProcessValue(activeDevice, FADER_HOST_UNITY)
 })
 routeShortcut(btnOff, 'faderOff', function(activeDevice) {
