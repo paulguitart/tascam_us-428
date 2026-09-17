@@ -31,6 +31,7 @@ FADER / SELECTED TRACK:
 ----------------------------------------------------------------------------------------------------
 FADER                  : Selected Track Volume; OUTPUT = Stereo Out; BANK = locked mouse parameter
 OUTPUT                 : Switch Track / Stereo Out; exits BANK and enables the fader
+                       : Selects knob Zoom mode; TRNS = Zoom to Locators (also while OFF)
 					   : OUTPUT after OFF resumes Stereo Out if it was already selected
 OFF                    : Disable / Enable fader input, touch automation and motor
 					   : Exits BANK to track volume, still disabled; keeps OUTPUT selected
@@ -43,11 +44,15 @@ MUTE / SOLO / REC      : Toggle selected-track Mute / Solo / Record Enable (top-
 KNOB / MOUSE PARAMETER MODES:
 ----------------------------------------------------------------------------------------------------
 PAN KNOB               : Selected Track Pan; MIX = Send 1 Level; PROJ = locked mouse parameter
+                       : [OUTPUT Zoom] Turn left/right for Zoom Out/In, without a travel limit
 MIX                    : Toggle Pan / Send 1; exits PROJ; leaves the fader target alone
 PROJ                   : Lock mouse parameter to knob; press again to restore prior Pan / Send mode
 BANK                   : Lock mouse parameter to fader; press again for normal track volume
 					   : BANK and PROJ are mutually exclusive; either mode saves its entry value
 TRNS                   : [Pan] Center | [MIX] Send 1 Unity | [PROJ / BANK] Restore saved entry value
+                       : [OUTPUT Zoom] Zoom to Locators
+OUTPUT ZOOM            : MIX / PROJ can select another knob mode while the fader stays on output
+                       : Leaving OUTPUT while zooming restores the previous Pan / Send mode
 
 ----------------------------------------------------------------------------------------------------
 SHIFT COMMANDS (Hold SHIFT, then press the other button):
@@ -342,6 +347,11 @@ panKnobRaw.mMidiBinding
 var FP_KNOB_STEP = 1 / 200
 
 panKnobRaw.mOnProcessValueChange = function(activeDevice, value) {
+	if (activeDevice.getState('classic.zoomMode') === '1') {
+		if (value < 0.25) zoomInCommand(activeDevice)
+		else if (value > 0.75) zoomOutCommand(activeDevice)
+		return
+	}
 	// Do not edit an unlocked hover target while PROJ is acquiring its lock.
 	if (activeDevice.getState('classic.mouseMode') === '1'
 			&& activeDevice.getState('classic.mouseLockAt') !== '') return
@@ -419,6 +429,7 @@ var knobTargetArea = page.makeSubPageArea('Knob Target')
 var panKnobMode = knobTargetArea.makeSubPage('Pan')
 var sendKnobMode = knobTargetArea.makeSubPage('Send 1')
 var mouseKnobMode = knobTargetArea.makeSubPage('Mouse Parameter')
+var zoomKnobMode = knobTargetArea.makeSubPage('Output Zoom')
 var mouseLockValue = surface.makeCustomValueVariable('Mouse Parameter Locked')
 page.makeValueBinding(mouseLockValue, page.mHostAccess.mMouseCursor.mValueLocked)
 // Keep mouse feedback separate from the fader's previous track/output value.
@@ -426,11 +437,13 @@ var mouseFaderFeedback = surface.makeCustomValueVariable('Mouse Fader Feedback')
 page.makeValueBinding(mouseFaderFeedback, page.mHostAccess.mMouseCursor.mValueUnderMouse)
 var firstSend = selectedChannel.mSends.getByIndex(0)
 panKnobMode.mOnActivate = function(activeDevice) {
+	activeDevice.setState('classic.zoomMode', '')
 	leaveMouseKnobMode(activeDevice)
 	activeDevice.setState('classic.sendMode', '')
 	sendButtonLed(activeDevice, FP.MIX, false)
 }
 sendKnobMode.mOnActivate = function(activeDevice) {
+	activeDevice.setState('classic.zoomMode', '')
 	leaveMouseKnobMode(activeDevice)
 	activeDevice.setState('classic.sendMode', '1')
 	sendButtonLed(activeDevice, FP.MIX, true)
@@ -452,6 +465,7 @@ function leaveMouseFaderMode(activeDevice) {
 	sendButtonLed(activeDevice, FP.BANK, false)
 }
 mouseFaderMode.mOnActivate = function(activeDevice) {
+	restoreOutputKnob(activeDevice)
 	activeDevice.setState('classic.mouseSavedValue', '')
 	activeDevice.setState('classic.mouseFader', '1')
 	activeDevice.setState('classic.output', '')
@@ -465,6 +479,7 @@ mouseFaderMode.mOnActivate = function(activeDevice) {
 	sendButtonLed(activeDevice, FP.BANK, true)
 }
 mouseKnobMode.mOnActivate = function(activeDevice) {
+	activeDevice.setState('classic.zoomMode', '')
 	activeDevice.setState('classic.mouseSavedValue', '')
 	activeDevice.setState('classic.mouseMode', '1')
 	activeDevice.setState('classic.sendMode', '')
@@ -474,6 +489,19 @@ mouseKnobMode.mOnActivate = function(activeDevice) {
 	sendButtonLed(activeDevice, FP.MIX, false)
 	sendButtonLed(activeDevice, FP.PROJECT, true)
 }
+zoomKnobMode.mOnActivate = function(activeDevice) {
+	leaveMouseKnobMode(activeDevice)
+	activeDevice.setState('classic.zoomMode', '1')
+	activeDevice.setState('classic.sendMode', '')
+	sendButtonLed(activeDevice, FP.MIX, false)
+}
+
+function restoreOutputKnob(activeDevice) {
+	if (activeDevice.getState('classic.zoomMode') !== '1') return
+	var target = activeDevice.getState('classic.zoomReturnSend') === '1' ? sendKnobMode : panKnobMode
+	target.mAction.mActivate.trigger(getFaderTargetMapping(activeDevice))
+}
+
 deviceDriver.mOnIdle = function(activeDevice) {
 	updateStopHoldSave(activeDevice, Date.now())
 	var lockAt = activeDevice.getState('classic.mouseLockAt')
@@ -505,6 +533,15 @@ function getFaderTargetMapping(activeDevice) {
 
 function activateFaderTarget(activeDevice, output) {
 	leaveMouseFaderMode(activeDevice)
+	if (output) {
+		if (activeDevice.getState('classic.zoomMode') !== '1') {
+			activeDevice.setState('classic.zoomReturnSend', activeDevice.getState(
+				activeDevice.getState('classic.mouseMode') === '1' ? 'classic.mouseReturnSend' : 'classic.sendMode'))
+		}
+		zoomKnobMode.mAction.mActivate.trigger(getFaderTargetMapping(activeDevice))
+	} else {
+		restoreOutputKnob(activeDevice)
+	}
 	enabledFaderTouch.setProcessValue(activeDevice, 0)
 	activeDevice.setState('classic.output', output ? '1' : '')
 	activeDevice.setState('classic.faderOff', activeDevice.getState('classic.exitMouseOff'))
@@ -580,7 +617,8 @@ var shortcutStateKeys = ['classic.shift', 'classic.stop', 'classic.rew', 'classi
 	'classic.faderOff', 'classic.faderWaitRelease', 'classic.output', 'classic.sendMode',
 	'classic.mouseMode', 'classic.mouseReturnSend', 'classic.mouseLockAt',
 	'classic.mouseFader', 'classic.exitMouseOff', 'classic.mouseSavedValue',
-	'classic.stopHoldStart', 'classic.stopProgress', 'classic.saveBlinkCount', 'classic.saveBlinkAt']
+    'classic.stopHoldStart', 'classic.stopProgress', 'classic.saveBlinkCount', 'classic.saveBlinkAt',
+    'classic.zoomMode', 'classic.zoomReturnSend']
 var rewindInput = surface.makeCustomValueVariable('Rewind Held')
 
 function resetShortcutState(activeDevice) {
@@ -640,6 +678,10 @@ function recallCycleMarker(activeDevice, direction) {
 	activeDevice.setState('classic.activeCycleMarker', String(number))
 	cycleMarkerCommands[number](activeDevice)
 }
+
+var zoomInCommand = makeCommandTrigger('Zoom In', 'Zoom', 'Zoom In')
+var zoomOutCommand = makeCommandTrigger('Zoom Out', 'Zoom', 'Zoom Out')
+var zoomLocatorsCommand = makeCommandTrigger('Zoom to Locators', 'Zoom', 'Zoom to Locators')
 
 routeShortcut(btnUndo, 'undo',
 	makeCommandTrigger('Undo', 'Edit', 'Undo'),
@@ -733,6 +775,10 @@ routeShortcut(btnProject, 'mouseMode', function(activeDevice) {
 })
 routeShortcut(btnTransport, 'resetKnob', function(activeDevice) {
 	if (!getFaderTargetMapping(activeDevice)) return
+	if (activeDevice.getState('classic.zoomMode') === '1') {
+		zoomLocatorsCommand(activeDevice)
+		return
+	}
 	if (activeDevice.getState('classic.mouseMode') === '1'
 			|| activeDevice.getState('classic.mouseFader') === '1') {
 		var saved = activeDevice.getState('classic.mouseSavedValue')
@@ -751,7 +797,7 @@ routeShortcut(btnTransport, 'resetKnob', function(activeDevice) {
 	}
 	panKnob.mSurfaceValue.setProcessValue(activeDevice,
 		activeDevice.getState('classic.sendMode') === '1' ? SEND_HOST_UNITY : 0.5)
-}, makeCommandTrigger('Zoom to Locators', 'Zoom', 'Zoom to Locators'))
+}, zoomLocatorsCommand)
 
 //-----------------------------------------------------------------------------
 // 5. TRANSPORT - STOP chords, hold-to-save and confirmation LEDs
@@ -967,10 +1013,10 @@ function makeTrackNavigationTrigger(name, action) {
 }
 routeShortcut(btnPrevTrack, 'previousTrack',
 	makeTrackNavigationTrigger('Previous Track Pressed', trackSelection.mAction.mPrevTrack),
-	makeCommandTrigger('Zoom Out', 'Zoom', 'Zoom Out'))
+	zoomOutCommand)
 routeShortcut(btnNextTrack, 'nextTrack',
 	makeTrackNavigationTrigger('Next Track Pressed', trackSelection.mAction.mNextTrack),
-	makeCommandTrigger('Zoom In', 'Zoom', 'Zoom In'))
+	zoomInCommand)
 
 // selected-track record enable and automation
 
