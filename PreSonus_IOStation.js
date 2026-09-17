@@ -44,6 +44,7 @@ const GREEN = [0, 127, 0]
 const BLUE =  [0, 0, 127]
 const AMBER =  [127, 48, 0]
 const MAGENTA = [127, 0, 127]
+const CYAN = [0, 127, 127]
 
 // button color values
 const ENABLE_PAN_COLOR = true             // white center, blue left, magenta right
@@ -86,9 +87,11 @@ SOLO / MUTE / ARM (Normal): Toggle selected-track Solo / Mute / Record Enable
                            : LEDs follow the selected-track state
 PREV / NEXT              : Select Previous / Next Track
 SHIFT + PREV / NEXT      : Undo / Redo
-LINK (Normal)            : Mouse parameter on knob; push restores captured starting value
+LINK (Normal)            : Mouse parameter on knob; fader dormant; push restores captured starting value
+                         : LINK LED white = unlocked, amber = locked
+                         : Press LINK inside mode: clear lock if locked; otherwise toggle knob/fader
 SHIFT + LINK            : Mouse parameter on fader; knob rotation disabled; push restores starting value
-                         : TOUCH captures/locks (green = clean, magenta = dirty); BYPASS disables controls
+                         : TOUCH captures/locks (green = saved value, magenta = above, cyan = below); BYPASS disables controls
 PAN (Normal)             : Select Pan knob mode; knob push centers pan
 SCROLL / SHIFT + SCROLL  : Select Zoom knob mode
 MASTER (Normal)          : Select Master mode; encoder controls FX Return 1, fader controls Stereo Out
@@ -354,6 +357,11 @@ function assignButtonRouting(mapping) {
         var activeName = context.getState(stateKey)
         if (value > 0) {
             if (activeName) { return } // Ignore repeated press messages.
+            if (normalName === 'Link' && isMouseLinkMode(context.getState('knobMode'))) {
+                context.setState(stateKey, 'LinkHandled')
+                handleMouseLinkButton(context)
+                return
+            }
             activeName = context.getState('shiftEnabled') === '1' ? shiftedName : normalName
             if (normalName === 'Bypass' && (context.getState('knobMode') === 'PreGain' || isMouseLinkMode(context.getState('knobMode')) || context.getState('knobMode') === 'Pan' || context.getState('knobMode') === 'Send')) activeName = 'Bypass'
             if (normalName === 'Touch' && isMouseLinkMode(context.getState('knobMode'))) activeName = 'Touch'
@@ -380,7 +388,7 @@ function assignButtonRouting(mapping) {
             buttons[activeName].setProcessValue(context, 1)
         } else if (activeName) {
             // Release the path that received the press, even if SHIFT changed meanwhile.
-            buttons[activeName].setProcessValue(context, 0)
+            if (activeName !== 'LinkHandled') buttons[activeName].setProcessValue(context, 0)
             context.setState(stateKey, '')
         }
     }
@@ -472,6 +480,11 @@ function snapFaderBottom(value) {
 // Raw physical position 0..1. All motor commands, including mapped feedback,
 // pass here. Cache the complete 14-bit position, not its individual MIDI bytes.
 function setMotorFader(context, position) {
+    if (context.getState('faderTarget') === 'Dormant'
+        || (context.getState('faderTarget') === 'Mouse' && !isMouseLinkControlEnabled(context))) {
+        context.setState('pendingMotorPosition', '')
+        return
+    }
     if (typeof position !== 'number' || !isFinite(position)) return
     position = clampFader(position)
     if (ENABLE_FADER_TOUCH_PROTECTION && faderTouch.getProcessValue(context) > 0) {
@@ -486,8 +499,14 @@ function setMotorFader(context, position) {
 }
 
 var_faderInput.mOnProcessValueChange = function(context, value) {
+    if (context.getState('faderTarget') === 'Dormant'
+        || (context.getState('faderTarget') === 'Mouse' && !isMouseLinkControlEnabled(context))) {
+        // A manual move while dormant must not suppress the next linked motor target.
+        context.setState('lastMotorPosition', '')
+        context.setState('pendingMotorPosition', '')
+        return
+    }
     if (context.getState('mouseFaderWaitRelease') === '1') return
-    if (context.getState('faderTarget') === 'Mouse' && !isMouseLinkControlEnabled(context)) return
     if (ENABLE_FADER_TOUCH_INPUT && faderTouch.getProcessValue(context) <= 0) return
     // Manual motion invalidates the last motor target and any older deferred move.
     context.setState('lastMotorPosition', '')
@@ -503,6 +522,7 @@ var_faderInput.mOnProcessValueChange = function(context, value) {
 }
 
 fader.mSurfaceValue.mOnProcessValueChange = function(context, value) {
+    if (context.getState('faderTarget') === 'Dormant') return
     if (context.getState('processingFaderInput') === '1') return
     if (context.getState('faderTarget') === 'Mouse') {
         if (isMouseLinkControlEnabled(context)) setMotorFader(context, clampFader(value))
@@ -517,7 +537,7 @@ faderTouch.mOnProcessValueChange = function(context, value) {
         context.setState('mouseFaderWaitRelease', '1')
     }
     mappedFaderTouch.setProcessValue(context,
-        context.getState('mouseFaderWaitRelease') === '1'
+        context.getState('faderTarget') === 'Dormant' || context.getState('mouseFaderWaitRelease') === '1'
         || (context.getState('faderTarget') === 'Mouse' && !isMouseLinkControlEnabled(context)) ? 0 : value)
     if (value > 0) return
     context.setState('mouseFaderWaitRelease', '')
@@ -865,8 +885,9 @@ function updateTouchLED(context) {
         var locked = saved !== '' && context.getState('mouseCaptureAt') === ''
             && mouseLockFeedbackValue.getProcessValue(context) > 0
         if (locked) {
-            var dirty = Math.abs(mouseParameterFeedbackValue.getProcessValue(context) - Number(saved)) > 1 / 16383
-            setRGBLED_color(context, cTouch, dirty ? MAGENTA : GREEN)
+            var difference = mouseParameterFeedbackValue.getProcessValue(context) - Number(saved)
+            var tolerance = 1 / 16383
+            setRGBLED_color(context, cTouch, difference > tolerance ? MAGENTA : difference < -tolerance ? CYAN : GREEN)
         }
         setTransportLed(context, cTouch, locked)
         return
@@ -986,8 +1007,7 @@ function updateMetronomeModeLEDs(context, now) {
     var modes = ['Mouse', 'Pan', 'HighPass', 'Zoom']
     for (var i = 0; i < notes.length; i++) {
         if (isMouseLinkMode(mode) && notes[i] === cLink) {
-            setRGBLED_color(context, cLink, mode === 'MouseFader' ? MAGENTA : BLUE)
-            onLED(context, cLink)
+            updateMouseLinkLED(context)
         } else if (mode === 'Send' && notes[i] === cPan) {
             setRGBLED_color(context, cPan, BLUE)
             onLED(context, cPan)
@@ -1121,6 +1141,7 @@ deviceDriver.mOnIdle = function(context) {
 var knob = mSection.knob_vis.mSurfaceValue
 var faderModeArea = page.makeSubPageArea('Fader Target')
 var faderModes = {
+    Dormant: faderModeArea.makeSubPage('Dormant'), // No host binding or motor movement.
     Track: faderModeArea.makeSubPage('Selected Track'),
     StereoOut: faderModeArea.makeSubPage('Stereo Out'),
     Metronome: faderModeArea.makeSubPage('Metronome Level'),
@@ -1264,15 +1285,16 @@ function activateKnobMode(context, mode, activeMapping) {
     if (isMouseLinkMode(current) && !isMouseLinkMode(mode)) leaveMouseLink(context)
     if (enteringLink) leaveMouseLink(context)
     // Mouse control ends on mode exit, even for modes that normally retain the fader.
-    if (current === 'MouseFader' || (mode !== 'Zoom' && mode !== 'Section' && mode !== 'Marker')) {
-        var target = mode === 'MouseFader' ? faderModes.Mouse : mode === 'Pan' || mode === 'Send' || isMouseLinkMode(mode) || mode === 'HighPass' || mode === 'PreGain'
+    if (isMouseLinkMode(current) || (mode !== 'Zoom' && mode !== 'Section' && mode !== 'Marker')) {
+        var target = mode === 'MouseFader' ? faderModes.Mouse : mode === 'Mouse' ? faderModes.Dormant
+            : mode === 'Pan' || mode === 'Send' || mode === 'HighPass' || mode === 'PreGain'
             ? faderModes.Track
             : mode === 'Click' && ENABLE_METRONOME_FADER ? faderModes.Metronome
             : mode === 'Zoom' || mode === 'Section' || mode === 'Marker' ? faderModes.Track : faderModes.StereoOut
-        context.setState('faderTarget', target === faderModes.Mouse ? 'Mouse' : target === faderModes.Track ? 'Track'
+        context.setState('faderTarget', target === faderModes.Dormant ? 'Dormant' : target === faderModes.Mouse ? 'Mouse' : target === faderModes.Track ? 'Track'
             : target === faderModes.Metronome ? 'Metronome' : 'StereoOut')
         context.setState('pendingMotorPosition', '')
-        if (current === 'MouseFader' || mode === 'MouseFader') {
+        if (isMouseLinkMode(current) || isMouseLinkMode(mode)) {
             context.setState('mouseFaderWaitRelease', faderTouch.getProcessValue(context) > 0 ? '1' : '')
             mappedFaderTouch.setProcessValue(context, 0)
         }
@@ -1370,6 +1392,33 @@ function isMouseLinkMode(mode) {
     return mode === 'Mouse' || mode === 'MouseFader'
 }
 
+function updateMouseLinkLED(context) {
+    if (!isMouseLinkMode(context.getState('knobMode'))) return
+    setRGBLED_color(context, cLink, mouseLockFeedbackValue.getProcessValue(context) > 0 ? AMBER : WHITE)
+    onLED(context, cLink)
+}
+
+function discardMouseLinkLock(context) {
+    context.setState('pendingMotorPosition', '')
+    context.setState('mouseCaptureAt', '')
+    context.setState('mouseStartingValue', '')
+    if (context.getState('faderTarget') === 'Mouse') {
+        context.setState('mouseFaderWaitRelease', faderTouch.getProcessValue(context) > 0 ? '1' : '')
+        mappedFaderTouch.setProcessValue(context, 0)
+    }
+    mouseLockFeedbackValue.setProcessValue(context, 0)
+    updateMouseLinkLED(context)
+    updateTouchLED(context)
+    updateBypassLED(context)
+}
+
+function handleMouseLinkButton(context) {
+    var locked = mouseLockFeedbackValue.getProcessValue(context) > 0
+    var mode = context.getState('knobMode')
+    discardMouseLinkLock(context)
+    if (!locked) pulseVar(context, mode === 'Mouse' ? buttons.MouseFader : buttons.Link)
+}
+
 function isMouseLinkControlEnabled(context) {
     return isMouseLinkMode(context.getState('knobMode'))
         && context.getState('mouseBypassed') !== '1'
@@ -1387,6 +1436,7 @@ function beginMouseLinkCapture(context) {
         mappedFaderTouch.setProcessValue(context, 0)
     }
     mouseLockFeedbackValue.setProcessValue(context, 0)
+    updateMouseLinkLED(context)
     updateTouchLED(context)
     updateBypassLED(context)
 }
@@ -1397,6 +1447,7 @@ function updateMouseLinkCapture(context, now) {
     mouseLockFeedbackValue.setProcessValue(context, 1)
     context.setState('mouseStartingValue', String(mouseParameterFeedbackValue.getProcessValue(context)))
     context.setState('mouseCaptureAt', '')
+    updateMouseLinkLED(context)
     syncMouseFader(context)
     updateBypassLED(context)
 }
@@ -1429,6 +1480,7 @@ function setupMouseLockFeedback() {
     page.makeValueBinding(mouseLockFeedbackValue, page.mHostAccess.mMouseCursor.mValueLocked)
     mouseLockFeedbackValue.mOnProcessValueChange = function(context) {
         if (mouseLockFeedbackValue.getProcessValue(context) <= 0) context.setState('mouseStartingValue', '')
+        updateMouseLinkLED(context)
         updateTouchLED(context)
         updateBypassLED(context)
     }

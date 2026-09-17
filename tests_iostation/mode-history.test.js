@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const source = fs.readFileSync(require('node:path').join(__dirname, '..', 'PreSonus_IOStation.js'), 'utf8');
 const scope = {
     ENABLE_METRONOME_FADER: true, onLED() {}, offLED() {}, cShift: 6,
-    faderModes: Object.fromEntries(['Track', 'StereoOut', 'Metronome', 'Mouse'].map(name =>
+    faderModes: Object.fromEntries(['Track', 'StereoOut', 'Metronome', 'Mouse', 'Dormant'].map(name =>
         [name, { mAction: { mActivate: { trigger() {} } } }])),
     knob: { getProcessValue: () => 0.5 },
     updateTouchLED() {}, updateKnobModeLEDs() {},
@@ -39,6 +39,7 @@ console.log('PASS: previous-mode toggling, repeated activation, aliases, shifted
 
 // Exercise the actual physical-button router, including held-button releases.
 const events = [];
+scope.handleMouseLinkButton=context=>{const target=context.getState('knobMode')==='Mouse'?'MouseFader':'Link';events.push([target,1],[target,0]);};
 scope.buttons = {};
 scope.selectedTrackToggleValues = {};
 scope.surface = { makeCustomValueVariable: name => ({
@@ -67,7 +68,7 @@ for (const name of ['Link', 'Pan', 'Channel', 'Scroll', 'Master', 'Click', 'Sect
         context.setState('shiftEnabled', shift);
         events.length = 0;
         press(context, 1); press(context, 0);
-        const target = name === 'Channel' ? (shift === '1' ? 'Channel' : 'PreGain') : 'Pan';
+        const target = name === 'Link' ? (shift === '1' ? 'Link' : 'MouseFader') : name === 'Channel' ? (shift === '1' ? 'Channel' : 'PreGain') : 'Pan';
         assert.deepEqual(events, [[target, 1], [target, 0]]);
         context.setState('knobMode', '');
     }
