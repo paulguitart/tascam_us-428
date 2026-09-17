@@ -46,44 +46,79 @@ There is only one Encoder on the Faderport, the ID is 0x00
 
  
 
-Switch Movements 
+Switch Movements and LED Feedback
 
-Switch Communication Messages begin with the 0xA0 as the status byte. The second Byte is the switch ID, and the third byte is the Status.
+Hardware-tested correction to the original SDK text (September 17, 2026):
+Switch input IDs and LED output IDs are different. The original statement that
+sending the same message back lights that switch's LED does not match the test.
+LED IDs reverse each group of eight switch IDs: LED_ID = SWITCH_ID XOR 0x07.
 
-Therefore, if a switched is pushed it will send a message to the computer similar to: 0xA0, 0x07, 0x01
-To light the LED of that switch by initiating a message from the computer, the same message can be sent from the Host.
+Device -> host: 0xA0, SWITCH_ID, 0x01 = pressed
+                0xA0, SWITCH_ID, 0x00 = released
+Host -> device: 0xA0, LED_ID,    0x01 = LED on
+                0xA0, LED_ID,    0x00 = LED off
 
- 
+For example, SHIFT sends A0 02 01 when pressed. Send A0 05 01 to light
+SHIFT, or A0 05 00 to turn it off. Echoing A0 02 01 lights STOP instead.
 
-The list of Switch IDs is the following:
+The definitions below pair each button's input ID with its OWN LED output ID.
+Names use hardware labels; original SDK aliases are noted in comments.
 
-     #define OUT_SWITCH 0x00
-     #define IN_SWITCH 0x01
-     #define SHIFT_SWITCH 0x02
-     #define REW_SWITCH 0x03
-     #define FFWD_SWITCH 0x04
-     #define STOP_SWITCH 0x05
-     #define PLAY_SWITCH 0x06
-     #define MREC_SWITCH 0x07
-     #define TOUCH_SWITCH 0x08
-     #define WRITE_SWITCH 0x09
-     #define READ_SWITCH 0x0A
-     #define MIX_SWITCH 0x0B
-     #define EDIT_SWITCH 0x0C
-     #define TRNS_SWITCH 0x0D
-     #define UNDO_SWITCH 0x0E
-     #define LOOP_SWITCH 0x0F
-     #define REC_SWITCH 0x10
-     #define SOLO_SWITCH 0x11
-     #define MUTE_SWITCH 0x12
-     #define LEFT_SWITCH 0x13
-     #define BANK_SWITCH 0x14
-     #define RIGHT_SWITCH 0x15
-     #define OUTPUT_SWITCH 0x16
-     #define OFF_SWITCH 0x17
-     #define NUM_SWITCHES 0x18
-     #define NATIVE_FOOTSWITCH_MSG 126
+SWITCH CODES
+==============================
+#define USER_SWITCH       0x00
+#define PUNCH_SWITCH      0x01
+#define SHIFT_SWITCH      0x02
+#define REW_SWITCH        0x03
+#define FFWD_SWITCH       0x04
+#define STOP_SWITCH       0x05
+#define PLAY_SWITCH       0x06
+#define RECORD_SWITCH     0x07
+#define TOUCH_SWITCH      0x08
+#define WRITE_SWITCH      0x09
+#define READ_SWITCH       0x0A
+#define MIX_SWITCH        0x0B
+#define PROJ_SWITCH       0x0C
+#define TRANSPORT_SWITCH  0x0D
+#define UNDO_SWITCH       0x0E
+#define LOOP_SWITCH       0x0F
+#define REC_ENABLE_SWITCH 0x10
+#define SOLO_SWITCH       0x11
+#define MUTE_SWITCH       0x12
+#define LEFT_SWITCH       0x13
+#define BANK_SWITCH       0x14
+#define RIGHT_SWITCH      0x15
+#define OUTPUT_SWITCH     0x16
+#define OFF_SWITCH        0x17
 
+#define NATIVE_FOOTSWITCH_MSG 126     // 0x7E; not a front-panel LED
+
+LED CODES
+==============================
+#define USER_LED          0x07 
+#define PUNCH_LED         0x06 
+#define SHIFT_LED         0x05
+#define REW_LED           0x04
+#define FFWD_LED          0x03
+#define STOP_LED          0x02
+#define PLAY_LED          0x01
+#define RECORD_LED        0x00 
+#define TOUCH_LED         0x0F 
+#define WRITE_LED         0x0E
+#define READ_LED          0x0D 
+#define MIX_LED           0x0C
+#define PROJ_LED          0x0B 
+#define TRANSPORT_LED     0x0A 
+#define UNDO_LED          0x09
+#define LOOP_LED          0x08
+#define REC_ENABLE_LED    0x17 
+#define SOLO_LED          0x16
+#define MUTE_LED          0x15
+#define LEFT_LED          0x14
+#define BANK_LED          0x13
+#define RIGHT_LED         0x12
+#define OUTPUT_LED        0x11 
+#define OFF_LED           0x10
  
 
 Universal Device Request Message

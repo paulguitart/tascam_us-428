@@ -122,6 +122,18 @@ function sendNativeMode(activeDevice) {
     midiOutput.sendMidi(activeDevice, FP_NATIVE_MODE)
 }
 
+// Hardware-tested: LED addresses reverse the input IDs within each group of 8.
+// E.g. SHIFT input 02 -> LED 05; MIX input 0B -> LED 0C.
+function sendButtonLed(activeDevice, switchId, enabled) {
+    midiOutput.sendMidi(activeDevice, [0xA0, switchId ^ 0x07, enabled ? 1 : 0])
+}
+
+function clearButtonLeds(activeDevice) {
+    for (var switchId = 0; switchId < 0x18; ++switchId) {
+        sendButtonLed(activeDevice, switchId, false)
+    }
+}
+
 // This is the motor-output format we verified experimentally with full sweeps.
 function sendFaderMotor(activeDevice, normalizedValue) {
     var value = normalizedValue
@@ -141,6 +153,11 @@ function sendFaderMotor(activeDevice, normalizedValue) {
 // Enter Native Mode whenever Cubase activates the device.
 deviceDriver.mOnActivate = function(activeDevice) {
     sendNativeMode(activeDevice)
+    clearButtonLeds(activeDevice)
+}
+
+deviceDriver.mOnDeactivate = function(activeDevice) {
+    clearButtonLeds(activeDevice)
 }
 
 //-----------------------------------------------------------------------------
@@ -281,6 +298,31 @@ var transportValues = page.mHostAccess.mTransport.mValue
 var trackSelection = page.mHostAccess.mTrackSelection
 var selectedChannel = trackSelection.mMixerChannel
 var selectedValues = selectedChannel.mValue
+
+// Stateful LEDs follow Cubase, including changes made with the mouse and track
+// selection. Button releases must not extinguish an active host state.
+function followHostLed(switchId, hostValue) {
+    hostValue.mOnProcessValueChange = function(activeDevice, activeMapping, value) {
+        sendButtonLed(activeDevice, switchId, value > 0)
+    }
+}
+
+followHostLed(FP.REW, transportValues.mRewind)
+followHostLed(FP.FFWD, transportValues.mForward)
+followHostLed(FP.STOP, transportValues.mStop)
+followHostLed(FP.PLAY, transportValues.mStart)
+followHostLed(FP.RECORD, transportValues.mRecord)
+followHostLed(FP.LOOP, transportValues.mCycleActive)
+followHostLed(FP.MUTE, selectedValues.mMute)
+followHostLed(FP.SOLO, selectedValues.mSolo)
+followHostLed(FP.TRACK_REC, selectedValues.mRecordEnable)
+followHostLed(FP.READ, selectedValues.mAutomationRead)
+followHostLed(FP.WRITE, selectedValues.mAutomationWrite)
+
+// SHIFT has no host mapping yet; show its physical held state.
+btnShift.mSurfaceValue.mOnProcessValueChange = function(activeDevice, value) {
+    sendButtonLed(activeDevice, FP.SHIFT, value > 0)
+}
 
 // ----- Selected-track volume / motor fader ----------------------------------
 

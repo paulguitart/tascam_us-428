@@ -20,6 +20,7 @@ Purpose:
           91 00 64
     - Drive the motorized fader through full DOWN->UP / UP->DOWN sweeps
     - Toggle the SHIFT LED
+    - Echo exact front-panel button presses after one second for LED discovery
     - Insert human-written marker lines into the capture log
     - Copy selected log text, or the entire log when nothing is selected
 
@@ -254,23 +255,23 @@ FADER_SWEEP_STEP = 8       # 128-ish motor targets per sweep
 FADER_SWEEP_DELAY_MS = 8   # ~1 second end-to-end sweep
 
 FADERPORT_SWITCHES = {
-    0x00: "OUT",
-    0x01: "IN",
+    0x00: "USER",
+    0x01: "PUNCH",
     0x02: "SHIFT",
     0x03: "REW",
     0x04: "FFWD",
     0x05: "STOP",
     0x06: "PLAY",
-    0x07: "MREC",
+    0x07: "RECORD",
     0x08: "TOUCH",
     0x09: "WRITE",
     0x0A: "READ",
     0x0B: "MIX",
-    0x0C: "EDIT",
+    0x0C: "PROJ",
     0x0D: "TRANSPORT",
     0x0E: "UNDO",
     0x0F: "LOOP",
-    0x10: "REC",
+    0x10: "REC_ENABLE",
     0x11: "SOLO",
     0x12: "MUTE",
     0x13: "LEFT",
@@ -533,6 +534,8 @@ class App(tk.Tk):
         self.output_var = tk.StringVar()
         self.status_var = tk.StringVar(value="Not connected")
         self.marker_var = tk.StringVar()
+        self.echo_var = tk.BooleanVar(value=False)
+        self.echo_after_ids = set()
 
         self.first_event_time = None
 
@@ -585,6 +588,7 @@ class App(tk.Tk):
             width=50,
         )
         self.output_combo.grid(row=1, column=1, sticky="ew", pady=3)
+        self.output_combo.bind("<<ComboboxSelected>>", lambda _event: self.stop_echo())
 
         self.native_button = ttk.Button(
             controls,
@@ -650,7 +654,7 @@ class App(tk.Tk):
 
         utility_row = ttk.Frame(controls)
         utility_row.grid(
-            row=3,
+            row=4,
             column=0,
             columnspan=3,
             sticky="ew",
@@ -696,6 +700,19 @@ class App(tk.Tk):
 
         controls.columnconfigure(1, weight=1)
 
+        led_row = ttk.Frame(controls)
+        led_row.grid(row=3, column=0, columnspan=3, sticky="ew", pady=4)
+        ttk.Checkbutton(
+            led_row,
+            text="Echo exact button press after 1 second",
+            variable=self.echo_var,
+            command=self.toggle_echo,
+        ).pack(side="left")
+        ttk.Button(
+            led_row, text="All LEDs off", command=self.clear_leds,
+        ).pack(side="left", padx=10)
+        ttk.Label(led_row, text="Presses only; LEDs stay on until cleared.").pack(side="left")
+
         ttk.Label(
             self,
             textvariable=self.status_var,
@@ -735,6 +752,9 @@ class App(tk.Tk):
             "5. Motor movement requires the Classic's external power supply.\n"
             "6. Marker box: type e.g. 'STOP BUTTON', then Enter.\n"
             "7. Copy Log copies highlighted text, or the whole log if nothing is selected.\n"
+            "8. Enable exact echo, tap a button, wait 1 second, then mark which LED lit.\n"
+            "   Releases, fader touch, encoder and footswitch are not echoed.\n"
+            "   No LED ID remapping: the light may belong to a different button.\n"
             "--------------------------------------------------------------------------\n"
         )
 
@@ -791,6 +811,7 @@ class App(tk.Tk):
     # ----------------------------------------------------------------------
 
     def refresh_devices(self):
+        self.stop_echo()
         self.cancel_sweep(log_it=False)
         self.midi_in.close()
         self.midi_out.close()
@@ -837,6 +858,7 @@ class App(tk.Tk):
         )
 
     def connect_input(self):
+        self.stop_echo()
         selection = self.input_combo.current()
 
         if selection < 0 or selection >= len(self.input_devices):
@@ -882,6 +904,84 @@ class App(tk.Tk):
     # ----------------------------------------------------------------------
     # Native mode / LED output
     # ----------------------------------------------------------------------
+
+    def stop_echo(self):
+        was_enabled = self.echo_var.get()
+        self.echo_var.set(False)
+        for after_id in self.echo_after_ids:
+            self.after_cancel(after_id)
+        self.echo_after_ids.clear()
+        if was_enabled:
+            self.append_log("=== EXACT ECHO OFF; pending sends cancelled ===\n")
+
+    def toggle_echo(self):
+        if not self.echo_var.get():
+            self.stop_echo()
+            self.append_log("=== EXACT ECHO OFF; pending sends cancelled ===\n")
+            return
+        self.cancel_sweep(log_it=False)
+        try:
+            if not self.midi_in.is_open:
+                raise RuntimeError("Connect the FaderPort MIDI input first.")
+            device_id, name = self.open_selected_output()
+            self.ensure_native_mode_on_open_output()
+        except Exception as exc:
+            self.stop_echo()
+            messagebox.showerror("LED echo error", str(exc))
+            return
+        finally:
+            self.midi_out.close()
+        self.append_log(
+            f"=== EXACT ECHO ON -> {device_id}: {name}; sent Native Mode 91 00 64; "
+            "delay 1 second; press only; no ID remapping ===\n"
+        )
+
+    def queue_button_echo(self, status, data1, data2):
+        if not (self.echo_var.get() and status == 0xA0
+                and 0x00 <= data1 <= 0x17 and data2 == 0x01):
+            return
+        raw = format_hex(status, data1, data2)
+        button = FADERPORT_SWITCHES[data1]
+
+        def send_echo():
+            self.echo_after_ids.discard(after_id)
+            if not self.echo_var.get():
+                return
+            self.cancel_sweep(log_it=False)
+            try:
+                device_id, name = self.open_selected_output()
+                self.midi_out.send_short(status, data1, data2)
+            except Exception as exc:
+                self.append_log(f"*** ECHO FAILED: {raw}: {exc}\n")
+                self.stop_echo()
+                return
+            finally:
+                self.midi_out.close()
+            elapsed = time.perf_counter() - self.first_event_time if self.first_event_time is not None else 0
+            line = (
+                f"{elapsed:9.3f}s  >>> SENT TO {device_id}: {name}: {raw}  "
+                f"[exact echo of {button} press; LED = {FADERPORT_SWITCHES[data1 ^ 0x07]}]\n"
+            )
+            self.append_log(line)
+            print(line, end="")
+
+        after_id = self.after(1000, send_echo)
+        self.echo_after_ids.add(after_id)
+        self.append_log(f"    QUEUED +1s: {raw}  [{button} press]\n")
+
+    def clear_leds(self):
+        self.stop_echo()
+        self.cancel_sweep(log_it=False)
+        try:
+            device_id, name = self.open_selected_output()
+            self.ensure_native_mode_on_open_output()
+            for led_id in range(0x18):
+                self.midi_out.send_short(0xA0, led_id, 0x00)
+                self.append_log(f">>> SENT TO {device_id}: {name}: A0 {led_id:02X} 00  [LED clear]\n")
+        except Exception as exc:
+            messagebox.showerror("LED clear error", str(exc))
+        finally:
+            self.midi_out.close()
 
     def send_native_mode(self):
         self.cancel_sweep(log_it=False)
@@ -1050,6 +1150,7 @@ class App(tk.Tk):
 
                     self.append_log(line)
                     print(line, end="")
+                    self.queue_button_echo(status, data1, data2)
 
                 elif event[0] == "error":
                     self.append_log(f"*** {event[1]}\n")
@@ -1060,6 +1161,7 @@ class App(tk.Tk):
         self.after(20, self.process_events)
 
     def on_close(self):
+        self.stop_echo()
         self.cancel_sweep(log_it=False)
         self.midi_in.close()
         self.midi_out.close()
