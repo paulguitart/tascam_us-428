@@ -117,6 +117,9 @@ var FP_FADER_POSITION_MAX = 1023
 // Same host unity setting as IOStation: +6 dB volume range.
 // For Cubase's +12 dB volume range, use 0.748222 instead.
 var FADER_HOST_UNITY = 0.789087
+// Send reset uses the same +6 dB unity value as the reference FaderPort script.
+// Keep separate from channel volume in case Cubase's send range differs.
+var SEND_HOST_UNITY = 0.789087
 // A small landing zone makes unity practical to find with the 10-bit fader.
 // A wider exit threshold prevents LED flicker at the edge; volume is not snapped.
 var FADER_UNITY_TOLERANCE = 2 / FP_FADER_POSITION_MAX
@@ -333,6 +336,18 @@ var stereoOut = outputZone.makeMixerBankChannel()
 var faderTargetArea = page.makeSubPageArea('Fader Target')
 var trackFaderMode = faderTargetArea.makeSubPage('Selected Track')
 var outputFaderMode = faderTargetArea.makeSubPage('Stereo Out')
+var knobTargetArea = page.makeSubPageArea('Knob Target')
+var panKnobMode = knobTargetArea.makeSubPage('Pan')
+var sendKnobMode = knobTargetArea.makeSubPage('Send 1')
+var firstSend = selectedChannel.mSends.getByIndex(0)
+panKnobMode.mOnActivate = function(activeDevice) {
+    activeDevice.setState('classic.sendMode', '')
+    sendButtonLed(activeDevice, FP.MIX, false)
+}
+sendKnobMode.mOnActivate = function(activeDevice) {
+    activeDevice.setState('classic.sendMode', '1')
+    sendButtonLed(activeDevice, FP.MIX, true)
+}
 var trackVolumeFeedback = surface.makeCustomValueVariable('Track Volume Feedback')
 var outputVolumeFeedback = surface.makeCustomValueVariable('Output Volume Feedback')
 page.makeValueBinding(trackVolumeFeedback, selectedValues.mVolume)
@@ -367,6 +382,7 @@ page.mOnActivate = function(activeDevice, activeMapping) {
     }
     faderTargetMappings[Number(key)] = activeMapping
     trackFaderMode.mAction.mActivate.trigger(activeMapping)
+    panKnobMode.mAction.mActivate.trigger(activeMapping)
 }
 page.mOnDeactivate = function(activeDevice) {
     var key = activeDevice.getState('classic.mappingIndex')
@@ -402,7 +418,7 @@ btnShift.mSurfaceValue.mOnProcessValueChange = function(activeDevice, value) {
 // Physical inputs stay separate from host feedback. Resolve shortcuts only on
 // press so releasing SHIFT before the other button cannot fire its normal action.
 var shortcutStateKeys = ['classic.shift', 'classic.stop', 'classic.rew', 'classic.unityLed',
-    'classic.faderOff', 'classic.faderWaitRelease', 'classic.output']
+    'classic.faderOff', 'classic.faderWaitRelease', 'classic.output', 'classic.sendMode']
 var rewindInput = surface.makeCustomValueVariable('Rewind Held')
 
 function resetShortcutState(activeDevice) {
@@ -490,6 +506,17 @@ routeShortcut(btnOutput, 'output', function(activeDevice) {
     }
     var target = activeDevice.getState('classic.output') === '1' ? trackFaderMode : outputFaderMode
     target.mAction.mActivate.trigger(activeMapping)
+})
+routeShortcut(btnMix, 'mix', function(activeDevice) {
+    var activeMapping = getFaderTargetMapping(activeDevice)
+    if (!activeMapping) return
+    var target = activeDevice.getState('classic.sendMode') === '1' ? panKnobMode : sendKnobMode
+    target.mAction.mActivate.trigger(activeMapping)
+})
+routeShortcut(btnTransport, 'resetKnob', function(activeDevice) {
+    if (!getFaderTargetMapping(activeDevice)) return
+    panKnob.mSurfaceValue.setProcessValue(activeDevice,
+        activeDevice.getState('classic.sendMode') === '1' ? SEND_HOST_UNITY : 0.5)
 })
 
 var stopCommand = makeCommandTrigger('Stop', 'Transport', 'Stop')
@@ -580,7 +607,9 @@ function updateFaderHostVolume(activeDevice, value) {
 page.makeValueBinding(
     panKnob.mSurfaceValue,
     selectedValues.mPan
-)
+).setSubPage(panKnobMode)
+page.makeValueBinding(panKnob.mSurfaceValue, firstSend.mLevel)
+    .setSubPage(sendKnobMode)
 
 // ----- Transport ------------------------------------------------------------
 
@@ -639,9 +668,7 @@ page.makeValueBinding(
 //
 // These are ALREADY fully recognized by the surface and ready to map:
 //
-//     btnMix           // A0 0B
 //     btnProject       // A0 0C
-//     btnTransport     // A0 0D
 //     btnBank          // A0 14
 //
 // Shortcuts: PUNCH/USER = previous/next marker; held SHIFT + UNDO = Redo,

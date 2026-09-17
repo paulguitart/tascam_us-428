@@ -13,12 +13,14 @@ function load(hasTouch = true) {
         const states = new WeakMap()
         return {
             mMidiBinding: chain,
+            receiveHostValue(device, next) { states.set(device, next) },
             getProcessValue(device) { return states.get(device) || 0 },
             setProcessValue(device, next) {
                 const previous = states.get(device) || 0
                 states.set(device, next)
                 for (const binding of bindings.filter(b => b.input === this)) {
-                    if (binding.subpage && activeModes.get(device) !== binding.subpage) continue
+                    if (binding.subpage && (!activeModes.get(device)
+                        || activeModes.get(device).get(binding.subpage.area) !== binding.subpage)) continue
                     // Do not assume that a custom-value pulse synchronously
                     // executes a Cubase action. OUTPUT must use direct activation.
                     if (binding.command && next === 1) commands.push(binding.command)
@@ -47,7 +49,12 @@ function load(hasTouch = true) {
             mMixConsole: { makeMixerBankZone: () => ({
                 includeOutputChannels: () => ({ makeMixerBankChannel: () => ({ mValue: hostValues() }) })
             }) },
-            mTrackSelection: { mMixerChannel: { mValue: hostValues() }, mAction: {} }
+            mTrackSelection: { mMixerChannel: { mValue: hostValues(),
+                mSends: { getByIndex: index => {
+                    assert.strictEqual(index, 0)
+                    return { mLevel: value(), mOn: value() }
+                } }
+            }, mAction: {} }
         },
         makeValueBinding(input, host) {
             const binding = { input, host }
@@ -63,11 +70,15 @@ function load(hasTouch = true) {
             bindings.push({ input, command: category + '/' + command }); return chain
         },
         makeActionBinding(input, action) { bindings.push({ input, action }); return chain },
-        makeSubPageArea() { return { makeSubPage() {
-            const mode = { mAction: { mActivate: { trigger(mapping) {
+        makeSubPageArea() { const area = {}; return { makeSubPage() {
+            const mode = { area, mAction: { mActivate: { trigger(mapping) {
                 assert(mapping && mapping.device, 'Subpage activation requires ActiveMapping, not ActiveDevice')
                 const device = mapping.device
-                activeModes.set(device, mode)
+                if (!activeModes.has(device)) activeModes.set(device, new Map())
+                activeModes.get(device).set(area, mode)
+                for (const b of bindings.filter(b => b.subpage === mode && b.host)) {
+                    b.input.receiveHostValue(device, b.host.getProcessValue(device))
+                }
                 if (mode.mOnActivate) mode.mOnActivate(device, mapping)
             } } } }
             return mode
@@ -307,3 +318,37 @@ output.tap('btnOutput')
 assert.strictEqual(outDevice.getState('classic.output'), '1')
 assert(output.midi.some(msg => msg.join() === '160,17,1'), 'OUTPUT sends its measured LED address')
 console.log('PASS: direct OUTPUT subpage activation with distinct mapping context and page lifecycle')
+
+const knob = load(), kc = knob.ctx, kd = knob.d
+kc.selectedValues.mPan.setProcessValue(kd, 0.3)
+kc.firstSend.mLevel.setProcessValue(kd, 0.65)
+knob.tap('btnTransport')
+assert.strictEqual(kc.selectedValues.mPan.getProcessValue(kd), 0.5)
+assert.strictEqual(kc.firstSend.mLevel.getProcessValue(kd), 0.65)
+knob.tap('btnMix')
+assert.strictEqual(kd.getState('classic.sendMode'), '1')
+assert.deepStrictEqual(knob.midi.slice(-1)[0], [0xA0, 0x0C, 1])
+kc.panKnobRaw.mOnProcessValueChange(kd, 0.01)
+assert.strictEqual(kc.firstSend.mLevel.getProcessValue(kd), 0.65 + kc.FP_KNOB_STEP)
+assert.strictEqual(kc.selectedValues.mPan.getProcessValue(kd), 0.5)
+knob.tap('btnTransport')
+assert.strictEqual(kc.firstSend.mLevel.getProcessValue(kd), kc.SEND_HOST_UNITY)
+assert.strictEqual(kc.firstSend.mOn.getProcessValue(kd), 0, 'Reset does not enable the send')
+knob.tap('btnOutput')
+kc.panKnobRaw.mOnProcessValueChange(kd, 0.99)
+assert.strictEqual(kc.firstSend.mLevel.getProcessValue(kd), kc.SEND_HOST_UNITY - kc.FP_KNOB_STEP)
+assert.strictEqual(kd.getState('classic.output'), '1')
+knob.tap('btnOff')
+knob.tap('btnTransport')
+assert.strictEqual(kc.firstSend.mLevel.getProcessValue(kd), kc.SEND_HOST_UNITY)
+knob.tap('btnMix')
+assert.strictEqual(kd.getState('classic.sendMode'), '')
+assert.strictEqual(kc.isFaderEnabled(kd), false, 'MIX must not defeat OFF')
+assert.strictEqual(kd.getState('classic.output'), '1', 'MIX must not change fader target')
+kc.panKnobRaw.mOnProcessValueChange(kd, 0.01)
+assert.strictEqual(kc.selectedValues.mPan.getProcessValue(kd), 0.5 + kc.FP_KNOB_STEP)
+assert.strictEqual(kc.firstSend.mLevel.getProcessValue(kd), kc.SEND_HOST_UNITY)
+knob.tap('btnTransport')
+assert.strictEqual(kc.selectedValues.mPan.getProcessValue(kd), 0.5)
+assert.deepStrictEqual(knob.commands, [])
+console.log('PASS: MIX pan/send routing, TRNS resets, mode LED, independent fader modes, send enable preserved')

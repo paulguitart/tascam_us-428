@@ -22,6 +22,15 @@ the held state; SHIFT alone performs no Cubase action.
 | TOUCH | Reset selected-track volume to 0 dB |
 | OFF | Toggle physical fader control and motor feedback off/on |
 | OUTPUT | Toggle fader between selected track and Stereo Out; re-enable if OFF |
+| MIX | Toggle knob between selected-track pan and send 1 level |
+| TRNS | Center pan, or reset send 1 to 0 dB when MIX is lit |
+
+MIX lights in send mode. Assign the desired FX destination to send slot 1 in
+Cubase. Knob movement and TRNS change the level without enabling or disabling
+the send. MIX and TRNS work with or without SHIFT, and independently of the
+fader's OUTPUT/OFF state. Page activation starts the knob in pan mode.
+`SEND_HOST_UNITY` defaults to `0.789087`, using the reference FaderPort script's
++6 dB send-range calibration; use `0.748222` for a +12 dB send range.
 
 OFF lights while the fader is disabled. Physical movement and capacitive touch
 then send no volume or touch changes to Cubase, and motor output is suppressed.
