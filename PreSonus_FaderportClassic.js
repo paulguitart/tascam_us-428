@@ -46,7 +46,9 @@ KNOB / MOUSE PARAMETER MODES:
 PAN KNOB               : Selected Track Pan; MIX = Send 1 Level; PROJ = locked mouse parameter
                        : [OUTPUT Zoom] Turn left/right for Zoom Out/In, without a travel limit
 MIX                    : Toggle Pan / Send 1; exits PROJ; leaves the fader target alone
+                       : With OUTPUT selected, toggle Zoom / Send 1 instead
 PROJ                   : Lock mouse parameter to knob; press again to restore prior Pan / Send mode
+                       : With OUTPUT selected, exiting PROJ always returns to Zoom
 BANK                   : Lock mouse parameter to fader; press again for normal track volume
 					   : BANK and PROJ are mutually exclusive; either mode saves its entry value
 TRNS                   : [Pan] Center | [MIX] Send 1 Unity | [PROJ / BANK] Restore saved entry value
@@ -743,7 +745,8 @@ routeShortcut(btnOutput, 'output', function(activeDevice) {
 routeShortcut(btnMix, 'mix', function(activeDevice) {
 	var activeMapping = getFaderTargetMapping(activeDevice)
 	if (!activeMapping) return
-	var target = activeDevice.getState('classic.sendMode') === '1' ? panKnobMode : sendKnobMode
+	var defaultMode = activeDevice.getState('classic.output') === '1' ? zoomKnobMode : panKnobMode
+	var target = activeDevice.getState('classic.sendMode') === '1' ? defaultMode : sendKnobMode
 	target.mAction.mActivate.trigger(activeMapping)
 })
 routeShortcut(btnBank, 'mouseFader', function(activeDevice) {
@@ -767,6 +770,8 @@ routeShortcut(btnProject, 'mouseMode', function(activeDevice) {
 	}
 	if (activeDevice.getState('classic.mouseMode') === '1') {
 		var previous = activeDevice.getState('classic.mouseReturnSend') === '1' ? sendKnobMode : panKnobMode
+		// OUTPUT remains the fader target; exiting PROJ returns its knob to zoom.
+		if (activeDevice.getState('classic.output') === '1') previous = zoomKnobMode
 		previous.mAction.mActivate.trigger(activeMapping)
 	} else {
 		activeDevice.setState('classic.mouseReturnSend', activeDevice.getState('classic.sendMode'))

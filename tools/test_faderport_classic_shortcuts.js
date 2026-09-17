@@ -392,11 +392,11 @@ assert.strictEqual(kd.getState('classic.sendMode'), '')
 assert.strictEqual(kc.isFaderEnabled(kd), false, 'MIX must not defeat OFF')
 assert.strictEqual(kd.getState('classic.output'), '1', 'MIX must not change fader target')
 kc.panKnobRaw.mOnProcessValueChange(kd, 0.01)
-assert.strictEqual(kc.selectedValues.mPan.getProcessValue(kd), 0.5 + kc.FP_KNOB_STEP)
+assert.strictEqual(kc.selectedValues.mPan.getProcessValue(kd), 0.5)
 assert.strictEqual(kc.firstSend.mLevel.getProcessValue(kd), kc.SEND_HOST_UNITY)
 knob.tap('btnTransport')
 assert.strictEqual(kc.selectedValues.mPan.getProcessValue(kd), 0.5)
-assert.deepStrictEqual(knob.commands, [])
+assert.deepStrictEqual(knob.commands, ['Zoom/Zoom In', 'Zoom/Zoom to Locators'])
 console.log('PASS: MIX pan/send routing, TRNS resets, mode LED, independent fader modes, send enable preserved')
 
 const mouse = load(), mc = mouse.ctx, md = mouse.d
@@ -428,7 +428,8 @@ assert.strictEqual(locked.getProcessValue(md), 0)
 assert.strictEqual(md.getState('classic.mouseMode'), '')
 assert.strictEqual(md.getState('classic.sendMode'), '')
 mouse.tap('btnMix'); mouse.tap('btnProject'); mouse.tap('btnProject')
-assert.strictEqual(md.getState('classic.sendMode'), '1', 'PROJ restores prior send mode')
+assert.strictEqual(md.getState('classic.sendMode'), '', 'PROJ returns to zoom while OUTPUT remains selected')
+assert.strictEqual(md.getState('classic.zoomMode'), '1')
 mouse.tap('btnProject'); mouse.tap('btnMix')
 assert.strictEqual(locked.getProcessValue(md), 0, 'MIX releases mouse lock')
 assert.strictEqual(md.getState('classic.sendMode'), '1')
@@ -757,3 +758,34 @@ for (const startSend of [false, true]) {
     assert.strictEqual(ozd.getState('classic.zoomMode'), '')
 }
 console.log('PASS: OUTPUT continuous zoom commands, TRNS locators, OFF compatibility, prior knob restoration and BANK/lifecycle exits')
+
+for (const disabled of [false, true]) {
+    for (const buttons of [
+        ['btnMix', 'btnMix'],
+        ['btnProject', 'btnProject'],
+        ['btnMix', 'btnProject', 'btnProject'],
+        ['btnProject', 'btnMix', 'btnMix']
+    ]) {
+        const resume = load(), r = resume.ctx, rd = resume.d
+        resume.tap('btnOutput')
+        r.rawFaderValue.mOnProcessValueChange(rd, 0.6)
+        if (disabled) resume.tap('btnOff')
+        resume.midi.length = 0
+        for (const button of buttons) { resume.tap(button); resume.idle() }
+        assert.strictEqual(rd.getState('classic.output'), '1')
+        assert.strictEqual(rd.getState('classic.faderOff'), disabled ? '1' : '')
+        assert.strictEqual(r.stereoOut.mValue.mVolume.getProcessValue(rd), 0.6)
+        assert.strictEqual(rd.getState('classic.zoomMode'), '1')
+        assert.strictEqual(rd.getState('classic.sendMode'), '')
+        assert.strictEqual(rd.getState('classic.mouseMode'), '')
+        assert(resume.midi.every(msg => msg[0] !== 0xB0), 'Knob mode changes must not move output fader')
+        resume.tap('btnTransport')
+        r.panKnobRaw.mOnProcessValueChange(rd, 0.01)
+        r.panKnobRaw.mOnProcessValueChange(rd, 0.99)
+        assert.deepStrictEqual(resume.commands, ['Zoom/Zoom to Locators', 'Zoom/Zoom In', 'Zoom/Zoom Out'])
+        r.rawFaderValue.mOnProcessValueChange(rd, 0.8)
+        assert.strictEqual(r.stereoOut.mValue.mVolume.getProcessValue(rd), disabled ? 0.6 : 0.8)
+        assert.strictEqual(r.selectedValues.mVolume.getProcessValue(rd), 0)
+    }
+}
+console.log('PASS: MIX/PROJ exits resume OUTPUT zoom and TRNS locators, preserving output fader and OFF state')
