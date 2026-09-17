@@ -24,6 +24,23 @@ the held state; SHIFT alone performs no Cubase action.
 | OUTPUT | Toggle fader between selected track and Stereo Out; re-enable if OFF |
 | MIX | Toggle knob between selected-track pan and send 1 level |
 | TRNS | Center pan, or reset send 1 to 0 dB when MIX is lit |
+| BANK | Lock knob to hovered parameter; press again to unlock and restore pan/send mode |
+
+Hover a supported Cubase parameter before pressing BANK. BANK lights while
+mouse mode is active, and the target stays locked when the pointer moves away.
+Keep the pointer over the target briefly: locking is requested on the first
+idle callback at least 100 ms after mode entry, allowing Cubase to activate the
+mouse binding first. Knob edits wait until that request; leaving the mode cancels
+a pending request. The BANK LED indicates mode selection, not host confirmation
+that the hovered control supports locking.
+Pressing BANK again returns to the previous pan/send mode; pressing MIX leaves
+mouse mode for send 1. Both unlock the target. OUTPUT and OFF do not affect the
+knob lock. Page/device deactivation releases it.
+
+TRNS intentionally does nothing in BANK mode: the documented
+[mouse-value API](https://steinbergmedia.github.io/midiremote_api_doc/codedoc_api_reference/#hostvalueatmousecursor)
+does not expose a generic parameter-default reset. No fixed normalized value is
+substituted, since that would mean different things for different parameters.
 
 MIX lights in send mode. Assign the desired FX destination to send slot 1 in
 Cubase. Knob movement and TRNS change the level without enabling or disabling
@@ -37,7 +54,6 @@ then send no volume or touch changes to Cubase, and motor output is suppressed.
 TOUCH reset is disabled and its LED is dark. Other controls keep working.
 Re-enabling catches the motor up to the latest host volume; if the fader is
 held, input and motor resume after release. Script activation starts enabled.
-BANK remains unassigned.
 
 OUTPUT lights when the fader targets Stereo Out. It uses the first output bus,
 as in IOStation; place the intended master first if the project has multiple

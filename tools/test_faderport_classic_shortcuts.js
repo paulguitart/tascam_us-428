@@ -6,6 +6,7 @@ const path = require('path')
 const vm = require('vm')
 
 function load(hasTouch = true) {
+    let now = 1000
     const commands = [], midi = [], bindings = []
     const activeModes = new WeakMap()
     const chain = new Proxy({}, { get: () => () => chain })
@@ -46,6 +47,7 @@ function load(hasTouch = true) {
     const page = {
         mHostAccess: {
             mTransport: { mValue: hostValues() },
+            mMouseCursor: { mValueUnderMouse: value(), mValueLocked: value() },
             mMixConsole: { makeMixerBankZone: () => ({
                 includeOutputChannels: () => ({ makeMixerBankChannel: () => ({ mValue: hostValues() }) })
             }) },
@@ -94,7 +96,7 @@ function load(hasTouch = true) {
             makeCustomValueVariable: value },
         mMapping: { makePage: () => page }
     }
-    const ctx = vm.createContext({ require: () => ({ makeDeviceDriver: () => driver }) })
+    const ctx = vm.createContext({ Date: { now: () => now }, require: () => ({ makeDeviceDriver: () => driver }) })
     vm.runInContext(fs.readFileSync(path.join(__dirname, '../PreSonus_FaderportClassic.js'), 'utf8'), ctx)
     function device() {
         const state = {}
@@ -106,7 +108,8 @@ function load(hasTouch = true) {
     page.mOnActivate(d, mapping)
     const press = (name, v = 1, target = d) => ctx[name].mSurfaceValue.mOnProcessValueChange(target, v)
     const tap = name => { press(name); press(name, 0) }
-    return { ctx, d, device, press, tap, commands, midi, driver, bindings, page, mapping }
+    const idle = (ms = 100) => { now += ms; driver.mOnIdle(d) }
+    return { ctx, d, device, press, tap, commands, midi, driver, bindings, page, mapping, idle }
 }
 
 const t = load()
@@ -352,3 +355,63 @@ knob.tap('btnTransport')
 assert.strictEqual(kc.selectedValues.mPan.getProcessValue(kd), 0.5)
 assert.deepStrictEqual(knob.commands, [])
 console.log('PASS: MIX pan/send routing, TRNS resets, mode LED, independent fader modes, send enable preserved')
+
+const mouse = load(), mc = mouse.ctx, md = mouse.d
+const hovered = mouse.page.mHostAccess.mMouseCursor.mValueUnderMouse
+const locked = mouse.page.mHostAccess.mMouseCursor.mValueLocked
+hovered.setProcessValue(md, 0.42)
+mouse.tap('btnBank')
+assert.strictEqual(locked.getProcessValue(md), 0, 'Lock waits until after mode activation')
+mc.panKnobRaw.mOnProcessValueChange(md, 0.01)
+assert.strictEqual(hovered.getProcessValue(md), 0.42, 'Do not edit while lock is pending')
+mouse.idle(50)
+assert.strictEqual(locked.getProcessValue(md), 0)
+mouse.idle(50)
+assert.strictEqual(locked.getProcessValue(md), 1)
+assert.strictEqual(md.getState('classic.mouseMode'), '1')
+assert.deepStrictEqual(mouse.midi.slice(-1)[0], [0xA0, 0x13, 1])
+mc.panKnobRaw.mOnProcessValueChange(md, 0.01)
+assert.strictEqual(hovered.getProcessValue(md), 0.42 + mc.FP_KNOB_STEP)
+assert.strictEqual(mc.selectedValues.mPan.getProcessValue(md), 0)
+mouse.tap('btnTransport')
+assert.strictEqual(hovered.getProcessValue(md), 0.42 + mc.FP_KNOB_STEP, 'No arbitrary mouse reset')
+mouse.tap('btnOutput'); mouse.tap('btnOff')
+assert.strictEqual(locked.getProcessValue(md), 1)
+mouse.tap('btnBank')
+assert.strictEqual(locked.getProcessValue(md), 0)
+assert.strictEqual(md.getState('classic.mouseMode'), '')
+assert.strictEqual(md.getState('classic.sendMode'), '')
+mouse.tap('btnMix'); mouse.tap('btnBank'); mouse.tap('btnBank')
+assert.strictEqual(md.getState('classic.sendMode'), '1', 'BANK restores prior send mode')
+mouse.tap('btnBank'); mouse.tap('btnMix')
+assert.strictEqual(locked.getProcessValue(md), 0, 'MIX releases mouse lock')
+assert.strictEqual(md.getState('classic.sendMode'), '1')
+mouse.tap('btnBank')
+mouse.page.mOnDeactivate(md)
+assert.strictEqual(locked.getProcessValue(md), 0)
+mouse.page.mOnActivate(md, mouse.mapping)
+assert.strictEqual(md.getState('classic.mouseMode'), '')
+mouse.tap('btnBank')
+mouse.driver.mOnDeactivate(md)
+assert.strictEqual(locked.getProcessValue(md), 0)
+console.log('PASS: BANK locks mouse target, routes knob exclusively, restores prior mode, preserves value on TRNS, unlocks on exit')
+
+const pendingMouse = load(), pm = pendingMouse.ctx, pd = pendingMouse.d
+const requests = []
+const originalLockWrite = pm.mouseLockValue.setProcessValue
+pm.mouseLockValue.setProcessValue = function(device, next) {
+    requests.push(next)
+    originalLockWrite.call(this, device, next)
+}
+pendingMouse.tap('btnBank'); pendingMouse.tap('btnBank'); pendingMouse.idle()
+assert(!requests.includes(1), 'Leaving BANK must cancel delayed lock')
+requests.length = 0
+pendingMouse.tap('btnBank'); pendingMouse.tap('btnMix'); pendingMouse.idle()
+assert(!requests.includes(1), 'MIX must cancel delayed lock')
+requests.length = 0
+pendingMouse.tap('btnBank'); pendingMouse.idle(); pendingMouse.idle()
+assert.strictEqual(requests.filter(v => v === 1).length, 1, 'Lock once; do not keep retargeting')
+pendingMouse.tap('btnBank'); requests.length = 0
+pendingMouse.tap('btnBank'); pendingMouse.page.mOnDeactivate(pd); pendingMouse.idle()
+assert(!requests.includes(1), 'Page deactivation must cancel delayed lock')
+console.log('PASS: deferred mouse lock fires once and cancels on BANK/MIX/page exit')

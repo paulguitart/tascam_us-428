@@ -267,6 +267,9 @@ panKnobRaw.mMidiBinding
 var FP_KNOB_STEP = 1 / 200
 
 panKnobRaw.mOnProcessValueChange = function(activeDevice, value) {
+    // Do not edit an unlocked hover target while BANK is acquiring its lock.
+    if (activeDevice.getState('classic.mouseMode') === '1'
+            && activeDevice.getState('classic.mouseLockAt') !== '') return
     var cleanValue = panKnob.mSurfaceValue.getProcessValue(activeDevice)
 
     if (value < 0.25) {
@@ -339,14 +342,44 @@ var outputFaderMode = faderTargetArea.makeSubPage('Stereo Out')
 var knobTargetArea = page.makeSubPageArea('Knob Target')
 var panKnobMode = knobTargetArea.makeSubPage('Pan')
 var sendKnobMode = knobTargetArea.makeSubPage('Send 1')
+var mouseKnobMode = knobTargetArea.makeSubPage('Mouse Parameter')
+var mouseLockValue = surface.makeCustomValueVariable('Mouse Parameter Locked')
+page.makeValueBinding(mouseLockValue, page.mHostAccess.mMouseCursor.mValueLocked)
 var firstSend = selectedChannel.mSends.getByIndex(0)
 panKnobMode.mOnActivate = function(activeDevice) {
+    leaveMouseKnobMode(activeDevice)
     activeDevice.setState('classic.sendMode', '')
     sendButtonLed(activeDevice, FP.MIX, false)
 }
 sendKnobMode.mOnActivate = function(activeDevice) {
+    leaveMouseKnobMode(activeDevice)
     activeDevice.setState('classic.sendMode', '1')
     sendButtonLed(activeDevice, FP.MIX, true)
+}
+function leaveMouseKnobMode(activeDevice) {
+    activeDevice.setState('classic.mouseMode', '')
+    activeDevice.setState('classic.mouseLockAt', '')
+    mouseLockValue.setProcessValue(activeDevice, 0)
+    sendButtonLed(activeDevice, FP.BANK, false)
+}
+mouseKnobMode.mOnActivate = function(activeDevice) {
+    activeDevice.setState('classic.mouseMode', '1')
+    activeDevice.setState('classic.sendMode', '')
+    // IOStation locks on a later knob press, after the mouse subpage is active.
+    // Give Cubase an update interval before issuing that same lock request.
+    mouseLockValue.setProcessValue(activeDevice, 0)
+    activeDevice.setState('classic.mouseLockAt', String(Date.now() + 100))
+    sendButtonLed(activeDevice, FP.MIX, false)
+    sendButtonLed(activeDevice, FP.BANK, true)
+}
+deviceDriver.mOnIdle = function(activeDevice) {
+    var lockAt = activeDevice.getState('classic.mouseLockAt')
+    if (lockAt === '' || Date.now() < Number(lockAt)) return
+    activeDevice.setState('classic.mouseLockAt', '')
+    if (activeDevice.getState('classic.mouseMode') !== '1'
+            || !getFaderTargetMapping(activeDevice)) return
+    // Same sustained value write as IOStation's mouse-mode knob press.
+    mouseLockValue.setProcessValue(activeDevice, 1)
 }
 var trackVolumeFeedback = surface.makeCustomValueVariable('Track Volume Feedback')
 var outputVolumeFeedback = surface.makeCustomValueVariable('Output Volume Feedback')
@@ -385,6 +418,7 @@ page.mOnActivate = function(activeDevice, activeMapping) {
     panKnobMode.mAction.mActivate.trigger(activeMapping)
 }
 page.mOnDeactivate = function(activeDevice) {
+    leaveMouseKnobMode(activeDevice)
     var key = activeDevice.getState('classic.mappingIndex')
     if (key !== '') faderTargetMappings[Number(key)] = null
 }
@@ -418,7 +452,8 @@ btnShift.mSurfaceValue.mOnProcessValueChange = function(activeDevice, value) {
 // Physical inputs stay separate from host feedback. Resolve shortcuts only on
 // press so releasing SHIFT before the other button cannot fire its normal action.
 var shortcutStateKeys = ['classic.shift', 'classic.stop', 'classic.rew', 'classic.unityLed',
-    'classic.faderOff', 'classic.faderWaitRelease', 'classic.output', 'classic.sendMode']
+    'classic.faderOff', 'classic.faderWaitRelease', 'classic.output', 'classic.sendMode',
+    'classic.mouseMode', 'classic.mouseReturnSend', 'classic.mouseLockAt']
 var rewindInput = surface.makeCustomValueVariable('Rewind Held')
 
 function resetShortcutState(activeDevice) {
@@ -428,6 +463,7 @@ function resetShortcutState(activeDevice) {
     rewindInput.setProcessValue(activeDevice, 0)
     enabledFaderTouch.setProcessValue(activeDevice, 0)
     faderIsTouched = false
+    mouseLockValue.setProcessValue(activeDevice, 0)
 }
 
 function makeCommandTrigger(name, category, command) {
@@ -513,8 +549,22 @@ routeShortcut(btnMix, 'mix', function(activeDevice) {
     var target = activeDevice.getState('classic.sendMode') === '1' ? panKnobMode : sendKnobMode
     target.mAction.mActivate.trigger(activeMapping)
 })
+routeShortcut(btnBank, 'mouseMode', function(activeDevice) {
+    var activeMapping = getFaderTargetMapping(activeDevice)
+    if (!activeMapping) return
+    if (activeDevice.getState('classic.mouseMode') === '1') {
+        var previous = activeDevice.getState('classic.mouseReturnSend') === '1' ? sendKnobMode : panKnobMode
+        previous.mAction.mActivate.trigger(activeMapping)
+    } else {
+        activeDevice.setState('classic.mouseReturnSend', activeDevice.getState('classic.sendMode'))
+        mouseKnobMode.mAction.mActivate.trigger(activeMapping)
+    }
+})
 routeShortcut(btnTransport, 'resetKnob', function(activeDevice) {
     if (!getFaderTargetMapping(activeDevice)) return
+    // HostValueAtMouseCursor exposes no generic default/reset operation.
+    // A normalized midpoint or channel-unity constant is not a parameter default.
+    if (activeDevice.getState('classic.mouseMode') === '1') return
     panKnob.mSurfaceValue.setProcessValue(activeDevice,
         activeDevice.getState('classic.sendMode') === '1' ? SEND_HOST_UNITY : 0.5)
 })
@@ -610,6 +660,8 @@ page.makeValueBinding(
 ).setSubPage(panKnobMode)
 page.makeValueBinding(panKnob.mSurfaceValue, firstSend.mLevel)
     .setSubPage(sendKnobMode)
+page.makeValueBinding(panKnob.mSurfaceValue, page.mHostAccess.mMouseCursor.mValueUnderMouse)
+    .setSubPage(mouseKnobMode)
 
 // ----- Transport ------------------------------------------------------------
 
@@ -669,7 +721,6 @@ page.makeValueBinding(
 // These are ALREADY fully recognized by the surface and ready to map:
 //
 //     btnProject       // A0 0C
-//     btnBank          // A0 14
 //
 // Shortcuts: PUNCH/USER = previous/next marker; held SHIFT + UNDO = Redo,
 // SHIFT + LOOP = Insert Marker, SHIFT + SOLO/MUTE = clear solos/unmute all.
