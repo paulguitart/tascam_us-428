@@ -117,7 +117,10 @@ var FP_FADER_POSITION_MAX = 1023
 // Same host unity setting as IOStation: +6 dB volume range.
 // For Cubase's +12 dB volume range, use 0.748222 instead.
 var FADER_HOST_UNITY = 0.789087
-var FADER_UNITY_TOLERANCE = 1 / 16383
+// A small landing zone makes unity practical to find with the 10-bit fader.
+// A wider exit threshold prevents LED flicker at the edge; volume is not snapped.
+var FADER_UNITY_TOLERANCE = 2 / FP_FADER_POSITION_MAX
+var FADER_UNITY_EXIT_TOLERANCE = 3 / FP_FADER_POSITION_MAX
 
 //-----------------------------------------------------------------------------
 // 3. MIDI OUTPUT HELPERS
@@ -141,6 +144,7 @@ function clearButtonLeds(activeDevice) {
 
 // This is the motor-output format we verified experimentally with full sweeps.
 function sendFaderMotor(activeDevice, normalizedValue) {
+    if (!isFaderEnabled(activeDevice) || faderIsTouched) return
     var value = normalizedValue
 
     if (value < 0) value = 0
@@ -192,7 +196,9 @@ function makeFpButton(switchId, x, y, w, h) {
 // Hardware layout: tall fader at left; six rows of controls at right.
 var mainFader = surface.makeFader(0, 0, 1.5, 11.5).setTypeVertical()
 
-mainFader.mSurfaceValue.mMidiBinding
+// Gate raw MIDI before it reaches the host-bound surface value.
+var rawFaderValue = surface.makeCustomValueVariable('Physical Fader Position')
+rawFaderValue.mMidiBinding
     .setInputPort(midiInput)
     .bindToControlChange14Bit(0, FP_FADER_MSB_CC)
     .setValueRange(0, FP_FADER_INPUT_RAW_MAX)
@@ -207,8 +213,9 @@ faderTouchValue.mMidiBinding
     .bindToNote(0, FP.FADER_TOUCH)
     .setValueRange(0, 1)
 
+var enabledFaderTouch = surface.makeCustomValueVariable('Enabled Fader Touch')
 if (mainFader.mSurfaceValue.mTouchState) {
-    mainFader.mSurfaceValue.mTouchState.bindTo(faderTouchValue)
+    mainFader.mSurfaceValue.mTouchState.bindTo(enabledFaderTouch)
 }
 
 // Track whether a finger is physically on the fader.
@@ -216,8 +223,22 @@ if (mainFader.mSurfaceValue.mTouchState) {
 var faderIsTouched = false
 var lastHostVolume = 0
 
+function isFaderEnabled(activeDevice) {
+    return activeDevice.getState('classic.faderOff') !== '1'
+        && activeDevice.getState('classic.faderWaitRelease') !== '1'
+}
+
+rawFaderValue.mOnProcessValueChange = function(activeDevice, value) {
+    if (!isFaderEnabled(activeDevice)) return
+    mainFader.mSurfaceValue.setProcessValue(activeDevice, value)
+    updateUnityLed(activeDevice, value)
+}
+
 faderTouchValue.mOnProcessValueChange = function(activeDevice, value, diff) {
     faderIsTouched = value > 0
+    if (!faderIsTouched) activeDevice.setState('classic.faderWaitRelease', '')
+    enabledFaderTouch.setProcessValue(activeDevice,
+        isFaderEnabled(activeDevice) && faderIsTouched ? 1 : 0)
 
     // On release, catch the motor up to the latest host value.
     if (!faderIsTouched) {
@@ -334,7 +355,8 @@ btnShift.mSurfaceValue.mOnProcessValueChange = function(activeDevice, value) {
 
 // Physical inputs stay separate from host feedback. Resolve shortcuts only on
 // press so releasing SHIFT before the other button cannot fire its normal action.
-var shortcutStateKeys = ['classic.shift', 'classic.stop', 'classic.rew']
+var shortcutStateKeys = ['classic.shift', 'classic.stop', 'classic.rew', 'classic.unityLed',
+    'classic.faderOff', 'classic.faderWaitRelease']
 var rewindInput = surface.makeCustomValueVariable('Rewind Held')
 
 function resetShortcutState(activeDevice) {
@@ -342,6 +364,8 @@ function resetShortcutState(activeDevice) {
         activeDevice.setState(shortcutStateKeys[i], '')
     }
     rewindInput.setProcessValue(activeDevice, 0)
+    enabledFaderTouch.setProcessValue(activeDevice, 0)
+    faderIsTouched = false
 }
 
 function makeCommandTrigger(name, category, command) {
@@ -395,7 +419,18 @@ routeShortcut(btnMute, 'mute',
     makeHostToggle('Selected Mute State', selectedValues.mMute),
     makeCommandTrigger('Unmute All', 'Edit', 'Unmute All'))
 routeShortcut(btnTouchMode, 'resetVolume', function(activeDevice) {
+    if (!isFaderEnabled(activeDevice)) return
     mainFader.mSurfaceValue.setProcessValue(activeDevice, FADER_HOST_UNITY)
+})
+routeShortcut(btnOff, 'faderOff', function(activeDevice) {
+    var turnOff = activeDevice.getState('classic.faderOff') !== '1'
+    activeDevice.setState('classic.faderOff', turnOff ? '1' : '')
+    // Re-enabling under a finger must not jump Cubase to the parked position.
+    activeDevice.setState('classic.faderWaitRelease', !turnOff && faderIsTouched ? '1' : '')
+    enabledFaderTouch.setProcessValue(activeDevice, 0)
+    sendButtonLed(activeDevice, FP.OFF, turnOff)
+    updateUnityLed(activeDevice, lastHostVolume)
+    if (!turnOff) sendFaderMotor(activeDevice, lastHostVolume)
 })
 
 var stopCommand = makeCommandTrigger('Stop', 'Transport', 'Stop')
@@ -426,6 +461,21 @@ btnRew.mSurfaceValue.mOnProcessValueChange = function(activeDevice, value) {
 
 // ----- Selected-track volume / motor fader ----------------------------------
 
+function updateUnityLed(activeDevice, value) {
+    var wasLit = activeDevice.getState('classic.unityLed') === '1'
+    var tolerance = wasLit ? FADER_UNITY_EXIT_TOLERANCE : FADER_UNITY_TOLERANCE
+    var lit = activeDevice.getState('classic.faderOff') !== '1'
+        && Math.abs(value - FADER_HOST_UNITY) <= tolerance
+    activeDevice.setState('classic.unityLed', lit ? '1' : '')
+    sendButtonLed(activeDevice, FP.TOUCH_MODE, lit)
+}
+
+// Surface changes arrive during a physical drag, even when host feedback waits
+// for touch release. LED feedback must not wait for motor feedback.
+mainFader.mSurfaceValue.mOnProcessValueChange = function(activeDevice, value) {
+    updateUnityLed(activeDevice, value)
+}
+
 page.makeValueBinding(
     mainFader.mSurfaceValue,
     selectedValues.mVolume
@@ -439,20 +489,16 @@ selectedValues.mVolume.mOnProcessValueChange = function(
     value
 ) {
     lastHostVolume = value
-    // Only unity lights TOUCH. Keep the tolerance narrow like IOStation;
-    // the Classic's coarser physical fader steps must not widen this to near 0 dB.
-    sendButtonLed(activeDevice, FP.TOUCH_MODE,
-        Math.abs(value - FADER_HOST_UNITY) <= FADER_UNITY_TOLERANCE)
-
     // Do not fight the user's finger.
     if (!faderIsTouched) {
+        updateUnityLed(activeDevice, value)
         sendFaderMotor(activeDevice, value)
     }
 }
 
 // ----- Physical touch -------------------------------------------------------
 //
-// mainFader.mSurfaceValue.mTouchState.bindTo(faderTouchValue)
+// mainFader.mSurfaceValue.mTouchState.bindTo(enabledFaderTouch)
 // above gives Cubase actual touch-sensitive automation behavior.
 
 // ----- Pan knob -------------------------------------------------------------
@@ -522,7 +568,6 @@ page.makeValueBinding(
 //     btnMix           // A0 0B
 //     btnProject       // A0 0C
 //     btnTransport     // A0 0D
-//     btnOff           // A0 17
 //     btnBank          // A0 14
 //     btnOutput        // A0 16
 //

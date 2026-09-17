@@ -175,3 +175,69 @@ assert(t.midi.every(bytes => bytes[0] !== 0xB0), 'Reset must not fight a held fa
 ctx.faderTouchValue.mOnProcessValueChange(d, 0)
 assert.strictEqual(t.midi.filter(bytes => bytes[0] === 0xB0).length, 2)
 console.log('PASS: PLAY toggle, TOUCH unity reset/LED, off at min/max, motor touch protection')
+
+// Drag feedback must work before any host callback or capacitive release.
+ctx.faderTouchValue.mOnProcessValueChange(d, 1)
+const nearestUnity = Math.round(ctx.FADER_HOST_UNITY * 1023) / 1023
+for (const [position, lit] of [
+    [nearestUnity - 4 / 1023, 0], [nearestUnity, 1],
+    [nearestUnity + 1 / 1023, 1], [nearestUnity + 4 / 1023, 0], [0, 0], [1, 0]
+]) {
+    t.midi.length = 0
+    ctx.mainFader.mSurfaceValue.mOnProcessValueChange(d, position)
+    assert.deepStrictEqual(t.midi, [[0xA0, 0x0F, lit]])
+    ctx.selectedValues.mVolume.mOnProcessValueChange(d, {}, 0.25)
+    assert.deepStrictEqual(t.midi, [[0xA0, 0x0F, lit]], 'Deferred host state must not override drag LED')
+}
+ctx.faderTouchValue.mOnProcessValueChange(d, 0)
+t.midi.length = 0
+ctx.selectedValues.mVolume.mOnProcessValueChange(d, {}, nearestUnity)
+assert.deepStrictEqual(t.midi[0], [0xA0, 0x0F, 1])
+console.log('PASS: live drag unity indication at 10-bit resolution, stale host suppression, host feedback after release')
+
+// Enter near unity; small movements at the boundary must not flicker.
+ctx.updateUnityLed(d, 0)
+for (const [steps, lit] of [[2.5, 0], [1.9, 1], [2.5, 1], [3.1, 0], [-1.9, 1], [-2.5, 1], [-3.1, 0]]) {
+    t.midi.length = 0
+    ctx.updateUnityLed(d, ctx.FADER_HOST_UNITY + steps / 1023)
+    assert.deepStrictEqual(t.midi, [[0xA0, 0x0F, lit]])
+}
+assert.strictEqual(ctx.selectedValues.mVolume.getProcessValue(d), ctx.FADER_HOST_UNITY,
+    'Indicator changes must not alter the reset volume')
+console.log('PASS: forgiving unity landing zone and hysteresis on both sides')
+
+const off = load()
+const c = off.ctx, od = off.d
+c.rawFaderValue.mOnProcessValueChange(od, 0.6)
+assert.strictEqual(c.selectedValues.mVolume.getProcessValue(od), 0.6)
+c.faderTouchValue.mOnProcessValueChange(od, 1)
+assert.strictEqual(c.enabledFaderTouch.getProcessValue(od), 1)
+off.tap('btnOff')
+assert.strictEqual(c.enabledFaderTouch.getProcessValue(od), 0)
+assert(off.midi.some(msg => msg.join() === '160,16,1'), 'OFF LED must light')
+off.midi.length = 0
+c.rawFaderValue.mOnProcessValueChange(od, 0.2)
+off.tap('btnTouchMode')
+assert.strictEqual(c.selectedValues.mVolume.getProcessValue(od), 0.6, 'OFF blocks movement and unity reset')
+c.selectedValues.mVolume.mOnProcessValueChange(od, {}, 0.8)
+c.faderTouchValue.mOnProcessValueChange(od, 0)
+assert(off.midi.every(msg => msg[0] !== 0xB0), 'OFF blocks motor including release')
+c.selectedValues.mVolume.mOnProcessValueChange(od, {}, c.FADER_HOST_UNITY)
+assert.deepStrictEqual(off.midi.slice(-1)[0], [0xA0, 0x0F, 0])
+c.faderTouchValue.mOnProcessValueChange(od, 1)
+off.tap('btnOff')
+off.midi.length = 0
+c.rawFaderValue.mOnProcessValueChange(od, 0.1)
+assert.strictEqual(c.selectedValues.mVolume.getProcessValue(od), 0.6)
+assert.strictEqual(c.enabledFaderTouch.getProcessValue(od), 0)
+assert.strictEqual(off.midi.length, 0)
+c.faderTouchValue.mOnProcessValueChange(od, 0)
+const target = Math.round(c.FADER_HOST_UNITY * 1023)
+assert.deepStrictEqual(off.midi.slice(-2), [[0xB0, 0, target >> 7], [0xB0, 0x20, target & 127]])
+c.rawFaderValue.mOnProcessValueChange(od, 0.7)
+assert.strictEqual(c.selectedValues.mVolume.getProcessValue(od), 0.7)
+off.tap('btnOff')
+off.driver.mOnDeactivate(od)
+off.driver.mOnActivate(od)
+assert.strictEqual(c.isFaderEnabled(od), true)
+console.log('PASS: OFF gates input, touch automation, reset and motor; safe re-enable and lifecycle reset')
