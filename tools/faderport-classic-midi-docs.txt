@@ -91,7 +91,7 @@ SWITCH CODES
 #define OUTPUT_SWITCH     0x16
 #define OFF_SWITCH        0x17
 
-#define NATIVE_FOOTSWITCH_MSG 126     // 0x7E; not a front-panel LED
+#define NATIVE_FOOTSWITCH_MSG 126     // 0x7E; back-panel footswitch
 
 LED CODES
 ==============================
