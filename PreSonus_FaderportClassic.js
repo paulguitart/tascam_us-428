@@ -654,7 +654,11 @@ routeShortcut(btnTransport, 'resetKnob', function(activeDevice) {
         if (activeDevice.getState('classic.mouseLockAt') !== '' || saved === '') return
         if (activeDevice.getState('classic.mouseFader') === '1') {
             if (!isFaderEnabled(activeDevice)) return
-            mainFader.mSurfaceValue.setProcessValue(activeDevice, Number(saved))
+            // Restore through the mouse binding, independently of the physical
+            // fader's touch/surface state. Do not wait for another host callback
+            // to position the motor (sendFaderMotor still protects held touch).
+            mouseFaderFeedback.setProcessValue(activeDevice, Number(saved))
+            updateFaderHostVolume(activeDevice, Number(saved))
         } else {
             panKnob.mSurfaceValue.setProcessValue(activeDevice, Number(saved))
         }

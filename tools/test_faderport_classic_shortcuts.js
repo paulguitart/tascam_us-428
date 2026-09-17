@@ -631,3 +631,20 @@ for (const initial of [0.28, 0, 1]) {
     assert.strictEqual(brd.getState('classic.mouseSavedValue'), '')
 }
 console.log('PASS: BANK TRNS restores fresh snapshots through fader, protects held motor, isolates track/pan, preserves TOUCH and SHIFT+TRNS')
+
+const directReset = load(), dr = directReset.ctx, drd = directReset.d
+const drHost = directReset.page.mHostAccess.mMouseCursor.mValueUnderMouse
+dr.mouseFaderFeedback.receiveHostValue(drd, 0.35)
+directReset.tap('btnBank'); directReset.idle()
+dr.rawFaderValue.mOnProcessValueChange(drd, 0.8)
+dr.mouseFaderFeedback.receiveHostValue(drd, 0.8)
+// A software restore must not depend on forwarding a physical-surface write.
+dr.mainFader.mSurfaceValue.setProcessValue = () => { throw new Error('Unexpected physical fader write') }
+directReset.midi.length = 0
+directReset.tap('btnTransport')
+assert.strictEqual(drHost.getProcessValue(drd), 0.35)
+const restoredPosition = Math.round(0.35 * 1023)
+assert.deepStrictEqual(directReset.midi.slice(-2),
+    [[0xB0, 0, restoredPosition >> 7], [0xB0, 0x20, restoredPosition & 127]])
+assert.strictEqual(dr.lastHostVolume, 0.35, 'Restore updates motor target without a host callback')
+console.log('PASS: BANK restore writes mouse binding directly and updates motor without waiting for host feedback')
