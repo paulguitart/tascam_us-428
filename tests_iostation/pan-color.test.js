@@ -2,7 +2,7 @@ const assert=require('node:assert/strict'), fs=require('fs'), vm=require('vm');
 const source=fs.readFileSync(require('path').join(__dirname,'..','PreSonus_IOStation.js'),'utf8');
 const leds=[], writes=[], bindings=[];
 let pan=.5;
-const scope={ENABLE_PAN_COLOR:true,WHITE:[127,127,127],BLUE:[0,0,127],MAGENTA:[127,0,127],cPan:42,
+const scope={isMouseLinkMode: mode=>mode==="Mouse"||mode==="MouseFader",ENABLE_PAN_COLOR:true,WHITE:[127,127,127],BLUE:[0,0,127],MAGENTA:[127,0,127],cPan:42,
  setRGBLED_color:(_,note,color)=>leds.push(Array.from(color)),onLED(){},
  surface:{makeCustomValueVariable:()=>({getProcessValue:()=>pan,setProcessValue:(_,v)=>{pan=v;writes.push(v);}})},
  page:{mHostAccess:{mTrackSelection:{mMixerChannel:{mValue:{mPan:{}}}}},makeValueBinding:(...args)=>bindings.push(args)},

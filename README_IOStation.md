@@ -36,7 +36,7 @@ LED feedback follows Cubase transport state independently of physical button pre
 - SHIFT does not change the fader assignment. Shifted Prev/Next retain Undo/Redo. PREV/NEXT LEDs stay on while their physical buttons are held and turn off on release, in every mode and SHIFT layer.
 - Encoder rotation uses the knob modes below. Encoder push centers pan in Pan mode, resets the first send to 0 dB in SHIFT + Pan mode, Cubase's metronome in Click mode, resets high-pass cutoff to minimum in Channel mode, toggles Main Mix insert bypass in Master mode, and inserts a marker in Marker mode.
 
-With SHIFT off, TOUCH resets the current fader target: selected-track or Stereo Out volume goes to 0 dB using `FADER_HOST_UNITY`; metronome level goes to maximum. TOUCH lights red at maximum, amber at minimum, and white at 0 dB (`FADER_HOST_UNITY`) for channel/output volume; otherwise it is off. Detection allows one 14-bit MIDI step of tolerance. Metronome maximum is red, including after a TOUCH reset; it has no white 0 dB indication. It follows host edits and track changes. Scroll, Section, and Marker retain the preceding fader target, so TOUCH retains that target too. SHIFT + TOUCH remains unassigned. Motor movement follows the existing touch protection.
+Outside LINK modes, with SHIFT off, TOUCH resets the current fader target: selected-track or Stereo Out volume goes to 0 dB using `FADER_HOST_UNITY`; metronome level goes to maximum. TOUCH lights red at maximum, amber at minimum, and white at 0 dB (`FADER_HOST_UNITY`) for channel/output volume; otherwise it is off. Detection allows one 14-bit MIDI step of tolerance. Metronome maximum is red, including after a TOUCH reset; it has no white 0 dB indication. It follows host edits and track changes. Scroll, Section, and Marker retain the preceding fader target, so TOUCH retains that target too. SHIFT + TOUCH remains unassigned outside LINK modes. In both LINK modes, TOUCH captures the mouse parameter and shows green for locked/clean or magenta for locked/dirty. Motor movement follows the existing touch protection.
 
 ## Fader nudging
 
@@ -52,7 +52,8 @@ Pan is selected when the Hardware page activates. Pan, Link and Channel assign s
 
 | Button path | Knob assignment |
 |---|---|
-| Link | Mouse Parameter; encoder push locks; BYPASS toggles lock; fader controls selected-track volume |
+| Link | Mouse parameter on knob; push restores captured starting value; BYPASS disables/enables parameter controls; fader controls selected-track volume |
+| SHIFT + Link | Mouse parameter on fader; knob rotation disabled; knob push restores captured starting value; TOUCH captures and locks the parameter; BYPASS disables/enables parameter controls |
 | SHIFT + Pan | Selected-track send 1 level; encoder push resets to 0 dB; BYPASS toggles send on/off; fader controls selected-track volume |
 | Pan | Selected-track pan; encoder push centers pan; BYPASS toggles send 1 on/off |
 | Scroll or SHIFT + Scroll (Zoom) | Horizontal zoom using the Korg position-comparison pattern; knob push zooms to locators; fader retains its previous target; Prev/Next set left/right locators |
@@ -96,7 +97,7 @@ Press SHIFT once to enable the secondary paths and again to return to normal. Th
 | Solo / Mute / Arm | SoloClear / MuteClear / ArmAll |
 | Bypass / Touch / Write / Read | BypassAll / Latch / Trim / Off |
 | Prev / Next | Undo / Redo |
-| Link / Pan / Channel / Scroll | Mouse Parameter / Send 1 / Pre Gain / Zoom |
+| Link / Pan / Channel / Scroll | Mouse Fader / Send 1 / Pre Gain / Zoom |
 | Master / Click / Section / Marker | Same modes as without SHIFT |
 
 Assign future commands to unused non-mode paths such as `buttons.Trim`. These are logical surface values that receive press/release events. Solo, Mute, Arm, Write, Read, Prev, Next, Undo and Redo have Cubase assignments; Link, Pan, Scroll, Zoom, Master, Click, Channel, Section and Marker select knob modes. Encoder push centers pan in Pan mode, resets the first send to 0 dB in SHIFT + Pan mode, toggles the metronome in Click mode, resets cutoff to minimum in Channel mode, toggles Main Mix insert bypass in Master mode, and inserts a marker in Marker mode. SHIFT + Solo runs `Edit > Deactivate All Solo`; SHIFT + Mute runs `Edit > Unmute All`. SHIFT + Arm alternates `Mixer > Arm All Audio Tracks` and `Mixer > Disarm All Audio Tracks`, following Werner�s selected-track arm feedback: an armed selected track sets the next action to Disarm All, and an unarmed one sets it to Arm All. This targets audio tracks and does not inspect the arm state of every track. Other named paths remain unassigned. The printed Lock, Flip and F1-F4 labels do not have separate actions. The visible physical controls retain their original layout and primary labels.
@@ -189,10 +190,16 @@ PLAY uses the working `hostTransport.mStart` value binding. Its LED follows Cuba
 
 SHIFT + Channel selects selected-track pre-gain on the knob. The fader remains selected-track volume, and navigation follows the existing SHIFT layer. Channel is white at 0 dB, blending continuously toward blue below zero and red above zero, reaching full color at the gain range endpoints. Knob push resets pre-gain to 0 dB. BYPASS toggles polarity inversion, with its LED on when inverted; this works with SHIFT on or off in Pre Gain mode. Host edits and track selection update both LEDs. While either Channel mode is active, pressing CHANNEL toggles High Pass ↔ Pre Gain, and pressing SHIFT switches immediately to the matching mode. SHIFT is off for High Pass and on for Pre Gain, including when restored through another button’s mode history. Channel uses this two-mode toggle instead of previous-mode recall. Other modes retain their existing SHIFT behavior.
 
-## Mouse Parameter Link mode
+## Mouse Parameter Link modes
 
-Link enters Mouse Parameter mode with either SHIFT state. Pressing Link again recalls the previous mode. SHIFT + Pan selects Send 1; pressing SHIFT while Pan or Send 1 is active switches immediately between them. SHIFT is off for Pan and on for Send 1, including history recall. Mouse Parameter shows a steady blue Link LED; Send 1 shows a blue Pan LED. The knob adjusts Cubase’s supported parameter under the mouse; the fader remains selected-track volume.
+LINK assigns Cubase's supported mouse parameter to the knob and keeps the fader on selected-track volume. SHIFT + LINK assigns that same parameter to the fader and disables knob rotation. Pressing SHIFT while either LINK mode is active switches immediately between them, preserving the locked target and its captured starting value. LINK is blue for knob control and magenta for fader control; SHIFT lights in fader mode.
 
-Knob push enables Cubase’s mouse-parameter lock; pressing again leaves it locked. BYPASS toggles lock on/off, with SHIFT on or off. BYPASS lights steadily when locked. A locked target remains controlled after the mouse moves away. The script keeps the lock binding active and does not clear it when leaving or returning to the mode. Persistence across project changes or script reloads is controlled by Cubase, not saved by this script. Unlock to follow the mouse again. No reset or flashing lock indication is assigned.
+Entering LINK starts unlocked, with parameter controls inactive and TOUCH unlit. Hover over a supported Cubase or plug-in parameter and press TOUCH to capture it. After approximately 100 ms for the binding to settle, the script locks the target and stores its starting value. Press TOUCH again to capture a new target under the mouse. TOUCH performs no 0 dB reset in either LINK mode.
 
-Entering Pan, Scroll/Zoom, Master, Click, Section, or Marker clears the SHIFT layer and its LED. Pressing that active mode button again recalls the previous mode; if that was Pre Gain or Mouse Parameter, SHIFT and its LED come back on automatically.
+TOUCH is green while the locked parameter matches its saved starting value and magenta when it differs by more than one 14-bit MIDI step. Feedback follows hardware edits and Cubase edits, including while bypassed. Knob press restores the starting value in either LINK mode, once per press, returning TOUCH to green. Moving back to the saved value manually also clears the dirty indication.
+
+BYPASS disables/enables parameter editing without releasing the lock or changing the stored starting value. While bypassed, parameter knob/fader input, knob-press restore, touch automation for the parameter, and mouse-fader motor movement are disabled; TOUCH continues displaying clean/dirty status and can capture a new target. BYPASS LED on means parameter controls are enabled; off means bypassed or not yet locked. Switching SHIFT preserves bypass, lock and the saved value. Normal LINK's track-volume fader remains available.
+
+The mouse fader uses the full normalized parameter range without volume calibration or bottom snapping. Motor feedback follows the parameter and waits while the fader is touched. Switching into or out of fader LINK while holding the fader blocks input and touch automation until release. Leaving LINK clears its lock and capture; Scroll, Section and Marker restore track volume when leaving mouse-fader control.
+
+SHIFT + PAN remains Send 1, with its blue PAN LED. Mode history restores SHIFT for Send 1, Pre Gain and Mouse Fader, and clears it for normal modes. Saved LINK values are temporary and are cleared on exit or reload.
