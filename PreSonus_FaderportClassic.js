@@ -229,6 +229,8 @@ var lastHostVolume = 0
 function isFaderEnabled(activeDevice) {
     return activeDevice.getState('classic.faderOff') !== '1'
         && activeDevice.getState('classic.faderWaitRelease') !== '1'
+        && !(activeDevice.getState('classic.mouseFader') === '1'
+            && activeDevice.getState('classic.mouseLockAt') !== '')
 }
 
 rawFaderValue.mOnProcessValueChange = function(activeDevice, value) {
@@ -339,6 +341,7 @@ var stereoOut = outputZone.makeMixerBankChannel()
 var faderTargetArea = page.makeSubPageArea('Fader Target')
 var trackFaderMode = faderTargetArea.makeSubPage('Selected Track')
 var outputFaderMode = faderTargetArea.makeSubPage('Stereo Out')
+var mouseFaderMode = faderTargetArea.makeSubPage('Mouse Parameter')
 var knobTargetArea = page.makeSubPageArea('Knob Target')
 var panKnobMode = knobTargetArea.makeSubPage('Pan')
 var sendKnobMode = knobTargetArea.makeSubPage('Send 1')
@@ -357,10 +360,30 @@ sendKnobMode.mOnActivate = function(activeDevice) {
     sendButtonLed(activeDevice, FP.MIX, true)
 }
 function leaveMouseKnobMode(activeDevice) {
+    if (activeDevice.getState('classic.mouseFader') === '1') return
     activeDevice.setState('classic.mouseMode', '')
     activeDevice.setState('classic.mouseLockAt', '')
     mouseLockValue.setProcessValue(activeDevice, 0)
     sendButtonLed(activeDevice, FP.PROJECT, false)
+}
+function leaveMouseFaderMode(activeDevice) {
+    if (activeDevice.getState('classic.mouseFader') !== '1') return
+    activeDevice.setState('classic.mouseFader', '')
+    activeDevice.setState('classic.mouseLockAt', '')
+    mouseLockValue.setProcessValue(activeDevice, 0)
+    sendButtonLed(activeDevice, FP.BANK, false)
+}
+mouseFaderMode.mOnActivate = function(activeDevice) {
+    activeDevice.setState('classic.mouseFader', '1')
+    activeDevice.setState('classic.output', '')
+    activeDevice.setState('classic.faderOff', '')
+    activeDevice.setState('classic.faderWaitRelease', faderIsTouched ? '1' : '')
+    enabledFaderTouch.setProcessValue(activeDevice, 0)
+    mouseLockValue.setProcessValue(activeDevice, 0)
+    activeDevice.setState('classic.mouseLockAt', String(Date.now() + 100))
+    sendButtonLed(activeDevice, FP.OUTPUT, false)
+    sendButtonLed(activeDevice, FP.OFF, false)
+    sendButtonLed(activeDevice, FP.BANK, true)
 }
 mouseKnobMode.mOnActivate = function(activeDevice) {
     activeDevice.setState('classic.mouseMode', '1')
@@ -376,10 +399,14 @@ deviceDriver.mOnIdle = function(activeDevice) {
     var lockAt = activeDevice.getState('classic.mouseLockAt')
     if (lockAt === '' || Date.now() < Number(lockAt)) return
     activeDevice.setState('classic.mouseLockAt', '')
-    if (activeDevice.getState('classic.mouseMode') !== '1'
+    if ((activeDevice.getState('classic.mouseMode') !== '1'
+            && activeDevice.getState('classic.mouseFader') !== '1')
             || !getFaderTargetMapping(activeDevice)) return
     // Same sustained value write as IOStation's mouse-mode knob press.
     mouseLockValue.setProcessValue(activeDevice, 1)
+    if (activeDevice.getState('classic.mouseFader') === '1') {
+        updateFaderHostVolume(activeDevice, mainFader.mSurfaceValue.getProcessValue(activeDevice))
+    }
 }
 var trackVolumeFeedback = surface.makeCustomValueVariable('Track Volume Feedback')
 var outputVolumeFeedback = surface.makeCustomValueVariable('Output Volume Feedback')
@@ -395,13 +422,14 @@ function getFaderTargetMapping(activeDevice) {
 }
 
 function activateFaderTarget(activeDevice, output) {
+    leaveMouseFaderMode(activeDevice)
     enabledFaderTouch.setProcessValue(activeDevice, 0)
     activeDevice.setState('classic.output', output ? '1' : '')
-    activeDevice.setState('classic.faderOff', '')
+    activeDevice.setState('classic.faderOff', activeDevice.getState('classic.exitMouseOff'))
     activeDevice.setState('classic.faderWaitRelease', faderIsTouched ? '1' : '')
     lastHostVolume = (output ? outputVolumeFeedback : trackVolumeFeedback).getProcessValue(activeDevice)
     sendButtonLed(activeDevice, FP.OUTPUT, output)
-    sendButtonLed(activeDevice, FP.OFF, false)
+    sendButtonLed(activeDevice, FP.OFF, activeDevice.getState('classic.faderOff') === '1')
     updateUnityLed(activeDevice, lastHostVolume)
     sendFaderMotor(activeDevice, lastHostVolume)
 }
@@ -418,6 +446,7 @@ page.mOnActivate = function(activeDevice, activeMapping) {
     panKnobMode.mAction.mActivate.trigger(activeMapping)
 }
 page.mOnDeactivate = function(activeDevice) {
+    leaveMouseFaderMode(activeDevice)
     leaveMouseKnobMode(activeDevice)
     var key = activeDevice.getState('classic.mappingIndex')
     if (key !== '') faderTargetMappings[Number(key)] = null
@@ -453,7 +482,8 @@ btnShift.mSurfaceValue.mOnProcessValueChange = function(activeDevice, value) {
 // press so releasing SHIFT before the other button cannot fire its normal action.
 var shortcutStateKeys = ['classic.shift', 'classic.stop', 'classic.rew', 'classic.unityLed',
     'classic.faderOff', 'classic.faderWaitRelease', 'classic.output', 'classic.sendMode',
-    'classic.mouseMode', 'classic.mouseReturnSend', 'classic.mouseLockAt']
+    'classic.mouseMode', 'classic.mouseReturnSend', 'classic.mouseLockAt',
+    'classic.mouseFader', 'classic.exitMouseOff']
 var rewindInput = surface.makeCustomValueVariable('Rewind Held')
 
 function resetShortcutState(activeDevice) {
@@ -545,6 +575,11 @@ routeShortcut(btnTouchMode, 'resetVolume', function(activeDevice) {
 })
 routeShortcut(btnOff, 'faderOff', function(activeDevice) {
     var turnOff = activeDevice.getState('classic.faderOff') !== '1'
+    if (activeDevice.getState('classic.mouseFader') === '1') {
+        activeDevice.setState('classic.exitMouseOff', '1')
+        trackFaderMode.mAction.mActivate.trigger(getFaderTargetMapping(activeDevice))
+        activeDevice.setState('classic.exitMouseOff', '')
+    }
     activeDevice.setState('classic.faderOff', turnOff ? '1' : '')
     // Re-enabling under a finger must not jump Cubase to the parked position.
     activeDevice.setState('classic.faderWaitRelease', !turnOff && faderIsTouched ? '1' : '')
@@ -572,9 +607,25 @@ routeShortcut(btnMix, 'mix', function(activeDevice) {
     var target = activeDevice.getState('classic.sendMode') === '1' ? panKnobMode : sendKnobMode
     target.mAction.mActivate.trigger(activeMapping)
 })
+routeShortcut(btnBank, 'mouseFader', function(activeDevice) {
+    var activeMapping = getFaderTargetMapping(activeDevice)
+    if (!activeMapping) return
+    if (activeDevice.getState('classic.mouseFader') === '1') {
+        trackFaderMode.mAction.mActivate.trigger(activeMapping)
+        return
+    }
+    if (activeDevice.getState('classic.mouseMode') === '1') {
+        var previous = activeDevice.getState('classic.mouseReturnSend') === '1' ? sendKnobMode : panKnobMode
+        previous.mAction.mActivate.trigger(activeMapping)
+    }
+    mouseFaderMode.mAction.mActivate.trigger(activeMapping)
+})
 routeShortcut(btnProject, 'mouseMode', function(activeDevice) {
     var activeMapping = getFaderTargetMapping(activeDevice)
     if (!activeMapping) return
+    if (activeDevice.getState('classic.mouseFader') === '1') {
+        trackFaderMode.mAction.mActivate.trigger(activeMapping)
+    }
     if (activeDevice.getState('classic.mouseMode') === '1') {
         var previous = activeDevice.getState('classic.mouseReturnSend') === '1' ? sendKnobMode : panKnobMode
         previous.mAction.mActivate.trigger(activeMapping)
@@ -644,6 +695,13 @@ page.makeValueBinding(
 page.makeValueBinding(mainFader.mSurfaceValue, stereoOut.mValue.mVolume)
     .setValueTakeOverModeJump()
     .setSubPage(outputFaderMode)
+page.makeValueBinding(mainFader.mSurfaceValue, page.mHostAccess.mMouseCursor.mValueUnderMouse)
+    .setValueTakeOverModeJump()
+    .setSubPage(mouseFaderMode)
+page.mHostAccess.mMouseCursor.mValueUnderMouse.mOnProcessValueChange = function(activeDevice, activeMapping, value) {
+    if (activeDevice.getState('classic.mouseFader') !== '1') return
+    updateFaderHostVolume(activeDevice, value)
+}
 
 // Manual motor feedback is necessary because the Classic's host->motor packet
 // format is NOT the same as its fader->host 14-bit CC encoding.
@@ -652,7 +710,8 @@ selectedValues.mVolume.mOnProcessValueChange = function(
     activeMapping,
     value
 ) {
-    if (activeDevice.getState('classic.output') === '1') return
+    if (activeDevice.getState('classic.output') === '1'
+            || activeDevice.getState('classic.mouseFader') === '1') return
     updateFaderHostVolume(activeDevice, value)
 }
 
@@ -738,12 +797,11 @@ page.makeValueBinding(
 ).setTypeToggle()
 
 //-----------------------------------------------------------------------------
-// 7. UNASSIGNED / NEXT-PASS CONTROLS
+// 7. CONTROL SUMMARY
 //-----------------------------------------------------------------------------
 //
-// These are ALREADY fully recognized by the surface and ready to map:
-//
-//     btnBank          // A0 14
+// BANK locks the mouse parameter to the fader; press again for selected track.
+// BANK and PROJ are exclusive. OFF/OUTPUT exit BANK; TOUCH retains unity reset.
 //
 // Shortcuts: PUNCH/USER = previous/next marker; held SHIFT + UNDO = Redo,
 // SHIFT + PUNCH/USER = previous/next cycle marker (wraps 1..9, as in IOStation).
