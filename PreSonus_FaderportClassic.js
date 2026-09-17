@@ -114,6 +114,11 @@ var FP_FADER_LSB_CC = 0x20
 var FP_FADER_INPUT_RAW_MAX = 16368
 var FP_FADER_POSITION_MAX = 1023
 
+// Same host unity setting as IOStation: +6 dB volume range.
+// For Cubase's +12 dB volume range, use 0.748222 instead.
+var FADER_HOST_UNITY = 0.789087
+var FADER_UNITY_TOLERANCE = 1 / 16383
+
 //-----------------------------------------------------------------------------
 // 3. MIDI OUTPUT HELPERS
 //-----------------------------------------------------------------------------
@@ -152,11 +157,13 @@ function sendFaderMotor(activeDevice, normalizedValue) {
 
 // Enter Native Mode whenever Cubase activates the device.
 deviceDriver.mOnActivate = function(activeDevice) {
+    resetShortcutState(activeDevice)
     sendNativeMode(activeDevice)
     clearButtonLeds(activeDevice)
 }
 
 deviceDriver.mOnDeactivate = function(activeDevice) {
+    resetShortcutState(activeDevice)
     clearButtonLeds(activeDevice)
 }
 
@@ -319,9 +326,102 @@ followHostLed(FP.TRACK_REC, selectedValues.mRecordEnable)
 followHostLed(FP.READ, selectedValues.mAutomationRead)
 followHostLed(FP.WRITE, selectedValues.mAutomationWrite)
 
-// SHIFT has no host mapping yet; show its physical held state.
+// SHIFT is a held modifier, never a latch or a host command.
 btnShift.mSurfaceValue.mOnProcessValueChange = function(activeDevice, value) {
+    activeDevice.setState('classic.shift', value > 0 ? '1' : '')
     sendButtonLed(activeDevice, FP.SHIFT, value > 0)
+}
+
+// Physical inputs stay separate from host feedback. Resolve shortcuts only on
+// press so releasing SHIFT before the other button cannot fire its normal action.
+var shortcutStateKeys = ['classic.shift', 'classic.stop', 'classic.rew']
+var rewindInput = surface.makeCustomValueVariable('Rewind Held')
+
+function resetShortcutState(activeDevice) {
+    for (var i = 0; i < shortcutStateKeys.length; ++i) {
+        activeDevice.setState(shortcutStateKeys[i], '')
+    }
+    rewindInput.setProcessValue(activeDevice, 0)
+}
+
+function makeCommandTrigger(name, category, command) {
+    var input = surface.makeCustomValueVariable(name)
+    page.makeCommandBinding(input, category, command).filterByValue(1)
+    return function(activeDevice) {
+        input.setProcessValue(activeDevice, 1)
+        input.setProcessValue(activeDevice, 0)
+    }
+}
+
+function makeHostToggle(name, hostValue) {
+    var value = surface.makeCustomValueVariable(name)
+    page.makeValueBinding(value, hostValue)
+    return function(activeDevice) {
+        value.setProcessValue(activeDevice, value.getProcessValue(activeDevice) > 0 ? 0 : 1)
+    }
+}
+
+function routeShortcut(button, name, normalAction, shiftedAction) {
+    var stateKey = 'classic.held.' + name
+    shortcutStateKeys.push(stateKey)
+    button.mSurfaceValue.mOnProcessValueChange = function(activeDevice, value) {
+        if (value <= 0) {
+            activeDevice.setState(stateKey, '')
+            return
+        }
+        if (activeDevice.getState(stateKey) === '1') return
+        activeDevice.setState(stateKey, '1')
+        var shifted = activeDevice.getState('classic.shift') === '1'
+        var action = shifted && shiftedAction ? shiftedAction : normalAction
+        action(activeDevice)
+    }
+}
+
+routeShortcut(btnUndo, 'undo',
+    makeCommandTrigger('Undo', 'Edit', 'Undo'),
+    makeCommandTrigger('Redo', 'Edit', 'Redo'))
+routeShortcut(btnPunch, 'previousMarker',
+    makeCommandTrigger('Previous Marker', 'Transport', 'Locate Previous Marker'))
+routeShortcut(btnUser, 'nextMarker',
+    makeCommandTrigger('Next Marker', 'Transport', 'Locate Next Marker'))
+routeShortcut(btnLoop, 'loop',
+    makeHostToggle('Cycle State', transportValues.mCycleActive),
+    makeCommandTrigger('Insert Marker',
+        mainFader.mSurfaceValue.mTouchState ? 'Marker' : 'Transport', 'Insert Marker'))
+routeShortcut(btnSolo, 'solo',
+    makeHostToggle('Selected Solo State', selectedValues.mSolo),
+    makeCommandTrigger('Clear All Solos', 'Edit', 'Deactivate All Solo'))
+routeShortcut(btnMute, 'mute',
+    makeHostToggle('Selected Mute State', selectedValues.mMute),
+    makeCommandTrigger('Unmute All', 'Edit', 'Unmute All'))
+routeShortcut(btnTouchMode, 'resetVolume', function(activeDevice) {
+    mainFader.mSurfaceValue.setProcessValue(activeDevice, FADER_HOST_UNITY)
+})
+
+var stopCommand = makeCommandTrigger('Stop', 'Transport', 'Stop')
+var returnToZero = makeCommandTrigger('Return to Zero', 'Transport', 'Return to Zero')
+btnStop.mSurfaceValue.mOnProcessValueChange = function(activeDevice, value) {
+    if (value > 0) {
+        if (activeDevice.getState('classic.stop') === '1') return
+        activeDevice.setState('classic.stop', '1')
+        stopCommand(activeDevice)
+    } else {
+        activeDevice.setState('classic.stop', '')
+    }
+}
+btnRew.mSurfaceValue.mOnProcessValueChange = function(activeDevice, value) {
+    if (value > 0) {
+        if (activeDevice.getState('classic.rew') === '1') return
+        activeDevice.setState('classic.rew', '1')
+        if (activeDevice.getState('classic.stop') === '1') {
+            returnToZero(activeDevice)
+        } else {
+            rewindInput.setProcessValue(activeDevice, 1)
+        }
+    } else {
+        activeDevice.setState('classic.rew', '')
+        rewindInput.setProcessValue(activeDevice, 0)
+    }
 }
 
 // ----- Selected-track volume / motor fader ----------------------------------
@@ -339,6 +439,10 @@ selectedValues.mVolume.mOnProcessValueChange = function(
     value
 ) {
     lastHostVolume = value
+    // Only unity lights TOUCH. Keep the tolerance narrow like IOStation;
+    // the Classic's coarser physical fader steps must not widen this to near 0 dB.
+    sendButtonLed(activeDevice, FP.TOUCH_MODE,
+        Math.abs(value - FADER_HOST_UNITY) <= FADER_UNITY_TOLERANCE)
 
     // Do not fight the user's finger.
     if (!faderIsTouched) {
@@ -361,7 +465,7 @@ page.makeValueBinding(
 // ----- Transport ------------------------------------------------------------
 
 page.makeValueBinding(
-    btnRew.mSurfaceValue,
+    rewindInput,
     transportValues.mRewind
 )
 
@@ -371,24 +475,14 @@ page.makeValueBinding(
 )
 
 page.makeValueBinding(
-    btnStop.mSurfaceValue,
-    transportValues.mStop
-)
-
-page.makeValueBinding(
     btnPlay.mSurfaceValue,
     transportValues.mStart
-)
+).setTypeToggle()
 
 page.makeValueBinding(
     btnRecord.mSurfaceValue,
     transportValues.mRecord
 )
-
-page.makeValueBinding(
-    btnLoop.mSurfaceValue,
-    transportValues.mCycleActive
-).setTypeToggle()
 
 // ----- Track selection ------------------------------------------------------
 
@@ -405,16 +499,6 @@ page.makeActionBinding(
 // ----- Selected-track channel states ----------------------------------------
 
 page.makeValueBinding(
-    btnMute.mSurfaceValue,
-    selectedValues.mMute
-).setTypeToggle()
-
-page.makeValueBinding(
-    btnSolo.mSurfaceValue,
-    selectedValues.mSolo
-).setTypeToggle()
-
-page.makeValueBinding(
     btnTrackRec.mSurfaceValue,
     selectedValues.mRecordEnable
 ).setTypeToggle()
@@ -429,36 +513,22 @@ page.makeValueBinding(
     selectedValues.mAutomationWrite
 ).setTypeToggle()
 
-// ----- Commands we can safely map now --------------------------------------
-
-page.makeCommandBinding(
-    btnUndo.mSurfaceValue,
-    'Edit',
-    'Undo'
-).filterByValue(1)
-
 //-----------------------------------------------------------------------------
 // 7. UNASSIGNED / NEXT-PASS CONTROLS
 //-----------------------------------------------------------------------------
 //
 // These are ALREADY fully recognized by the surface and ready to map:
 //
-//     btnShift
-//     btnUser          // A0 00
-//     btnPunch         // A0 01
 //     btnMix           // A0 0B
 //     btnProject       // A0 0C
 //     btnTransport     // A0 0D
-//     btnTouchMode     // A0 08
 //     btnOff           // A0 17
 //     btnBank          // A0 14
 //     btnOutput        // A0 16
 //
-// USER / PUNCH are good candidates for previous/next marker, but leave the
-// Cubase command names uncommitted until verified in the actual Command list.
-//
-// SHIFT is also intentionally left as a real button surface value so we can
-// build modifier/subpage behavior cleanly in the next pass.
+// Shortcuts: PUNCH/USER = previous/next marker; held SHIFT + UNDO = Redo,
+// SHIFT + LOOP = Insert Marker, SHIFT + SOLO/MUTE = clear solos/unmute all.
+// Hold STOP, then press REW = Return to Zero. SHIFT alone only lights its LED.
 //
 //-----------------------------------------------------------------------------
 // END
