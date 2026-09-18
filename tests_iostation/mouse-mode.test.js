@@ -23,7 +23,7 @@ function run(from,to){vm.runInContext(source.slice(source.indexOf(from),source.i
 run('function isMouseLinkMode(', 'var preGainFeedbackValue');
 s.mouseLockFeedbackValue={getProcessValue:()=>locked,setProcessValue:(_,v)=>locked=v};
 s.mouseParameterFeedbackValue={getProcessValue:()=>parameter,setProcessValue:(_,v)=>{parameter=v;writes.push(v)}};
-run('function resolveKnobModeButton(', 'var highPassColors');
+run('function resolveKnobModeButton(', 'function updateHighPassLED(');
 run('function toggleModeEffect(', 'function updateKnobModeLEDs');
 run('function updateTouchLED(', 'function setupFaderTargetFeedback');
 run('function isPanFaderBypassed(', '// Future footswitch assignments');

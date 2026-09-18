@@ -15,7 +15,7 @@ const scope = {
 };
 vm.createContext(scope);
 vm.runInContext(source.slice(source.indexOf('function isPanFaderBypassed('), source.indexOf('function clampFader(')), scope);
-vm.runInContext(source.slice(source.indexOf('function resolveKnobModeButton('), source.indexOf('var highPassColors')), scope);
+vm.runInContext(source.slice(source.indexOf('function resolveKnobModeButton('), source.indexOf('function updateHighPassLED(')), scope);
 function device() {
     const state = {};
     return { getState: key => state[key] || '', setState: (key, value) => { state[key] = value; } };

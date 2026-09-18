@@ -27,7 +27,6 @@ const ENABLE_FADER_LOW_END_SNAP = false
 const ENABLE_FOOTSWITCH_NORMALIZATION = true
 const FOOTSWITCH_NORMALLY_CLOSED = true
 const FOOTSWITCH_IS_TOGGLE = false           // false: press/release; true: pulse on each edge
-const ENABLE_HIGH_PASS_COLOR_GRADIENT = true // false: solid green when enabled
 
 // Calibration values
 const FADER_LOW_END_THRESHOLD = 0.012        // inherited from fp-wizard; normalized travel
@@ -100,7 +99,7 @@ MASTER (Normal)          : Select Master mode; encoder zooms; fader controls Ste
 SHIFT + MASTER           : Fader controls FX Return 1; knob rotates/presses for zoom; BYPASS toggles FX Return mute
 CLICK (Normal)           : Select Click mode; knob zooms; fader controls Click level
 KNOB PUSH (Click Mode)   : Zoom to Locators; BYPASS toggles metronome
-CHANNEL (Normal)         : Select High Pass (Low Cut) knob mode for the selected track
+CHANNEL (Normal)         : Select High Pass (Low Cut); knob push/BYPASS toggle filter
 SHIFT + CHANNEL         : Pre-gain; push resets 0 dB; BYPASS flips polarity (LED on = inverted)
 SECTION (Normal)         : Prev/Next recall cycle markers (wrap); fader controls selected-track volume
 MARKER (Normal)          : Select Marker mode; Prev/Next locate markers; knob push inserts marker
@@ -113,8 +112,9 @@ ZOOM                     : Horizontal Zoom In / Out commands
 MASTER                   : Encoder zooms horizontally; push zooms to locators; fader controls Stereo Out; BYPASS toggles Main Mix inserts
 SHIFT + MASTER           : Encoder zooms horizontally; push zooms to locators; fader controls FX Return 1; BYPASS mutes FX Return
 CLICK                    : Knob controls horizontal zoom; fader controls Metronome Click Level
-HIGH PASS                : Selected Track Low Cut Frequency; push resets minimum; BYPASS toggles filter
-HIGH PASS LED            : White when disabled; color indicates frequency when enabled
+HIGH PASS                : Selected Track Low Cut Frequency; push/BYPASS toggle filter
+HIGH PASS LED            : White when disabled; red when enabled
+PRE GAIN LED             : White at 0 dB; magenta otherwise
 MARKER                   : Prev/Next locate previous/next marker; knob push inserts marker
 
 FADER / FOOTSWITCH:
@@ -137,7 +137,7 @@ TOUCH                    : Normal path
 SHIFT + BYPASS / TOUCH / WRITE / READ          : BypassAll / Latch / Trim / Off
 SHIFT inside LINK        : Toggle remembered knob/fader selection
 SHIFT + PAN              : Send 1 fader mode
-SHIFT + CHANNEL          : High Pass mode
+SHIFT + CHANNEL          : Pre Gain mode
 SHIFT + MASTER           : FX Return 1 fader mode
 SHIFT + CLICK            : Click mode
 SHIFT + SECTION          : Section mode
@@ -661,7 +661,6 @@ var transportFeedback = []
 var hostMetronomeActive = hostTransport.mMetronomeActive
 var metronomeFeedbackValue = null
 var highPassEnabledFeedbackValue = null
-var highPassFrequencyFeedbackValue = null
 var firstSendEnabledFeedbackValue = null
 var confirmTransportNotes = [cRWD, cFWD, cPlay, cRecord]
 var stopProgressNotes = [cFWD, cRWD, cPlay, cRecord]
@@ -1325,6 +1324,9 @@ function toggleModeEffect(context) {
         if (mode === 'Send') {
             updateBypassLED(context)
             updateSendModeLED(context)
+        } else if (mode === 'HighPass') {
+            updateHighPassLED(context)
+            updateBypassLED(context)
         }
     }
 }
@@ -1419,73 +1421,24 @@ function activateKnobMode(context, mode, activeMapping) {
     updateKnobModeLEDs(context)
 }
 
-// Blend green to magenta through the useful low-cut range; clamp above 300 Hz.
-// White marks a disabled filter; inactive mode buttons follow the nuclear LED flags.
-var highPassColors = [
-    { hz: 20, red: GREEN[0], green: GREEN[1], blue: GREEN[2] },
-    { hz: 300, red: MAGENTA[0], green: MAGENTA[1], blue: MAGENTA[2] }
-]
-
-function getHighPassColor(hz) {
-    if (!ENABLE_HIGH_PASS_COLOR_GRADIENT || !isFinite(hz) || hz <= highPassColors[0].hz) {
-        return highPassColors[0]
-    }
-    if (hz >= highPassColors[1].hz) return highPassColors[1]
-
-    // Log frequency spacing through green, amber, purple and magenta.
-    // Normalize brightness; the chosen stops avoid blue and a gray/white midpoint.
-    var blend = Math.log(hz / highPassColors[0].hz)
-        / Math.log(highPassColors[1].hz / highPassColors[0].hz)
-    var stops = [GREEN, AMBER, [100, 0, 127], MAGENTA]
-    var position = blend * (stops.length - 1)
-    var index = Math.floor(position)
-    var amount = position - index
-    var rgb = stops[index].map(function(component, i) {
-        return component + (stops[index + 1][i] - component) * amount
-    })
-    var scale = 127 / Math.max(rgb[0], rgb[1], rgb[2])
-    return { red: rgb[0] * scale, green: rgb[1] * scale, blue: rgb[2] * scale }
-}
-
-function parseFrequencyHz(value, units) {
-    var text = String(value).replace(/\s/g, '').replace(',', '.')
-    var match = text.match(/^([0-9]+(?:\.[0-9]+)?)(k?hz)?$/i)
-    if (!match) return NaN
-    var unit = String(units || match[2] || 'Hz').replace(/\s/g, '').toLowerCase()
-    if (unit !== 'hz' && unit !== 'khz') return NaN
-    return Number(match[1]) * (unit === 'khz' ? 1000 : 1)
-}
-
+// High Pass uses white when off and red when on; inactive mode buttons follow the nuclear LED flags.
 function updateHighPassLED(context) {
     if (context.getState('knobMode') !== 'HighPass') return
-    if (context.getState('highPassEnabled') !== '1') {
-        setRGBLED_color(context, cChannel, WHITE)
-    } else {
-        var color = getHighPassColor(Number(context.getState('highPassHz')))
-        setRGBLED(context, cChannel, color.red, color.green, color.blue)
-    }
+    var color = context.getState('highPassEnabled') === '1' ? RED : WHITE
+    setRGBLED_color(context, cChannel, color)
     onLED(context, cChannel)
 }
 
 function setupHighPassFeedback() {
     var preFilter = page.mHostAccess.mTrackSelection.mMixerChannel.mPreFilter
     var enabled = surface.makeCustomValueVariable('High Pass Enabled Feedback')
-    var frequency = surface.makeCustomValueVariable('High Pass Frequency Feedback')
     highPassEnabledFeedbackValue = enabled
-    highPassFrequencyFeedbackValue = frequency
-    // Always follow the selected track, including when another knob mode is active.
+    // Follow the selected track even when another knob mode is active.
     page.makeValueBinding(enabled, preFilter.mLowCutOn)
-    page.makeValueBinding(frequency, preFilter.mLowCutFreq)
     enabled.mOnProcessValueChange = function(context, value) {
         context.setState('highPassEnabled', value > 0 ? '1' : '0')
         updateHighPassLED(context)
         updateBypassLED(context)
-    }
-    // Read Cubase's displayed Hz rather than guessing its normalized frequency curve.
-    frequency.mOnDisplayValueChange = function(context, value, units) {
-        var hz = parseFrequencyHz(value, units)
-        context.setState('highPassHz', isFinite(hz) ? String(hz) : '')
-        updateHighPassLED(context)
     }
 }
 
@@ -1617,17 +1570,11 @@ function setupMouseLockFeedback() {
 var preGainFeedbackValue = null
 var polarityFeedbackValue = null
 
-function getPreGainColor(value) {
-    if (!isFinite(value)) return WHITE
-    var gain = Math.max(0, Math.min(1, value))
-    var amount = Math.abs(gain - 0.5) * 2
-    var extreme = gain < 0.5 ? BLUE : RED
-    return WHITE.map(function(component, i) { return component + (extreme[i] - component) * amount })
-}
-
 function updatePreGainLED(context) {
     if (context.getState('knobMode') !== 'PreGain') return
-    setRGBLED_color(context, cChannel, getPreGainColor(preGainFeedbackValue.getProcessValue(context)))
+    var gain = preGainFeedbackValue.getProcessValue(context)
+    var atZeroDb = isFinite(gain) && Math.abs(gain - 0.5) <= 1e-6
+    setRGBLED_color(context, cChannel, atZeroDb ? WHITE : MAGENTA)
     onLED(context, cChannel)
 }
 
@@ -1799,7 +1746,7 @@ function assignKnobControls() {
             || mode === 'Master' || mode === 'MasterFX') {
             pulseVar(context, var_zoomToLocators)
         } else if (mode === 'HighPass') {
-            highPassFrequencyFeedbackValue.setProcessValue(context, 0)
+            toggleModeEffect(context)
         } else if (mode === 'Marker') {
             pulseVar(context, var_markerInsertPressed)
         }

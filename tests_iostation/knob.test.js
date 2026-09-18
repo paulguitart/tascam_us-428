@@ -95,35 +95,19 @@ assert(midi.some(message=>message[1]===s.cChannel&&message[2]===127));
 s.knobModes.Pan.mOnActivate(ctx);
 assert.deepStrictEqual(midi.filter(message=>message[1]===s.cChannel).pop(),[144,s.cChannel,0]);
 console.log('PASS: Channel selects high-pass; cutoff and feedback are scoped to that mode; mode LED clears on exit');
-// High-pass color feedback uses host display values, including Hz/kHz formatting.
-assert.equal(s.parseFrequencyHz('80.0','Hz'),80);
-assert.equal(s.parseFrequencyHz('0,3','kHz'),300);
-assert.equal(s.parseFrequencyHz('1.0 kHz',''),1000);
-assert(Number.isNaN(s.parseFrequencyHz('Unavailable','Hz')));
-assert.equal(s.getHighPassColor(20).red,0);
-assert.equal(s.getHighPassColor(20).green,127);
-assert.equal(s.getHighPassColor(20).blue,0);
-// Full gradient and endpoint coverage lives in high-pass-color.test.js.
+// High-pass LED uses only enable state: white off and red on.
 bindings.length=0;s.setupHighPassFeedback();
 const enabledFeedback=bindings.find(b=>b.host===preFilter.mLowCutOn).input;
-const frequencyFeedback=bindings.find(b=>b.host===preFilter.mLowCutFreq).input;
 s.knobModes.HighPass.mOnActivate(ctx);
 function lastColor(status){return midi.filter(message=>message[0]===status && message[1]===s.cChannel).pop()[2];}
 enabledFeedback.mOnProcessValueChange(ctx,0);
 assert.deepStrictEqual([lastColor(145),lastColor(146),lastColor(147)],[127,127,127]);
-frequencyFeedback.mOnDisplayValueChange(ctx,'300','Hz');
 enabledFeedback.mOnProcessValueChange(ctx,1);
-assert.deepStrictEqual([lastColor(145),lastColor(146),lastColor(147)],[127,0,127]);
-frequencyFeedback.mOnDisplayValueChange(ctx,'80','Hz');
-const at80=s.getHighPassColor(80);
-assert.deepStrictEqual([lastColor(145),lastColor(146),lastColor(147)],[at80.red,at80.green,at80.blue].map(Math.round));
-frequencyFeedback.mOnDisplayValueChange(ctx,'Unknown','');
-assert.deepStrictEqual([lastColor(145),lastColor(146),lastColor(147)],[0,127,0]); // Unknown frequency falls back to the low endpoint.
+assert.deepStrictEqual([lastColor(145),lastColor(146),lastColor(147)],[127,0,0]);
 s.knobModes.Pan.mOnActivate(ctx);
 enabledFeedback.mOnProcessValueChange(ctx,0);
-frequencyFeedback.mOnDisplayValueChange(ctx,'150','Hz');
 assert.deepStrictEqual(midi.filter(message=>message[0]===144&&message[1]===s.cChannel).pop(),[144,s.cChannel,0]);
-console.log('PASS: Hz parsing, green-to-magenta gradient with 300 Hz clamp, host-driven colors and off-mode LED');
+console.log('PASS: High Pass LED is white when off and red when on; host feedback and off-mode LED verified');
 
 const markerModeCommands=commands.filter(binding=>binding.page===s.knobModes.Marker);
 assert(commands.some(binding=>binding.input===s.var_markerPrev&&binding.category==='Transport'&&binding.command==='Locate Previous Marker'));

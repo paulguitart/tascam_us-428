@@ -1,13 +1,28 @@
-const assert=require('node:assert/strict'),fs=require('fs'),vm=require('vm');
-const s={require:()=>require('../api/midiremote_api_v1')};vm.createContext(s);
-vm.runInContext(fs.readFileSync(require('path').join(__dirname,'..','PreSonus_IOStation.js'),'utf8'),s);
-const state={knobMode:'HighPass'},ctx={getState:k=>state[k]||'',setState:(k,v)=>state[k]=v};
-let enabled=0,frequency=.6;const writes=[];
-s.highPassEnabledFeedbackValue.getProcessValue=()=>enabled;s.highPassEnabledFeedbackValue.setProcessValue=(_,v)=>{enabled=v;writes.push('enable')};
-s.highPassFrequencyFeedbackValue.setProcessValue=(_,v)=>{frequency=v;writes.push('frequency')};
+const assert=require('node:assert/strict'),fs=require('fs'),vm=require('vm'),path=require('path');
+const source=fs.readFileSync(path.join(__dirname,'..','PreSonus_IOStation.js'),'utf8').replace(/\r\n/g,'\n');
+const s={};vm.createContext(s);
+const toggleStart=source.indexOf('function toggleModeEffect(context)');
+const toggleEnd=source.indexOf('function updateKnobModeLEDs(',toggleStart);
+assert(toggleStart>=0&&toggleEnd>toggleStart);
+vm.runInContext(source.slice(toggleStart,toggleEnd),s);
+s.state={knobMode:'HighPass',highPassEnabled:'0',knobPressRouted:''};
+s.ctx={getState:k=>s.state[k]||'',setState:(k,v)=>s.state[k]=v};
+let enabled=0;const writes=[];
+s.highPassEnabledFeedbackValue={getProcessValue:()=>enabled,setProcessValue:(_,v)=>{enabled=v;s.state.highPassEnabled=v?'1':'0';writes.push(v)}};
+s.isTrackFaderBypassMode=()=>false;s.isMouseLinkMode=()=>false;s.isMetronomeBypassMode=()=>false;
+s.updateHighPassLED=()=>{};s.updateBypassLED=()=>{};
+const pushStart=source.indexOf('mSection.knob_Press.mSurfaceValue.mOnProcessValueChange = function(context, value) {');
+const pushEnd=source.indexOf('// Korg zoom pattern:',pushStart);
+assert(pushStart>=0&&pushEnd>pushStart);
+s.mSection={knob_Press:{mSurfaceValue:{}}};
+vm.runInContext(source.slice(pushStart,pushEnd),s);
 const push=s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange;
-for(const initial of [0,1]){enabled=initial;frequency=.6;writes.length=0;push(ctx,1);push(ctx,1);push(ctx,0);assert.equal(frequency,0);assert.equal(enabled,initial);assert.deepEqual(writes,['frequency']);}
-s.buttons.Bypass.setProcessValue=()=>{};const bypass=s.uSection.btn_Bypass.mSurfaceValue.mOnProcessValueChange;
-bypass(ctx,1);bypass(ctx,0);assert.equal(enabled,0);assert.equal(frequency,0);
-bypass(ctx,1);bypass(ctx,0);assert.equal(enabled,1);
-console.log('PASS: high-pass push resets cutoff once without changing enable; BYPASS toggles enable');
+for(const [initial,expected] of [[0,1],[1,0]]){
+  enabled=initial;s.state.highPassEnabled=String(initial);writes.length=0;
+  push(s.ctx,1);push(s.ctx,1);push(s.ctx,0);
+  assert.equal(enabled,expected);assert.deepEqual(writes,[expected]);
+}
+// BYPASS uses the same mode effect and remains a high-pass toggle.
+s.toggleModeEffect(s.ctx);assert.equal(enabled,1);
+s.toggleModeEffect(s.ctx);assert.equal(enabled,0);
+console.log('PASS: Channel knob push toggles high-pass once per press; BYPASS toggle remains intact');

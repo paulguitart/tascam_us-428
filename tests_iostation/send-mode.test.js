@@ -33,7 +33,7 @@ s.onLED=(_,note)=>lamps[note]=true;s.offLED=(_,note)=>lamps[note]=false;
 s.setTransportLed=(_,note,on)=>lamps[note]=on;
 run('function updateTouchLED(', '//-----------------------------------------------------------------------------');
 run('function updateSendModeLED(', 'function updateKnobModeLEDs');
-run('function resolveKnobModeButton(', 'var highPassColors');
+run('function resolveKnobModeButton(', 'function updateHighPassLED(');
 run('function routeUnboundKnobTurn(', 'function assignKnobControls');
 run('    var firstSend = page.mHostAccess', '    // Click mode leaves the knob unbound so its turns can route to zoom below.');
 s.assignSelectedTrackControls();
