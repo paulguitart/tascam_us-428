@@ -100,7 +100,7 @@ SHIFT + MASTER           : Fader controls FX Return 1; knob rotates/presses for 
 CLICK (Normal)           : Select Click mode; knob zooms; fader controls Click level
 KNOB PUSH (Click Mode)   : Zoom to Locators; BYPASS toggles metronome
 CHANNEL (Normal)         : Select High Pass (Low Cut); knob push toggles filter; BYPASS flips polarity
-SHIFT + CHANNEL         : Pre-gain; push resets 0 dB; BYPASS is unassigned
+SHIFT + CHANNEL         : Pre-gain; push resets 0 dB; BYPASS flips polarity (LED on = inverted)
 SECTION (Normal)         : Prev/Next recall cycle markers (wrap); fader controls selected-track volume
 MARKER (Normal)          : Select Marker mode; Prev/Next locate markers; knob push inserts marker
 
@@ -127,7 +127,7 @@ FOOTSWITCH               : Normalized to normally-closed press/release behavior 
 BYPASS BUTTON PATHS:
 ----------------------------------------------------------------------------------------------------
 BYPASS                   : PAN / SCROLL / SECTION / MARKER: shared fader bypass; SHIFT + PAN: send 1 enable
-                         : CHANNEL: phase/polarity (LED on = inverted); SHIFT + CHANNEL: unassigned
+                         : CHANNEL / SHIFT + CHANNEL: phase/polarity (LED on = inverted)
 						 : CLICK: metronome enabled
 						 : MASTER: Main Mix inserts (LED means not bypassed); SHIFT + MASTER: FX Return mute (LED means muted)
 						 
@@ -371,6 +371,7 @@ function assignButtonRouting(mapping) {
             }
             activeName = context.getState('shiftEnabled') === '1' ? shiftedName : normalName
             if (normalName === 'Bypass' && (context.getState('knobMode') === 'HighPass'
+                || context.getState('knobMode') === 'PreGain'
                 || isMouseLinkMode(context.getState('knobMode'))
                 || isTrackFaderBypassMode(context.getState('knobMode'))
                 || context.getState('knobMode') === 'Send'
@@ -1267,7 +1268,7 @@ function updateBypassLED(context) {
         enabled = metronomeFeedbackValue && metronomeFeedbackValue.getProcessValue(context) > 0
     } else if (isMouseLinkMode(mode)) {
         enabled = context.getState('mouseBypassed') === '1'
-    } else if (mode === 'HighPass') {
+    } else if (mode === 'HighPass' || mode === 'PreGain') {
         enabled = polarityFeedbackValue && polarityFeedbackValue.getProcessValue(context) > 0
     }
     setTransportLed(context, cBypass, !!enabled)
@@ -1315,13 +1316,13 @@ function toggleModeEffect(context) {
         return
     }
     var value = mode === 'Send' ? firstSendEnabledFeedbackValue
-        : mode === 'HighPass' ? polarityFeedbackValue : null
+        : mode === 'HighPass' || mode === 'PreGain' ? polarityFeedbackValue : null
     if (value) {
         value.setProcessValue(context, value.getProcessValue(context) > 0 ? 0 : 1)
         if (mode === 'Send') {
             updateBypassLED(context)
             updateSendModeLED(context)
-        } else if (mode === 'HighPass') {
+        } else if (mode === 'HighPass' || mode === 'PreGain') {
             updateBypassLED(context)
         }
     }
@@ -1579,7 +1580,7 @@ function updatePreGainLED(context) {
     if (context.getState('knobMode') !== 'PreGain') return
     var gain = preGainFeedbackValue.getProcessValue(context)
     var atZeroDb = isFinite(gain) && Math.abs(gain - 0.5) <= 1e-6
-    setRGBLED_color(context, cChannel, atZeroDb ? WHITE : MAGENTA)
+    setRGBLED_color(context, cChannel, atZeroDb ? WHITE : AMBER)
     onLED(context, cChannel)
 }
 

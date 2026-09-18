@@ -43,7 +43,8 @@ bypass(s.ctx,1);bypass(s.ctx,1);bypass(s.ctx,0);
 assert.equal(polarity,1);assert.equal(enabled,0);assert.deepEqual(phaseWrites,[1]);
 s.updateBypassLED(s.ctx);assert.equal(bypassLED,true);
 
-s.state.knobMode='PreGain';s.state.shiftEnabled='1';s.updateBypassLED(s.ctx);assert.equal(bypassLED,false);
+s.state.knobMode='PreGain';s.state.shiftEnabled='1';s.updateBypassLED(s.ctx);assert.equal(bypassLED,true);
 bypass(s.ctx,1);bypass(s.ctx,0);
-assert.equal(polarity,1);assert.deepEqual(phaseWrites,[1]);
-console.log('PASS: knob push alone toggles High Pass; normal Channel BYPASS toggles phase; SHIFT + Channel BYPASS is unassigned');
+assert.equal(polarity,0);assert.deepEqual(phaseWrites,[1,0]);
+s.updateBypassLED(s.ctx);assert.equal(bypassLED,false);
+console.log('PASS: knob push alone toggles High Pass; BYPASS toggles phase in both Channel modes');
