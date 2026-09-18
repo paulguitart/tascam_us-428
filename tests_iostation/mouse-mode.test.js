@@ -95,9 +95,9 @@ for (const mode of ['Mouse','MouseFader']) {
  }
 }
 s.firstSendEnabledFeedbackValue={getProcessValue:()=>1};
-state.knobMode='Send';s.updateBypassLED(ctx);assert.equal(bypassOn,true);
-s.firstSendEnabledFeedbackValue.getProcessValue=()=>0;s.updateBypassLED(ctx);assert.equal(bypassOn,false);
-console.log('PASS: LINK BYPASS LED on means bypassed in both variants; Send retains its enable indication');
+state.knobMode='Send';s.updateBypassLED(ctx);assert.equal(bypassOn,false);
+s.firstSendEnabledFeedbackValue.getProcessValue=()=>0;s.updateBypassLED(ctx);assert.equal(bypassOn,true);
+console.log('PASS: LINK BYPASS LED on means bypassed in both variants; Send lights when disabled');
 
 // Physical LINK clears a lock first, then switches modes on a separate unlocked press.
 s.pulseVar=(context,button)=>{button.setProcessValue(context,1);button.setProcessValue(context,0)};

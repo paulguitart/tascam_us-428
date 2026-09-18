@@ -1231,7 +1231,7 @@ function updateBypassLED(context) {
     } else if (mode === 'Pan') {
         enabled = context.getState('panFaderBypassed') === '1'
     } else if (mode === 'Send') {
-        enabled = firstSendEnabledFeedbackValue && firstSendEnabledFeedbackValue.getProcessValue(context) > 0
+        enabled = firstSendEnabledFeedbackValue && firstSendEnabledFeedbackValue.getProcessValue(context) <= 0
     } else if (isMetronomeBypassMode(mode)) {
         enabled = metronomeFeedbackValue && metronomeFeedbackValue.getProcessValue(context) > 0
     } else if (isMouseLinkMode(mode)) {

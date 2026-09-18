@@ -30,7 +30,7 @@ for (const mode of ['Pan']) {
 // Send's fader ignores PAN bypass; its button changes send enable only.
 s.activateKnobMode(ctx,'Send',{});assert.equal(s.isPanFaderBypassed(ctx),false);assert.equal(state.faderTarget,'Send');
 s.toggleModeEffect(ctx);s.updateBypassLED(ctx);
-assert.equal(send,0);assert.equal(bypassLED,false);assert.equal(state.panFaderBypassed,'1');
+assert.equal(send,0);assert.equal(bypassLED,true);assert.equal(state.panFaderBypassed,'1');
 s.activateKnobMode(ctx,'Pan',{});s.updateBypassLED(ctx);assert.equal(bypassLED,true);
 // Re-enable under the finger: no motor motion or input until touch release.
 touched=1;s.faderTouch.mOnProcessValueChange(ctx,1);

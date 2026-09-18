@@ -65,7 +65,7 @@ for(const panBypassed of ['', '1']){
   send.mPrePost.value=pre;send.mOn.value=on;
   s.firstSendPrePostFeedbackValue.mOnProcessValueChange(ctx);
   s.firstSendEnabledFeedbackValue.mOnProcessValueChange(ctx);
-  assert.deepEqual(colors[s.cPan],{color:pre?s.CYAN:s.AMBER,brightness:on?1:.25});assert.equal(lamps[s.cBypass],!!on);
+  assert.deepEqual(colors[s.cPan],{color:pre?s.CYAN:s.AMBER,brightness:on?1:.25});assert.equal(lamps[s.cBypass],!on);
   push(ctx,1);push(ctx,1);push(ctx,0);assert.equal(send.mPrePost.value,1-pre);assert.equal(send.mOn.value,on);assert.equal(send.mLevel.value,.789087);
   bypass(ctx,1);bypass(ctx,1);bypass(ctx,0);assert.equal(send.mOn.value,1-on);assert.equal(send.mPrePost.value,1-pre);
   assert.equal(state.panFaderBypassed,panBypassed);
