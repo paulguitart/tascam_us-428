@@ -23,11 +23,11 @@ function device() {
 }
 const a = device(), b = device();
 scope.activateKnobMode(a, 'Pan');
-assert.equal(scope.resolveKnobModeButton(a, 'Pan'), 'Pan');
+assert.equal(scope.resolveKnobModeButton(a, 'Pan'), 'Send');
 scope.activateKnobMode(a, 'Click');
 assert.equal(scope.resolveKnobModeButton(a, 'Click'), 'Pan');
 scope.activateKnobMode(a, 'Pan');
-assert.equal(scope.resolveKnobModeButton(a, 'Pan'), 'Click');
+assert.equal(scope.resolveKnobModeButton(a, 'Pan'), 'Send');
 scope.activateKnobMode(a, 'Pan');
 assert.equal(a.getState('previousKnobMode'), 'Click');
 for (const [button, mode] of Object.entries({ Link: 'Mouse', Scroll: 'Zoom', Zoom: 'Zoom', Master: 'Master', MasterFX: 'MasterFX', Click: 'Click', Channel: 'HighPass', Section: 'Section', Marker: 'Marker' })) {
@@ -70,7 +70,7 @@ for (const name of ['Link', 'Pan', 'Channel', 'Scroll', 'Master', 'Click', 'Sect
         context.setState('shiftEnabled', shift);
         events.length = 0;
         press(context, 1); press(context, 0);
-        const target = name === 'Link' ? (shift === '1' ? 'Link' : 'MouseFader') : name === 'Channel' ? (shift === '1' ? 'Channel' : 'PreGain') : 'Pan';
+        const target = name === 'Pan' ? (shift === '1' ? 'Pan' : 'Send') : name === 'Link' ? (shift === '1' ? 'Link' : 'MouseFader') : name === 'Channel' ? (shift === '1' ? 'Channel' : 'PreGain') : 'Pan';
         assert.deepEqual(events, [[target, 1], [target, 0]]);
         context.setState('knobMode', '');
     }
@@ -99,7 +99,7 @@ let shiftLed = false;
 scope.onLED = (_, note) => { if (note === scope.cShift) shiftLed = true; };
 scope.offLED = (_, note) => { if (note === scope.cShift) shiftLed = false; };
 for (const alternate of ['PreGain', 'Send', 'MasterFX']) {
-    for (const normal of ['Master', 'Click', 'Section', 'Marker', 'Pan', 'Zoom']) {
+    for (const normal of ['Master', 'Click', 'Section', 'Marker', 'Zoom']) {
         const context = device();
         scope.activateKnobMode(context, alternate);
         assert.equal(context.getState('shiftEnabled'), '1'); assert.equal(shiftLed, true);
@@ -127,18 +127,18 @@ console.log('PASS: Master selects Stereo Out, SHIFT + Master selects FX Return 1
 const shiftedHistory=device();
 scope.activateKnobMode(shiftedHistory,'Click');
 shiftedHistory.setState('shiftEnabled','1');
-scope.activateKnobMode(shiftedHistory,'Pan');
+scope.activateKnobMode(shiftedHistory,'Section');
 assert.equal(shiftedHistory.getState('shiftEnabled'),'0');
 assert.equal(shiftedHistory.getState('previousKnobMode'),'Click');
 assert.equal(shiftedHistory.getState('previousKnobModeShift'),'1');
-const recalledClick=scope.resolveKnobModeButton(shiftedHistory,'Pan');
+const recalledClick=scope.resolveKnobModeButton(shiftedHistory,'Section');
 assert.equal(recalledClick,'Click');
 scope.activateKnobMode(shiftedHistory,recalledClick);
 assert.equal(shiftedHistory.getState('knobMode'),'Click');
 assert.equal(shiftedHistory.getState('shiftEnabled'),'1');
 const recalledPan=scope.resolveKnobModeButton(shiftedHistory,'Click');
 scope.activateKnobMode(shiftedHistory,recalledPan);
-assert.equal(shiftedHistory.getState('knobMode'),'Pan');
+assert.equal(shiftedHistory.getState('knobMode'),'Section');
 assert.equal(shiftedHistory.getState('shiftEnabled'),'0');
 console.log('PASS: previous-mode history restores its saved SHIFT bit in both directions');
 

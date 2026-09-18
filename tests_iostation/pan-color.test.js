@@ -60,3 +60,17 @@ pan=.9;full.panFeedbackValue.mOnProcessValueChange(device);assert.equal(lights[f
 full.activateKnobMode(device,'Pan',{});assert.equal(lights[full.cPrev],false);assert.equal(lights[full.cNext],true);
 prev(device,1);full.activateKnobMode(device,'HighPass',{});assert.equal(lights[full.cPrev],true);assert.equal(lights[full.cNext],false);prev(device,0);assert.equal(lights[full.cPrev],false);
 console.log('PASS: navigation actions unchanged, PAN direction survives button release, mode exit restores press LEDs, host feedback isolated outside PAN');
+// Repeated physical PAN presses toggle its own pair, ignoring prior mode history.
+full.buttons.Pan.setProcessValue=(c,v)=>{if(v)full.activateKnobMode(c,'Pan',{})};
+full.buttons.Send.setProcessValue=(c,v)=>{if(v)full.activateKnobMode(c,'Send',{})};
+let shiftOn=false;full.onLED=(_,n)=>{if(n===full.cShift)shiftOn=true};full.offLED=(_,n)=>{if(n===full.cShift)shiftOn=false};
+const panButton=full.mSection.btn_Pan.mSurfaceValue.mOnProcessValueChange;
+for(const prior of ['Click','HighPass','Mouse']){
+ full.activateKnobMode(device,prior,{});
+ for(const [mode,target,shift] of [['Pan','Track',false],['Send','Send',true],['Pan','Track',false],['Send','Send',true]]){
+  panButton(device,1);panButton(device,1);panButton(device,0);
+  assert.equal(live.knobMode,mode);assert.equal(live.faderTarget,target);
+  assert.equal(live.shiftEnabled,shift?'1':'0');assert.equal(shiftOn,shift);
+ }
+}
+console.log('PASS: physical PAN toggles PAN/Send with matching fader and SHIFT LED, duplicate suppression and no previous-mode recall');

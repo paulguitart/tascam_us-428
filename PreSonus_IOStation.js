@@ -1436,7 +1436,10 @@ function resolveKnobModeButton(context, name) {
         else if (name === 'Zoom') name = 'Scroll'
         else if (name === 'MasterFX') name = 'Master'
     }
-    // Channel always alternates its two functions, independent of mode history.
+    // PAN and CHANNEL alternate their two functions, independent of mode history.
+    if ((name === 'Pan' || name === 'Send') && (current === 'Pan' || current === 'Send')) {
+        return current === 'Pan' ? 'Send' : 'Pan'
+    }
     if ((name === 'Channel' || name === 'PreGain') && (current === 'HighPass' || current === 'PreGain')) {
         return current === 'HighPass' ? 'PreGain' : 'Channel'
     }
