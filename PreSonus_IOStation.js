@@ -9,7 +9,7 @@
 //-----------------------------------------------------------------------------
 
 const CYCLE_MARKER_MAX = 9
-const ENABLE_FADER_NUDGE = true // PREV/NEXT nudge Stereo Out in MASTER
+const ENABLE_FADER_NUDGE = true // PREV/NEXT nudge Stereo Out in either MASTER mode
 const FADER_NUDGE_DB_INCREMENT = 0.5
 const ENABLE_METRONOME_FADER = true // CLICK fader controls metronome level; false: Stereo Out
 
@@ -96,7 +96,8 @@ SHIFT inside LINK       : Toggle knob/fader; selection recalled on return, isola
                          : TOUCH captures/locks (green = saved value, magenta = above, cyan = below); BYPASS disables controls
 PAN (Normal)             : Select Pan knob mode; knob push centers pan
 SCROLL / SHIFT + SCROLL  : Select Zoom knob mode
-MASTER (Normal)          : Select Master mode; encoder controls FX Return 1, fader controls Stereo Out
+MASTER (Normal)          : Select Master mode; encoder zooms; fader controls Stereo Out
+SHIFT + MASTER           : Fader controls FX Return 1; encoder zooms; knob push/BYPASS toggle Main Mix inserts
 CLICK (Normal)           : Select Click Level knob mode
 KNOB PUSH (Click Mode)   : Metronome on/off; Click LED shows Click mode; inactive RGB mode LEDs optionally show metronome
 CHANNEL (Normal)         : Select High Pass (Low Cut) knob mode for the selected track
@@ -109,7 +110,8 @@ KNOB MODES:
 SHIFT + PAN              : Fader = Send 1; TOUCH resets 0 dB; knob = track volume; push toggles pre/post
 PAN                      : Selected Track Pan; press knob to center pan
 ZOOM                     : Horizontal Zoom In / Out commands
-MASTER                   : Encoder controls FX Return 1; fader controls Stereo Out Volume
+MASTER                   : Encoder controls horizontal zoom; fader controls Stereo Out Volume
+SHIFT + MASTER           : Encoder controls horizontal zoom; fader controls FX Return 1
 CLICK                    : Metronome Click Level; fader controls Stereo Out Volume
 HIGH PASS                : Selected Track Low Cut Frequency; push resets minimum; BYPASS toggles filter
 HIGH PASS LED            : White when disabled; color indicates frequency when enabled
@@ -117,7 +119,7 @@ MARKER                   : Prev/Next locate previous/next marker; knob push inse
 
 FADER / FOOTSWITCH:
 ----------------------------------------------------------------------------------------------------
-FADER                    : Selected Track Volume; MASTER / CLICK use Stereo Out; SCROLL / SECTION / MARKER use selected-track volume
+FADER                    : Selected Track Volume; MASTER uses Stereo Out; SHIFT + MASTER uses FX Return 1; CLICK uses metronome; SCROLL / SECTION / MARKER use selected-track volume
                          : Input is ignored until touched
                          : Motor waits while touched, then applies any pending position
 FOOTSWITCH               : Normalized to normally-closed press/release behavior by default
@@ -136,7 +138,8 @@ SHIFT + BYPASS / TOUCH / WRITE / READ          : BypassAll / Latch / Trim / Off
 SHIFT inside LINK        : Toggle remembered knob/fader selection
 SHIFT + PAN              : Send 1 fader mode
 SHIFT + CHANNEL          : High Pass mode
-SHIFT + MASTER / CLICK   : Master / Click modes
+SHIFT + MASTER           : FX Return 1 fader mode
+SHIFT + CLICK            : Click mode
 SHIFT + SECTION          : Section mode
 MARKER                   : Marker mode with or without SHIFT
 FOOTSWITCH PRESS         : Logical press path available for a future assignment
@@ -317,13 +320,13 @@ var buttonMappings = [
     { physicalButton: mSection.btn_Pan, normalName: 'Pan', shiftedName: 'Send' },
     { physicalButton: mSection.btn_Channel, normalName: 'Channel', shiftedName: 'PreGain' },
     { physicalButton: mSection.btn_Scroll, normalName: 'Scroll', shiftedName: 'Zoom' },
-    { physicalButton: mSection.btn_Master, normalName: 'Master', shiftedName: 'Master' },
+    { physicalButton: mSection.btn_Master, normalName: 'Master', shiftedName: 'MasterFX' },
     { physicalButton: mSection.btn_Click, normalName: 'Click', shiftedName: 'Click' },
     { physicalButton: mSection.btn_Section, normalName: 'Section', shiftedName: 'Section' },
     { physicalButton: mSection.btn_Marker, normalName: 'Marker', shiftedName: 'Marker' }
 ]
 
-// Mode buttons behave the same in both SHIFT layers.
+// Mode buttons share one physical MIDI input; SHIFT selects the alternate MASTER fader target.
 // Physical surface buttons remain the single MIDI input source.
 var buttons = {}
 var selectedTrackToggleValues = {}
@@ -367,7 +370,12 @@ function assignButtonRouting(mapping) {
                 return
             }
             activeName = context.getState('shiftEnabled') === '1' ? shiftedName : normalName
-            if (normalName === 'Bypass' && (context.getState('knobMode') === 'PreGain' || isMouseLinkMode(context.getState('knobMode')) || isTrackFaderBypassMode(context.getState('knobMode')) || context.getState('knobMode') === 'Send')) activeName = 'Bypass'
+            if (normalName === 'Bypass' && (context.getState('knobMode') === 'PreGain'
+                || isMouseLinkMode(context.getState('knobMode'))
+                || isTrackFaderBypassMode(context.getState('knobMode'))
+                || context.getState('knobMode') === 'Send'
+                || context.getState('knobMode') === 'Master'
+                || context.getState('knobMode') === 'MasterFX')) activeName = 'Bypass'
             if (normalName === 'Touch' && (isMouseLinkMode(context.getState('knobMode')) || context.getState('knobMode') === 'Send')) activeName = 'Touch'
             activeName = resolveKnobModeButton(context, activeName)
             context.setState(stateKey, activeName)
@@ -416,6 +424,8 @@ uSection.btn_Shift.mSurfaceValue.mOnProcessValueChange = function(context, value
         pulseVar(context, enabled ? buttons.PreGain : buttons.Channel)
     } else if (mode === 'Pan' || mode === 'Send') {
         pulseVar(context, enabled ? buttons.Send : buttons.Pan)
+    } else if (mode === 'Master' || mode === 'MasterFX') {
+        pulseVar(context, enabled ? buttons.MasterFX : buttons.Master)
     } else if (isMouseLinkMode(mode)) {
         pulseVar(context, enabled ? buttons.MouseFader : buttons.Link)
     }
@@ -743,7 +753,7 @@ var var_setRightLocatorPressed = surface.makeCustomValueVariable('Set Right Loca
 function routeNavigationPress(context, direction) {
     var mode = context.getState('knobMode')
 
-    if (ENABLE_FADER_NUDGE && mode === 'Master') {
+    if (ENABLE_FADER_NUDGE && (mode === 'Master' || mode === 'MasterFX')) {
         nudgeCurrentFader(context, direction === 'Prev' ? -1 : 1)
     } else if (mode === 'Section') {
         if (direction === 'Prev') {
@@ -757,7 +767,7 @@ function routeNavigationPress(context, direction) {
         } else {
             pulseVar(context, var_markerNext)
         }
-    } else if (mode === 'Zoom' || mode === 'Master') {
+    } else if (mode === 'Zoom' || mode === 'Master' || mode === 'MasterFX') {
         if (direction === 'Prev') {
             pulseVar(context, var_setLeftLocatorPressed)
         } else {
@@ -948,6 +958,8 @@ function assignSelectedTrackControls() {
         .setSubPage(faderModes.Track)
     page.makeValueBinding(fader.mSurfaceValue, hostStereoOut.mValue.mVolume)
         .setSubPage(faderModes.StereoOut)
+    page.makeValueBinding(fader.mSurfaceValue, fxChannel.mValue.mVolume)
+        .setSubPage(faderModes.FXReturn)
     page.makeValueBinding(fader.mSurfaceValue, hostSelectedTrack.mSends.getByIndex(0).mLevel)
         .setSubPage(faderModes.Send)
     page.makeValueBinding(fader.mSurfaceValue, hostTransport.mMetronomeClickLevel)
@@ -960,6 +972,7 @@ function assignSelectedTrackControls() {
     }
     setupFaderTargetFeedback('Track', hostSelectedTrack.mValue.mVolume)
     setupFaderTargetFeedback('StereoOut', hostStereoOut.mValue.mVolume)
+    setupFaderTargetFeedback('FXReturn', fxChannel.mValue.mVolume)
     setupFaderTargetFeedback('Metronome', hostTransport.mMetronomeClickLevel)
 }
 
@@ -1162,6 +1175,7 @@ var faderModes = {
     Send: faderModeArea.makeSubPage('Send 1'),
     Track: faderModeArea.makeSubPage('Selected Track'),
     StereoOut: faderModeArea.makeSubPage('Stereo Out'),
+    FXReturn: faderModeArea.makeSubPage('FX Return 1'),
     Metronome: faderModeArea.makeSubPage('Metronome Level'),
     Mouse: faderModeArea.makeSubPage('Mouse Parameter')
 }
@@ -1173,6 +1187,7 @@ var knobModes = {
     Pan: knobModeArea.makeSubPage('Pan'),
     Zoom: knobModeArea.makeSubPage('Zoom'),
     Master: knobModeArea.makeSubPage('Master'),
+    MasterFX: knobModeArea.makeSubPage('Master FX'),
     Click: knobModeArea.makeSubPage('Click'),
     HighPass: knobModeArea.makeSubPage('High Pass'),
     PreGain: knobModeArea.makeSubPage('Pre Gain'),
@@ -1187,6 +1202,7 @@ var knobModeButtons = [
     { button: buttons.Scroll, mode: knobModes.Zoom },
     { button: buttons.Zoom, mode: knobModes.Zoom },
     { button: buttons.Master, mode: knobModes.Master },
+    { button: buttons.MasterFX, mode: knobModes.MasterFX },
     { button: buttons.Click, mode: knobModes.Click },
     { button: buttons.Channel, mode: knobModes.HighPass },
     { button: buttons.PreGain, mode: knobModes.PreGain },
@@ -1233,7 +1249,7 @@ function updateSendModeLED(context) {
 function updateBypassLED(context) {
     var mode = context.getState('knobMode')
     var enabled = false
-    if (mode === 'Master') {
+    if (mode === 'Master' || mode === 'MasterFX') {
         enabled = masterInsertBypassFeedback.getProcessValue(context) === 0
     } else if (isTrackFaderBypassMode(mode)) {
         enabled = context.getState('panFaderBypassed') === '1'
@@ -1297,7 +1313,7 @@ function toggleModeEffect(context) {
 function updateKnobModeLEDs(context) {
     var mode = context.getState('knobMode')
     updateMetronomeModeLEDs(context, Date.now())
-    setTransportLed(context, cMaster, mode === 'Master')
+    setTransportLed(context, cMaster, mode === 'Master' || mode === 'MasterFX')
     setTransportLed(context, cSection, mode === 'Section')
     setTransportLed(context, cMarker, mode === 'Marker')
     updateClickLED(context)
@@ -1306,7 +1322,7 @@ function updateKnobModeLEDs(context) {
 
 function resolveKnobModeButton(context, name) {
     var modeNames = { Link: 'Mouse', MouseFader: 'MouseFader', Send: 'Send', Pan: 'Pan', Scroll: 'Zoom', Zoom: 'Zoom',
-        Master: 'Master', Click: 'Click', Channel: 'HighPass', PreGain: 'PreGain', Section: 'Section', Marker: 'Marker' }
+        Master: 'Master', MasterFX: 'MasterFX', Click: 'Click', Channel: 'HighPass', PreGain: 'PreGain', Section: 'Section', Marker: 'Marker' }
     var current = context.getState('knobMode')
     // LINK owns its knob/fader selection; the other modes' SHIFT cannot override it.
     if (!isMouseLinkMode(current) && (name === 'Link' || name === 'MouseFader')) {
@@ -1317,6 +1333,7 @@ function resolveKnobModeButton(context, name) {
         if (name === 'Send') name = 'Pan'
         else if (name === 'PreGain') name = 'Channel'
         else if (name === 'Zoom') name = 'Scroll'
+        else if (name === 'MasterFX') name = 'Master'
     }
     // Channel always alternates its two functions, independent of mode history.
     if ((name === 'Channel' || name === 'PreGain') && (current === 'HighPass' || current === 'PreGain')) {
@@ -1352,10 +1369,12 @@ function activateKnobMode(context, mode, activeMapping) {
     var previousFaderTarget = context.getState('faderTarget')
     var target = mode === 'MouseFader' ? faderModes.Mouse : mode === 'Mouse' ? faderModes.Dormant
         : mode === 'Send' ? faderModes.Send
+        : mode === 'MasterFX' ? faderModes.FXReturn
         : isTrackFaderBypassMode(mode) || mode === 'HighPass' || mode === 'PreGain' ? faderModes.Track
         : mode === 'Click' && ENABLE_METRONOME_FADER ? faderModes.Metronome : faderModes.StereoOut
     context.setState('faderTarget', target === faderModes.Send ? 'Send' : target === faderModes.Dormant ? 'Dormant'
         : target === faderModes.Mouse ? 'Mouse' : target === faderModes.Track ? 'Track'
+        : target === faderModes.FXReturn ? 'FXReturn'
         : target === faderModes.Metronome ? 'Metronome' : 'StereoOut')
     context.setState('pendingMotorPosition', '')
     if (previousFaderTarget !== context.getState('faderTarget') || isMouseLinkMode(current) || isMouseLinkMode(mode)) {
@@ -1368,9 +1387,9 @@ function activateKnobMode(context, mode, activeMapping) {
     if (mode === 'MouseFader' && !enteringLink) syncMouseFader(context)
     // These normal modes clear SHIFT; recalled alternates restore it from their mode.
     if (mode === 'HighPass' || mode === 'PreGain' || mode === 'Send' || isMouseLinkMode(mode)
-        || mode === 'Master' || mode === 'Click' || mode === 'Section' || mode === 'Marker'
+        || mode === 'Master' || mode === 'MasterFX' || mode === 'Click' || mode === 'Section' || mode === 'Marker'
         || mode === 'Pan' || mode === 'Zoom') {
-        var alternate = mode === 'PreGain' || mode === 'Send' || mode === 'MouseFader'
+        var alternate = mode === 'PreGain' || mode === 'Send' || mode === 'MouseFader' || mode === 'MasterFX'
         context.setState('shiftEnabled', alternate ? '1' : '0')
         if (alternate) onLED(context, cShift)
         else offLED(context, cShift)
@@ -1646,7 +1665,8 @@ function routeUnboundKnobTurn(context, newValue, diff) {
         }
         return
     }
-    if (mode !== 'Zoom' && mode !== 'Section' && mode !== 'Marker') return
+    if (mode !== 'Zoom' && mode !== 'Section' && mode !== 'Marker'
+        && mode !== 'Master' && mode !== 'MasterFX') return
     var zoomCommand
     if (diff < 0) {
         zoomCommand = var_zoomOut
@@ -1685,10 +1705,7 @@ function assignKnobControls() {
         updateBypassLED(context)
         updateSendModeLED(context)
     }
-    // Master-mode encoder controls the first FX Return channel.
-    page.makeValueBinding(knob, fxChannel.mValue.mVolume)
-        .setValueTakeOverModeScaled()
-        .setSubPage(knobModes.Master)
+    // Master encoder rotation is routed to zoom commands below.
     page.makeValueBinding(knob, hostTransport.mMetronomeClickLevel)
         .setSubPage(knobModes.Click)
     // The encoder push is routed below so it remains a momentary press path;
@@ -1698,7 +1715,7 @@ function assignKnobControls() {
     page.makeValueBinding(knob, hostPreFilter.mGain).setSubPage(knobModes.PreGain)
     page.makeValueBinding(knob, hostPreFilter.mLowCutFreq)
         .setSubPage(knobModes.HighPass)
-    var zoomModes = [knobModes.Zoom, knobModes.Section, knobModes.Marker]
+    var zoomModes = [knobModes.Zoom, knobModes.Section, knobModes.Marker, knobModes.Master, knobModes.MasterFX]
     for (var zoomIndex = 0; zoomIndex < zoomModes.length; zoomIndex++) {
         page.makeCommandBinding(var_zoomIn, 'Zoom', 'Zoom In').setSubPage(zoomModes[zoomIndex])
         page.makeCommandBinding(var_zoomOut, 'Zoom', 'Zoom Out').setSubPage(zoomModes[zoomIndex])
@@ -1714,8 +1731,12 @@ function assignKnobControls() {
     }
     page.makeCommandBinding(buttons.Bypass,
         'Mixer', 'Bypass: Inserts on Main Mix').setSubPage(knobModes.Master)
+    page.makeCommandBinding(buttons.Bypass,
+        'Mixer', 'Bypass: Inserts on Main Mix').setSubPage(knobModes.MasterFX)
     page.makeCommandBinding(var_masterInsertPressed,
         'Mixer', 'Bypass: Inserts on Main Mix').setSubPage(knobModes.Master)
+    page.makeCommandBinding(var_masterInsertPressed,
+        'Mixer', 'Bypass: Inserts on Main Mix').setSubPage(knobModes.MasterFX)
     page.makeCommandBinding(var_markerPrev,
         'Transport', 'Locate Previous Marker')
     page.makeCommandBinding(var_markerNext,
@@ -1727,6 +1748,7 @@ function assignKnobControls() {
     knobModes.Pan.mOnActivate = function(context, activeMapping) { activateKnobMode(context, 'Pan', activeMapping) }
     knobModes.Zoom.mOnActivate = function(context, activeMapping) { activateKnobMode(context, 'Zoom', activeMapping) }
     knobModes.Master.mOnActivate = function(context, activeMapping) { activateKnobMode(context, 'Master', activeMapping) }
+    knobModes.MasterFX.mOnActivate = function(context, activeMapping) { activateKnobMode(context, 'MasterFX', activeMapping) }
     knobModes.Click.mOnActivate = function(context, activeMapping) { activateKnobMode(context, 'Click', activeMapping) }
     knobModes.PreGain.mOnActivate = function(context, activeMapping) { activateKnobMode(context, 'PreGain', activeMapping) }
     knobModes.HighPass.mOnActivate = function(context, activeMapping) { activateKnobMode(context, 'HighPass', activeMapping) }
@@ -1763,7 +1785,7 @@ function assignKnobControls() {
             pulseVar(context, var_markerInsertPressed)
         } else if (mode === 'Zoom' || mode === 'Section') {
             pulseVar(context, var_zoomToLocators)
-        } else if (mode === 'Master') {
+        } else if (mode === 'Master' || mode === 'MasterFX') {
             pulseVar(context, var_masterInsertPressed)
         }
     }
@@ -1786,7 +1808,8 @@ function assignKnobControls() {
             // Recenter only the unbound input; normal host bindings keep their own position.
             context.setState('mouseKnobResetEcho', '0.5')
             mouseKnobInput.setProcessValue(context, 0.5)
-            if (mode === 'Send' || mode === 'Zoom' || mode === 'Section' || mode === 'Marker') {
+            if (mode === 'Send' || mode === 'Zoom' || mode === 'Section' || mode === 'Marker'
+                || mode === 'Master' || mode === 'MasterFX') {
                 routeUnboundKnobTurn(context, newValue, diff)
             } else {
                 knob.setProcessValue(context, clampFader(knob.getProcessValue(context) + diff))

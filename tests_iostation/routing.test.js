@@ -53,7 +53,7 @@ for (const name of Object.keys(selectedTrackStates)) {
 const master = scope.buttonMappings.find(mapping => mapping.normalName === 'Master');
 events.length = 0;
 press(master, 1); shift(1); shift(0); press(master, 0); press(master, 1); press(master, 0);
-assert.deepStrictEqual(events, [['Master',1],['Master',0],['Master',1],['Master',0]]);
+assert.deepStrictEqual(events, [['MasterFX',1],['MasterFX',0],['Master',1],['Master',0]]);
 // Device contexts do not share SHIFT state.
 shift(1); shift(0); events.length = 0;
 press(master, 1, b); press(master, 0, b);

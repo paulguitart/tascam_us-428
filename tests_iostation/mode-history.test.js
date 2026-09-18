@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const source = fs.readFileSync(require('node:path').join(__dirname, '..', 'PreSonus_IOStation.js'), 'utf8');
 const scope = {
     ENABLE_METRONOME_FADER: true, onLED() {}, offLED() {}, cShift: 6,
-    faderModes: Object.fromEntries(['Track', 'StereoOut', 'Metronome', 'Mouse', 'Dormant', 'Send'].map(name =>
+    faderModes: Object.fromEntries(['Track', 'StereoOut', 'FXReturn', 'Metronome', 'Mouse', 'Dormant', 'Send'].map(name =>
         [name, { mAction: { mActivate: { trigger() {} } } }])),
     knob: { getProcessValue: () => 0.5 },
     updateTouchLED() {}, updateKnobModeLEDs() {},
@@ -29,7 +29,7 @@ scope.activateKnobMode(a, 'Pan');
 assert.equal(scope.resolveKnobModeButton(a, 'Pan'), 'Click');
 scope.activateKnobMode(a, 'Pan');
 assert.equal(a.getState('previousKnobMode'), 'Click');
-for (const [button, mode] of Object.entries({ Link: 'Mouse', Scroll: 'Zoom', Zoom: 'Zoom', Master: 'Master', Click: 'Click', Channel: 'HighPass', Section: 'Section', Marker: 'Marker' })) {
+for (const [button, mode] of Object.entries({ Link: 'Mouse', Scroll: 'Zoom', Zoom: 'Zoom', Master: 'Master', MasterFX: 'MasterFX', Click: 'Click', Channel: 'HighPass', Section: 'Section', Marker: 'Marker' })) {
     scope.activateKnobMode(a, 'Pan');
     scope.activateKnobMode(a, mode);
     assert.equal(scope.resolveKnobModeButton(a, button), button === 'Channel' ? 'PreGain' : 'Pan');
@@ -61,10 +61,10 @@ for (const name of ['Link', 'Pan', 'Channel', 'Scroll', 'Master', 'Click', 'Sect
         press(context, 1);
         context.setState('shiftEnabled', shift === '1' ? '0' : '1');
         press(context, 0);
-        const expected = name === 'Pan' && shift === '1' ? 'Send' : name === 'Channel' && shift === '1' ? 'PreGain' : name === 'Scroll' && shift === '1' ? 'Zoom' : name;
+        const expected = name === 'Pan' && shift === '1' ? 'Send' : name === 'Channel' && shift === '1' ? 'PreGain' : name === 'Scroll' && shift === '1' ? 'Zoom' : name === 'Master' && shift === '1' ? 'MasterFX' : name;
         assert.deepEqual(events, [[expected, 1], [expected, 0]]);
         // Pressing the active mode returns to Pan in either SHIFT state.
-        context.setState('knobMode', name === 'Link' ? (shift === '1' ? 'MouseFader' : 'Mouse') : name === 'Pan' ? (shift === '1' ? 'Send' : 'Pan') : name === 'Channel' ? (shift === '1' ? 'PreGain' : 'HighPass') : name === 'Scroll' ? 'Zoom' : name);
+        context.setState('knobMode', name === 'Link' ? (shift === '1' ? 'MouseFader' : 'Mouse') : name === 'Pan' ? (shift === '1' ? 'Send' : 'Pan') : name === 'Channel' ? (shift === '1' ? 'PreGain' : 'HighPass') : name === 'Scroll' ? 'Zoom' : name === 'Master' ? (shift === '1' ? 'MasterFX' : 'Master') : name);
         context.setState('previousKnobMode', 'Pan');
         context.setState('shiftEnabled', shift);
         events.length = 0;
@@ -80,7 +80,7 @@ console.log('PASS: mode buttons respect the Channel SHIFT alternate, toggle back
 let shiftLed = false;
 scope.onLED = (_, note) => { if (note === scope.cShift) shiftLed = true; };
 scope.offLED = (_, note) => { if (note === scope.cShift) shiftLed = false; };
-for (const alternate of ['PreGain', 'Send']) {
+for (const alternate of ['PreGain', 'Send', 'MasterFX']) {
     for (const normal of ['Master', 'Click', 'Section', 'Marker', 'Pan', 'Zoom']) {
         const context = device();
         scope.activateKnobMode(context, alternate);
@@ -95,11 +95,20 @@ for (const alternate of ['PreGain', 'Send']) {
     }
 }
 console.log('PASS: Master/Click/Section/Marker/Pan/Zoom clear SHIFT and history restores both alternate modes and LED');
+const masterModes = device();
+scope.activateKnobMode(masterModes, 'Master');
+assert.equal(masterModes.getState('faderTarget'), 'StereoOut');
+assert.equal(masterModes.getState('shiftEnabled'), '0');
+scope.activateKnobMode(masterModes, 'MasterFX');
+assert.equal(masterModes.getState('faderTarget'), 'FXReturn');
+assert.equal(masterModes.getState('shiftEnabled'), '1');
+assert.equal(scope.resolveKnobModeButton(masterModes, 'MasterFX'), 'Master');
+console.log('PASS: Master selects Stereo Out, SHIFT + Master selects FX Return 1 and restores the SHIFT layer');
 
 // Exercise SHIFT itself: switching Pan/Send is immediate, and release is inert.
 scope.uSection={btn_Shift:{mSurfaceValue:{}}};
 scope.pulseVar=(context,button)=>{button.setProcessValue(context,1);button.setProcessValue(context,0);};
-for(const mode of ['Pan','Send','MouseFader'])scope.buttons[mode]={setProcessValue(context,value){if(value)scope.activateKnobMode(context,mode);}};
+for(const mode of ['Pan','Send','MouseFader','Master','MasterFX'])scope.buttons[mode]={setProcessValue(context,value){if(value)scope.activateKnobMode(context,mode);}};
 const shiftStart=source.indexOf('uSection.btn_Shift.mSurfaceValue.mOnProcessValueChange =');
 vm.runInContext(source.slice(shiftStart,source.indexOf('function resetButtonRouting',shiftStart)),scope);
 const shift=scope.uSection.btn_Shift.mSurfaceValue.mOnProcessValueChange,context=device();
@@ -110,22 +119,26 @@ shift(context,1);shift(context,0);assert.equal(context.getState('knobMode'),'Pan
 let toggles=0;scope.toggleModeEffect=()=>{toggles++;};
 const bypassMapping={normalName:'Bypass',shiftedName:'BypassAll',physicalButton:{mSurfaceValue:{}}};
 scope.assignButtonRouting(bypassMapping);
-for(const mode of ['Pan','Send'])for(const layer of ['0','1']){
+for(const mode of ['Pan','Send','Master','MasterFX'])for(const layer of ['0','1']){
  scope.activateKnobMode(context,mode);context.setState('shiftEnabled',layer);events.length=0;
  const press=bypassMapping.physicalButton.mSurfaceValue.mOnProcessValueChange;
  press(context,1);press(context,1);press(context,0);
  assert.deepEqual(events,[['Bypass',1],['Bypass',0]]);
 }
-assert.equal(toggles,4);
+assert.equal(toggles,8);
 scope.activateKnobMode(context,'Mouse');shift(context,1);shift(context,0);
 assert.equal(context.getState('knobMode'),'MouseFader');
-console.log('PASS: immediate Pan/Send SHIFT switching, duplicate suppression, BYPASS in both layers and stable Mouse mode');
+scope.activateKnobMode(context,'Master');shift(context,1);shift(context,0);
+assert.equal(context.getState('knobMode'),'MasterFX');assert.equal(context.getState('faderTarget'),'FXReturn');
+shift(context,1);shift(context,0);
+assert.equal(context.getState('knobMode'),'Master');assert.equal(context.getState('faderTarget'),'StereoOut');
+console.log('PASS: immediate Pan/Send/Master SHIFT switching, duplicate suppression, BYPASS in both layers and stable Mouse mode');
 
 // LINK remembers its own selection and never routes its SHIFT into another mode.
 for (const linkMode of ['Mouse', 'MouseFader']) {
     for (const [normalName, shiftedName, destination] of [
         ['Pan', 'Send', 'Pan'], ['Channel', 'PreGain', 'HighPass'],
-        ['Scroll', 'Zoom', 'Zoom'], ['Master', 'Master', 'Master'],
+        ['Scroll', 'Zoom', 'Zoom'], ['Master', 'MasterFX', 'Master'],
         ['Click', 'Click', 'Click'], ['Section', 'Section', 'Section'], ['Marker', 'Marker', 'Marker']
     ]) {
         const context = device();

@@ -14,7 +14,7 @@ for(const name of ['sendHardwareMidi','offLED','onLED','flashingLED','setTranspo
 }
 s.updateClickLED(ctx);assert.deepEqual(messages.at(-1),[0x90,0x3B,0]);
 s.setupMetronomeFeedback();
-for(const mode of ['Pan','Send','Mouse','MouseFader','Zoom','Section','Marker','HighPass','PreGain','Master','Click']){
+for(const mode of ['Pan','Send','Mouse','MouseFader','Zoom','Section','Marker','HighPass','PreGain','Master','MasterFX','Click']){
  state.knobMode=mode;
  for(const value of [0,1,0]){
   metronome=value;s.metronomeFeedbackValue.mOnProcessValueChange(ctx,value);

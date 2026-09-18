@@ -19,8 +19,8 @@ s.assignKnobControls();
 // Check destinations by mode rather than depending on registration order.
 assert(!bindings.some(b=>b.input===s.mouseKnobInput)); // LINK input must have no host feedback path.
 const expectedKnobs = [
- ['Pan',s.page.mHostAccess.mTrackSelection.mMixerChannel.mValue.mPan],
- ['Master',s.fxChannel.mValue.mVolume], ['Click',s.hostTransport.mMetronomeClickLevel],
+    ['Pan',s.page.mHostAccess.mTrackSelection.mMixerChannel.mValue.mPan],
+ ['Click',s.hostTransport.mMetronomeClickLevel],
  ['PreGain',s.page.mHostAccess.mTrackSelection.mMixerChannel.mPreFilter.mGain], ['HighPass',s.page.mHostAccess.mTrackSelection.mMixerChannel.mPreFilter.mLowCutFreq]
 ];
 for(const [mode,host] of expectedKnobs) {
@@ -29,9 +29,9 @@ for(const [mode,host] of expectedKnobs) {
 }
 assert(bindings.some(b=>b.input===s.firstSendLevelFeedbackValue&&b.host===firstSend.mLevel));
 assert(!bindings.some(b=>b.input===s.knob&&b.host===firstSend.mLevel));
-assert.equal(bindings.find(b=>b.input===s.knob&&b.page===s.knobModes.Master).scaled,true);
+assert(!bindings.some(b=>b.input===s.knob&&(b.page===s.knobModes.Master||b.page===s.knobModes.MasterFX)));
 assert(bindings.some(b=>b.input===s.firstSendEnabledFeedbackValue&&b.host===firstSend.mOn));
-for(const mode of ['Zoom','Section','Marker']) {
+for(const mode of ['Zoom','Section','Marker','Master','MasterFX']) {
  for(const [input,command] of [[s.var_zoomIn,'Zoom In'],[s.var_zoomOut,'Zoom Out']]) {
   assert(commands.some(b=>b.input===input&&b.category==='Zoom'&&b.command===command&&b.page===s.knobModes[mode]));
  }
@@ -42,14 +42,31 @@ assert(!bindings.some(b=>b.input===s.knob&&(b.page===s.knobModes.Mouse||b.page==
 for(const mapping of s.knobModeButtons) assert(actions.some(a=>a.input===mapping.button&&a.action===mapping.mode.mAction.mActivate));
 assert(actions.some(a=>a.input===s.buttons.Scroll&&a.action===s.knobModes.Zoom.mAction.mActivate));
 assert(actions.some(a=>a.input===s.buttons.Zoom&&a.action===s.knobModes.Zoom.mAction.mActivate));
+assert(actions.some(a=>a.input===s.buttons.MasterFX&&a.action===s.knobModes.MasterFX.mAction.mActivate));
 assert(actions.some(a=>a.input===s.buttons.Click&&a.action===s.knobModes.Click.mAction.mActivate));
 assert(actions.some(a=>a.input===s.buttons.Marker&&a.action===s.knobModes.Marker.mAction.mActivate));
 assert(commands.some(binding=>binding.input===s.var_masterInsertPressed&&binding.category==='Mixer'
  &&binding.command==='Bypass: Inserts on Main Mix'&&binding.page===s.knobModes.Master));
-for(const mode of ['Pan','Master','Click','HighPass']){
+for(const mode of ['Master','MasterFX']) {
+ for(const input of [s.buttons.Bypass,s.var_masterInsertPressed]) {
+  assert(commands.some(binding=>binding.input===input&&binding.category==='Mixer'
+   &&binding.command==='Bypass: Inserts on Main Mix'&&binding.page===s.knobModes[mode]));
+ }
+}
+s.assignSelectedTrackControls();
+const fxFaderBinding=bindings.find(b=>b.input===s.fader.mSurfaceValue&&b.host===s.fxChannel.mValue.mVolume&&b.page===s.faderModes.FXReturn);
+assert(fxFaderBinding);
+assert(bindings.some(b=>b.input===s.faderTargetFeedback.FXReturn&&b.host===s.fxChannel.mValue.mVolume));
+for(const mode of ['Pan','Click','HighPass']){
  s.knobModes[mode].mOnActivate(ctx);s.knob.mOnProcessValueChange(ctx,.6,.1);
  assert.equal(events.length,0);assert.equal(ctx.getState('knobMode'),mode);
 }
+s.knobModes.Master.mOnActivate(ctx);
+assert.equal(ctx.getState('faderTarget'),'StereoOut');assert.equal(ctx.getState('shiftEnabled'),'0');
+events.length=0;s.knob.mOnProcessValueChange(ctx,.6,.1);assert.deepStrictEqual(events,[['in',1],['in',0]]);
+s.knobModes.MasterFX.mOnActivate(ctx);
+assert.equal(ctx.getState('faderTarget'),'FXReturn');assert.equal(ctx.getState('shiftEnabled'),'1');
+events.length=0;s.knob.mOnProcessValueChange(ctx,.6,.1);assert.deepStrictEqual(events,[['in',1],['in',0]]);
 s.knobModes.Zoom.mOnActivate(ctx);
 s.knob.mOnProcessValueChange(ctx,.5,0);assert.equal(events.length,0);
 s.knob.mOnProcessValueChange(ctx,.51,.01);s.knob.mOnProcessValueChange(ctx,.52,.01);
@@ -142,8 +159,11 @@ assert.deepStrictEqual(metronomePulses,[1,0]);
 s.knobModes.Master.mOnActivate(ctx);
 s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(ctx,1);
 s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(ctx,0);
-assert.deepStrictEqual(masterInsertPulses,[1,0]);
-console.log('PASS: Marker navigation/insert, Click metronome toggle and Master insert-bypass push');
+ s.knobModes.MasterFX.mOnActivate(ctx);
+ s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(ctx,1);
+ s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(ctx,0);
+assert.deepStrictEqual(masterInsertPulses,[1,0,1,0]);
+console.log('PASS: Marker navigation/insert, Click metronome toggle and insert-bypass push in both Master modes');
 
 // Send edits must never share the physical knob's automatic host-binding path.
 // Drive actual mode activation and knob callbacks, including endpoint detents.
@@ -188,14 +208,14 @@ s.mouseKnobInput.setProcessValue=(context,value)=>{
  const diff=value-raw;raw=value;s.mouseKnobInput.mOnProcessValueChange(context,value,diff);
 };
 function physicalTurn(diff){const next=Math.max(0,Math.min(1,raw+diff));const applied=next-raw;raw=next;s.mouseKnobInput.mOnProcessValueChange(ctx,next,applied);}
-for(const mode of ['Pan','Master','Click','PreGain','HighPass']) {
+for(const mode of ['Pan','Click','PreGain','HighPass']) {
  state.knobMode=mode;raw=.5;hostKnob=.5;forwarded.length=0;
  for(let i=0;i<30;i++)physicalTurn(.05);
  assert.equal(hostKnob,1);assert.equal(forwarded.length,30);
  for(let i=0;i<30;i++)physicalTurn(-.05);
  assert.equal(hostKnob,0);assert.equal(forwarded.length,60);
 }
-for(const mode of ['Zoom','Section','Marker']) {
+for(const mode of ['Zoom','Section','Marker','Master','MasterFX']) {
  state.knobMode=mode;raw=.5;forwarded.length=0;events.length=0;
  for(let i=0;i<30;i++)physicalTurn(.05);
  assert.equal(events.length,60);assert.deepStrictEqual(forwarded,[]);
@@ -211,7 +231,7 @@ console.log('PASS: sole MIDI receiver, normal-mode routing and full travel, repe
 Object.defineProperty(s.knob,'mOnProcessValueChange',{
  configurable:true,get(){throw new Error('DukValue is uninitialized');},set(){}
 });
-for(const mode of ['Zoom','Section','Marker']) {
+for(const mode of ['Zoom','Section','Marker','Master','MasterFX']) {
  state.knobMode=mode;state.mouseKnobResetEcho='';raw=.5;events.length=0;
  physicalTurn(.05);physicalTurn(-.05);physicalTurn(.05);
  assert.deepStrictEqual(events,[['in',1],['in',0],['out',1],['out',0],['in',1],['in',0]]);
