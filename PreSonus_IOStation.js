@@ -44,6 +44,8 @@ const GREEN = [0, 127, 0]
 const BLUE =  [0, 0, 127]
 const AMBER =  [127, 48, 0]
 const MAGENTA = [127, 0, 127]
+const CYAN = [0, 127, 127]
+const SEND_DISABLED_BRIGHTNESS = 0.25
 const LINK_LOWER_COLOR = [127, 0, 40] // red-leaning magenta; distinct from green and amber
 
 // button color values
@@ -104,7 +106,7 @@ MARKER (Normal)          : Select Marker mode; Prev/Next locate markers; knob pu
 
 KNOB MODES:
 ----------------------------------------------------------------------------------------------------
-SHIFT + PAN              : Selected Track Send 1 Level; press knob to reset to 0 dB
+SHIFT + PAN              : Fader = Send 1; TOUCH resets 0 dB; knob = track volume; push toggles pre/post
 PAN                      : Selected Track Pan; press knob to center pan
 ZOOM                     : Horizontal Zoom In / Out commands
 MASTER                   : Encoder controls FX Return 1; fader controls Stereo Out Volume
@@ -122,7 +124,7 @@ FOOTSWITCH               : Normalized to normally-closed press/release behavior 
 
 BYPASS BUTTON PATHS:
 ----------------------------------------------------------------------------------------------------
-BYPASS                   : PAN/SHIFT + PAN: send 1
+BYPASS                   : PAN: fader bypass; SHIFT + PAN: send 1 enable
                          : CHANNEL: high pass
 						 : CLICK, SCROLL, SECTION, MARKER: metronome enabled
                          : MASTER: Main Mix inserts (LED means not bypassed)
@@ -132,7 +134,7 @@ UNASSIGNED BUTTON PATHS:
 TOUCH                    : Normal path
 SHIFT + BYPASS / TOUCH / WRITE / READ          : BypassAll / Latch / Trim / Off
 SHIFT inside LINK        : Toggle remembered knob/fader selection
-SHIFT + PAN              : Send 1 mode
+SHIFT + PAN              : Send 1 fader mode
 SHIFT + CHANNEL          : High Pass mode
 SHIFT + MASTER / CLICK   : Master / Click modes
 SHIFT + SECTION          : Section mode
@@ -366,7 +368,7 @@ function assignButtonRouting(mapping) {
             }
             activeName = context.getState('shiftEnabled') === '1' ? shiftedName : normalName
             if (normalName === 'Bypass' && (context.getState('knobMode') === 'PreGain' || isMouseLinkMode(context.getState('knobMode')) || context.getState('knobMode') === 'Pan' || context.getState('knobMode') === 'Send')) activeName = 'Bypass'
-            if (normalName === 'Touch' && isMouseLinkMode(context.getState('knobMode'))) activeName = 'Touch'
+            if (normalName === 'Touch' && (isMouseLinkMode(context.getState('knobMode')) || context.getState('knobMode') === 'Send')) activeName = 'Touch'
             activeName = resolveKnobModeButton(context, activeName)
             context.setState(stateKey, activeName)
             // Selected-track state bindings toggle on press; their release must not clear the host value.
@@ -453,7 +455,7 @@ function flashingLED(context, note) { sendHardwareMidi(context, 0x90, note, 1) }
 function midi7(value) { return Math.max(0, Math.min(127, Math.round(value))) }
 function isPanFaderBypassed(context) {
     var mode = context.getState('knobMode')
-    return (mode === 'Pan' || mode === 'Send') && context.getState('panFaderBypassed') === '1'
+    return mode === 'Pan' && context.getState('panFaderBypassed') === '1'
 }
 
 function clampFader(value) { return Math.max(0, Math.min(1, value)) }
@@ -942,6 +944,8 @@ function assignSelectedTrackControls() {
         .setSubPage(faderModes.Track)
     page.makeValueBinding(fader.mSurfaceValue, hostStereoOut.mValue.mVolume)
         .setSubPage(faderModes.StereoOut)
+    page.makeValueBinding(fader.mSurfaceValue, hostSelectedTrack.mSends.getByIndex(0).mLevel)
+        .setSubPage(faderModes.Send)
     page.makeValueBinding(fader.mSurfaceValue, hostTransport.mMetronomeClickLevel)
         .setSubPage(faderModes.Metronome)
     page.makeValueBinding(fader.mSurfaceValue, page.mHostAccess.mMouseCursor.mValueUnderMouse)
@@ -1016,8 +1020,7 @@ function updateMetronomeModeLEDs(context, now) {
         if (isMouseLinkMode(mode) && notes[i] === cLink) {
             updateMouseLinkLED(context)
         } else if (mode === 'Send' && notes[i] === cPan) {
-            setRGBLED_color(context, cPan, BLUE)
-            onLED(context, cPan)
+            updateSendModeLED(context)
         } else if (mode === 'PreGain' && notes[i] === cChannel) {
             updatePreGainLED(context)
         } else if (mode === modes[i]) {
@@ -1149,6 +1152,7 @@ var knob = mSection.knob_vis.mSurfaceValue
 var faderModeArea = page.makeSubPageArea('Fader Target')
 var faderModes = {
     Dormant: faderModeArea.makeSubPage('Dormant'), // No host binding or motor movement.
+    Send: faderModeArea.makeSubPage('Send 1'),
     Track: faderModeArea.makeSubPage('Selected Track'),
     StereoOut: faderModeArea.makeSubPage('Stereo Out'),
     Metronome: faderModeArea.makeSubPage('Metronome Level'),
@@ -1182,6 +1186,7 @@ var knobModeButtons = [
     { button: buttons.Section, mode: knobModes.Section },
     { button: buttons.Marker, mode: knobModes.Marker }
 ]
+var firstSendPrePostFeedbackValue
 var firstSendLevelFeedbackValue
 var var_zoomIn = surface.makeCustomValueVariable('Zoom In')
 var var_zoomOut = surface.makeCustomValueVariable('Zoom Out')
@@ -1207,6 +1212,15 @@ var fxChannel = hostMixerZoneFX.makeMixerBankChannel()
 
 function isMetronomeBypassMode(mode) {
     return mode === 'Click' || mode === 'Zoom' || mode === 'Section' || mode === 'Marker'
+}
+
+// BYPASS is fixed-color hardware; PAN carries Send's RGB status.
+function updateSendModeLED(context) {
+    if (context.getState('knobMode') !== 'Send') return
+    var pre = firstSendPrePostFeedbackValue && firstSendPrePostFeedbackValue.getProcessValue(context) > 0
+    var enabled = firstSendEnabledFeedbackValue && firstSendEnabledFeedbackValue.getProcessValue(context) > 0
+    setRGBLED_color(context, cPan, pre ? CYAN : AMBER, enabled ? FULL_BRIGHTNESS : SEND_DISABLED_BRIGHTNESS)
+    onLED(context, cPan)
 }
 
 function updateBypassLED(context) {
@@ -1266,6 +1280,10 @@ function toggleModeEffect(context) {
         : mode === 'PreGain' ? polarityFeedbackValue : null
     if (value) {
         value.setProcessValue(context, value.getProcessValue(context) > 0 ? 0 : 1)
+        if (mode === 'Send') {
+            updateBypassLED(context)
+            updateSendModeLED(context)
+        }
     }
 }
 
@@ -1326,14 +1344,15 @@ function activateKnobMode(context, mode, activeMapping) {
     // Mouse control ends on mode exit, even for modes that normally retain the fader.
     if (isMouseLinkMode(current) || (mode !== 'Zoom' && mode !== 'Section' && mode !== 'Marker')) {
         var target = mode === 'MouseFader' ? faderModes.Mouse : mode === 'Mouse' ? faderModes.Dormant
-            : mode === 'Pan' || mode === 'Send' || mode === 'HighPass' || mode === 'PreGain'
+            : mode === 'Send' ? faderModes.Send
+            : mode === 'Pan' || mode === 'HighPass' || mode === 'PreGain'
             ? faderModes.Track
             : mode === 'Click' && ENABLE_METRONOME_FADER ? faderModes.Metronome
             : mode === 'Zoom' || mode === 'Section' || mode === 'Marker' ? faderModes.Track : faderModes.StereoOut
-        context.setState('faderTarget', target === faderModes.Dormant ? 'Dormant' : target === faderModes.Mouse ? 'Mouse' : target === faderModes.Track ? 'Track'
+        context.setState('faderTarget', target === faderModes.Send ? 'Send' : target === faderModes.Dormant ? 'Dormant' : target === faderModes.Mouse ? 'Mouse' : target === faderModes.Track ? 'Track'
             : target === faderModes.Metronome ? 'Metronome' : 'StereoOut')
         context.setState('pendingMotorPosition', '')
-        if (isMouseLinkMode(current) || isMouseLinkMode(mode)) {
+        if (isMouseLinkMode(current) || isMouseLinkMode(mode) || current === 'Send' || mode === 'Send') {
             context.setState('mouseFaderWaitRelease', faderTouch.getProcessValue(context) > 0 ? '1' : '')
             mappedFaderTouch.setProcessValue(context, 0)
         }
@@ -1616,8 +1635,8 @@ function routeUnboundKnobTurn(context, newValue, diff) {
     var mode = context.getState('knobMode')
     if (mode === 'Send') {
         if (isFinite(diff) && diff !== 0) {
-            var sendLevel = firstSendLevelFeedbackValue.getProcessValue(context)
-            firstSendLevelFeedbackValue.setProcessValue(context, clampFader(sendLevel + diff))
+            var trackVolume = faderTargetFeedback.Track.getProcessValue(context)
+            faderTargetFeedback.Track.setProcessValue(context, clampFader(trackVolume + diff))
         }
         return
     }
@@ -1644,6 +1663,13 @@ function assignKnobControls() {
     // No direct MIDI-knob binding to Send: every write is gated by the current mode.
     firstSendLevelFeedbackValue = surface.makeCustomValueVariable('First Send Level')
     page.makeValueBinding(firstSendLevelFeedbackValue, firstSend.mLevel)
+    faderTargetFeedback.Send = firstSendLevelFeedbackValue
+    firstSendLevelFeedbackValue.mOnProcessValueChange = function(context) {
+        if (context.getState('faderTarget') === 'Send') updateTouchLED(context)
+    }
+    firstSendPrePostFeedbackValue = surface.makeCustomValueVariable('First Send Pre/Post')
+    page.makeValueBinding(firstSendPrePostFeedbackValue, firstSend.mPrePost)
+    firstSendPrePostFeedbackValue.mOnProcessValueChange = function(context) { updateSendModeLED(context) }
     // Mouse knob writes are routed explicitly below so BYPASS can disable input.
     // Follow host/track changes so BYPASS toggles the current send state.
     var sendEnabled = surface.makeCustomValueVariable('First Send Enabled')
@@ -1651,6 +1677,7 @@ function assignKnobControls() {
     page.makeValueBinding(sendEnabled, firstSend.mOn)
     sendEnabled.mOnProcessValueChange = function(context) {
         updateBypassLED(context)
+        updateSendModeLED(context)
     }
     // Master-mode encoder controls the first FX Return channel.
     page.makeValueBinding(knob, fxChannel.mValue.mVolume)
@@ -1719,7 +1746,9 @@ function assignKnobControls() {
         } else if (isMouseLinkMode(mode)) {
             restoreMouseLinkValue(context)
         } else if (mode === 'Send') {
-            firstSendLevelFeedbackValue.setProcessValue(context, FADER_HOST_UNITY)
+            firstSendPrePostFeedbackValue.setProcessValue(context,
+                firstSendPrePostFeedbackValue.getProcessValue(context) > 0 ? 0 : 1)
+            updateSendModeLED(context)
         } else if (mode === 'Click') {
             toggleMetronome(context)
         } else if (mode === 'HighPass') {

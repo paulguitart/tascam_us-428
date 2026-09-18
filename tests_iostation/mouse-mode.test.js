@@ -16,7 +16,7 @@ const s={Date,Math,Number,String,isFinite,
  midiOut:{sendMidi:(_,m)=>motors.push(m)},mSection:{knob_Press:{mSurfaceValue:{}}},
  knob:{getProcessValue:()=>parameter,setProcessValue(){}},mouseKnobInput:{getProcessValue:()=>parameter,setProcessValue(){}},faderTargetFeedback:{},
  surface:{makeCustomValueVariable:()=>({setProcessValue(){}})},
- faderModes:Object.fromEntries(['Track','StereoOut','Metronome','Mouse','Dormant'].map(k=>[k,{mAction:{mActivate:{trigger(){}}}}]))
+ faderModes:Object.fromEntries(['Track','StereoOut','Metronome','Mouse','Dormant','Send'].map(k=>[k,{mAction:{mActivate:{trigger(){}}}}]))
 };
 vm.createContext(s);
 function run(from,to){vm.runInContext(source.slice(source.indexOf(from),source.indexOf(to,source.indexOf(from))),s)}

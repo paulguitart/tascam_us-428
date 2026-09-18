@@ -27,20 +27,21 @@ vm.runInContext(source.slice(start,source.indexOf('    // Korg zoom pattern:',st
 const press=v=>scope.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(ctx,v);
 press(1);press(1);press(0);assert.deepEqual(writes,[.5]);assert.equal(pan,.5);
 scope.FADER_HOST_UNITY=.789087;
-scope.firstSendLevelFeedbackValue={setProcessValue:(_,v)=>writes.push(v)};
-state.knobMode='Send';press(1);press(1);press(0);assert.deepEqual(writes,[.5,.789087]);
-console.log('PASS: pan gradient, color flag, host feedback, inactive LEDs, center push and Send level reset');
+let pre=0;scope.updateSendModeLED=()=>{};scope.updateBypassLED=()=>{};
+scope.firstSendPrePostFeedbackValue={getProcessValue:()=>pre,setProcessValue:(_,v)=>{pre=v;writes.push(v)}};
+state.knobMode='Send';press(1);press(1);press(0);assert.deepEqual(writes,[.5,1]);
+console.log('PASS: pan gradient, color flag, host feedback, inactive LEDs, center push and Send pre/post toggle');
 // Resetting level preserves either send enable state; the existing BYPASS handler still toggles it.
 let sendEnabled=0,sendLevel=.2;
 scope.isMetronomeBypassMode=()=>false;
 scope.firstSendEnabledFeedbackValue={getProcessValue:()=>sendEnabled,setProcessValue:(_,v)=>{sendEnabled=v;}};
-scope.firstSendLevelFeedbackValue.setProcessValue=(_,v)=>{sendLevel=v;};
+
 const toggleStart=source.indexOf('function toggleModeEffect(context)');
 vm.runInContext(source.slice(toggleStart,source.indexOf('function updateKnobModeLEDs',toggleStart)),scope);
 for(const initial of [0,1]){
  sendEnabled=initial;sendLevel=.2;press(1);press(1);press(0);
- assert.equal(sendEnabled,initial);assert.equal(sendLevel,.789087);
- scope.toggleModeEffect(ctx);assert.equal(sendEnabled,1-initial);assert.equal(sendLevel,.789087);
+ assert.equal(sendEnabled,initial);assert.equal(sendLevel,.2);
+ scope.toggleModeEffect(ctx);assert.equal(sendEnabled,1-initial);assert.equal(sendLevel,.2);
  scope.toggleModeEffect(ctx);assert.equal(sendEnabled,initial);
 }
-console.log('PASS: Send reset preserves send enable state; BYPASS toggles without changing level');
+console.log('PASS: Send pre/post toggle preserves send level and enable state; BYPASS toggles without changing level');

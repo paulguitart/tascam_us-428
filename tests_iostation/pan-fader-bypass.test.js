@@ -16,7 +16,7 @@ s.faderTargetFeedback.Track.getProcessValue = () => .6;
 s.activateKnobMode(ctx, 'Pan', {});
 s.updateBypassLED(ctx);assert.equal(bypassLED, false);
 s.toggleModeEffect(ctx);assert.equal(bypassLED, true);assert.equal(send, 1);
-for (const mode of ['Pan','Send']) {
+for (const mode of ['Pan']) {
  s.activateKnobMode(ctx, mode, {});
  const before = motors.length;
  touched = 1;s.faderTouch.mOnProcessValueChange(ctx,1);
@@ -27,7 +27,8 @@ for (const mode of ['Pan','Send']) {
  assert.equal(mappedTouch,0);assert.equal(inputs.length,0);assert.equal(motors.length,before);
  assert.equal(state.pendingMotorPosition,'');
 }
-// Send's button changes send enable, never the remembered fader bypass.
+// Send's fader ignores PAN bypass; its button changes send enable only.
+s.activateKnobMode(ctx,'Send',{});assert.equal(s.isPanFaderBypassed(ctx),false);assert.equal(state.faderTarget,'Send');
 s.toggleModeEffect(ctx);s.updateBypassLED(ctx);
 assert.equal(send,0);assert.equal(bypassLED,false);assert.equal(state.panFaderBypassed,'1');
 s.activateKnobMode(ctx,'Pan',{});s.updateBypassLED(ctx);assert.equal(bypassLED,true);
@@ -44,4 +45,4 @@ touched=0;s.faderTouch.mOnProcessValueChange(ctx,0);s.toggleModeEffect(ctx);
 s.activateKnobMode(ctx,'HighPass',{});assert.equal(s.isPanFaderBypassed(ctx),false);
 touched=1;s.var_faderInput.mOnProcessValueChange(ctx,.5);assert.equal(inputs.length,2);
 s.activateKnobMode(ctx,'Pan',{});assert.equal(mappedTouch,0);assert.equal(s.isPanFaderBypassed(ctx),true);
-console.log('PASS: PAN fader bypass gates input/motor/touch, Send shares it with independent enable LED, held release safety and mode-local recall');
+console.log('PASS: PAN fader bypass gates input/motor/touch, Send ignores it with independent enable LED, held release safety and mode-local recall');
