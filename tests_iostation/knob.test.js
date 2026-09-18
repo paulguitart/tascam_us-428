@@ -206,3 +206,16 @@ for(const mode of ['Mouse','MouseFader']) {
  assert.deepStrictEqual(forwarded,[]); // Unlocked LINK cannot forward MIDI to PAN.
 }
 console.log('PASS: sole MIDI receiver, normal-mode routing and full travel, repeated zoom, and zero PAN forwarding in unlocked LINK');
+
+// Model a native callback property that supports registration but cannot be read back.
+Object.defineProperty(s.knob,'mOnProcessValueChange',{
+ configurable:true,get(){throw new Error('DukValue is uninitialized');},set(){}
+});
+for(const mode of ['Zoom','Section','Marker']) {
+ state.knobMode=mode;state.mouseKnobResetEcho='';raw=.5;events.length=0;
+ physicalTurn(.05);physicalTurn(-.05);physicalTurn(.05);
+ assert.deepStrictEqual(events,[['in',1],['in',0],['out',1],['out',0],['in',1],['in',0]]);
+}
+state.knobMode='Send';raw=.5;sendLevel=.4;sendWrites.length=0;
+physicalTurn(.05);assert(Math.abs(sendLevel-.45)<1e-12);assert.equal(sendWrites.length,1);
+console.log('PASS: zoom and Send route without reading native callback properties');

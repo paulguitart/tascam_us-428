@@ -30,6 +30,7 @@ run('function clampFader(', '// Future footswitch assignments');
 s.fader.mSurfaceValue.setProcessValue=(_,v)=>{parameter=v;writes.push(v);s.syncMouseFader(ctx)};
 run('    mSection.knob_Press.mSurfaceValue.mOnProcessValueChange =', '    // Korg zoom pattern:');
 run('function assignButtonRouting(', 'for (var buttonIndex =');
+run('function routeUnboundKnobTurn(', 'function assignKnobControls(');
 {const start=source.indexOf('    knob.mOnProcessValueChange =');const end=source.indexOf('page.mOnActivate =',start);vm.runInContext(source.slice(start,end).trimEnd().slice(0,-1),s)}
 s.setRGBLED_color=(_,note,color)=>{if(note===77)touchColor=color;if(note===5)linkColor=color};
 s.setTransportLed=(_,note,on)=>{if(note===77)touchOn=on;if(note===3)bypassOn=on};

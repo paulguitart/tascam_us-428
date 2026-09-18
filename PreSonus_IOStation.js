@@ -1585,6 +1585,29 @@ function setupPanFeedback() {
     }
 }
 
+// Plain JS dispatch: never read/call Cubase-owned callback properties from script code.
+function routeUnboundKnobTurn(context, newValue, diff) {
+    if (!isFinite(diff) || diff === 0) return
+    var mode = context.getState('knobMode')
+    if (mode === 'Send') {
+        if (isFinite(diff) && diff !== 0) {
+            var sendLevel = firstSendLevelFeedbackValue.getProcessValue(context)
+            firstSendLevelFeedbackValue.setProcessValue(context, clampFader(sendLevel + diff))
+        }
+        return
+    }
+    if (mode !== 'Zoom' && mode !== 'Section' && mode !== 'Marker') return
+    var zoomCommand
+    if (diff < 0) {
+        zoomCommand = var_zoomOut
+    } else if (diff > 0) {
+        zoomCommand = var_zoomIn
+    }
+    if (zoomCommand) {
+        pulseVar(context, zoomCommand)
+    }
+}
+
 function assignKnobControls() {
     for (var i = 0; i < knobModeButtons.length; i++) {
         var mapping = knobModeButtons[i]
@@ -1686,26 +1709,8 @@ function assignKnobControls() {
     }
 
     // Korg zoom pattern: pulse commands per detent, using relative direction.
-    // Pulse each command so consecutive detents in the same direction retrigger.
     knob.mOnProcessValueChange = function(context, newValue, diff) {
-        var mode = context.getState('knobMode')
-        if (mode === 'Send') {
-            if (isFinite(diff) && diff !== 0) {
-                var sendLevel = firstSendLevelFeedbackValue.getProcessValue(context)
-                firstSendLevelFeedbackValue.setProcessValue(context, clampFader(sendLevel + diff))
-            }
-            return
-        }
-        if (mode !== 'Zoom' && mode !== 'Section' && mode !== 'Marker') return
-        var zoomCommand
-        if (diff < 0) {
-            zoomCommand = var_zoomOut
-        } else if (diff > 0) {
-            zoomCommand = var_zoomIn
-        }
-        if (zoomCommand) {
-            pulseVar(context, zoomCommand)
-        }
+        routeUnboundKnobTurn(context, newValue, diff)
     }
     mouseKnobInput.mOnProcessValueChange = function(context, newValue, diff) {
         // Consume the one programmatic capture/reset callback, including deferred delivery.
@@ -1722,7 +1727,7 @@ function assignKnobControls() {
             context.setState('mouseKnobResetEcho', '0.5')
             mouseKnobInput.setProcessValue(context, 0.5)
             if (mode === 'Send' || mode === 'Zoom' || mode === 'Section' || mode === 'Marker') {
-                knob.mOnProcessValueChange(context, newValue, diff)
+                routeUnboundKnobTurn(context, newValue, diff)
             } else {
                 knob.setProcessValue(context, clampFader(knob.getProcessValue(context) + diff))
             }
