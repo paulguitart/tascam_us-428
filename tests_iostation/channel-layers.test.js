@@ -14,9 +14,9 @@ const pre=s.page.mHostAccess.mTrackSelection.mMixerChannel.mPreFilter;
 assert(bindings.some(b=>b.input===s.fader.mSurfaceValue&&b.host===pre.mGain&&b.page===s.faderModes.PreGain));
 assert(bindings.some(b=>b.input===s.fader.mSurfaceValue&&b.host===s.page.mHostAccess.mTrackSelection.mMixerChannel.mValue.mVolume&&b.page===s.faderModes.Track));
 assert(bindings.some(b=>b.input===s.lowCutSlopeFeedbackValue&&b.host===pre.mLowCutSlope));
-let gain=.5,volume=.3,touched=0;const motors=[],colors={},lamps={},writes=[];
+let gain=.5,volume=.3,touched=0;const motors=[],colors={},brightnesses={},lamps={},writes=[];
 s.midiOut.sendMidi=(_,m)=>{if(m[0]===224)motors.push(m[1]+128*m[2])};
-s.setRGBLED_color=(_,n,c)=>colors[n]=Array.from(c);s.setTransportLed=(_,n,on)=>lamps[n]=on;
+s.setRGBLED_color=(_,n,c,brightness=1)=>{colors[n]=Array.from(c);brightnesses[n]=brightness};s.setTransportLed=(_,n,on)=>lamps[n]=on;
 s.faderTouch.getProcessValue=()=>touched;s.knob.getProcessValue=()=>.5;
 s.preGainFeedbackValue.getProcessValue=()=>gain;
 s.preGainFeedbackValue.setProcessValue=(c,v)=>{gain=v;writes.push(['gain',v]);s.preGainFeedbackValue.mOnProcessValueChange(c,v)};
@@ -30,8 +30,13 @@ for(const v of [0,.005,.25,.5,.75,1]){
  state.lastMotorPosition='';s.fader.mSurfaceValue.mOnProcessValueChange(ctx,v);assert.equal(motors.pop(),Math.round(v*16383));
 }
 s.resetCurrentFader(ctx);assert.equal(gain,.5);assert.equal(volume,.3);assert.equal(motors.pop(),8192);assert.deepEqual(colors[s.cTouch],[127,127,127]);assert.equal(lamps[s.cTouch],true);
-for(const [v,color,on] of [[0,[127,48,0],true],[1,[127,0,0],true],[.3,null,false]]){
+for(const [v,color,on] of [[0,[127,48,0],true],[1,[127,0,0],true],[.3,[127,48,0],true]]){
  gain=v;s.preGainFeedbackValue.mOnProcessValueChange(ctx,v);assert.equal(lamps[s.cTouch],on);if(color)assert.deepEqual(colors[s.cTouch],color);
+}
+// PreGain brightness follows physical distance, with full white at zero.
+for(const [v,color,brightness] of [[0,[127,48,0],1],[.25,[127,48,0],.515],[.499,[127,48,0],.03194],[.5,[127,127,127],1],[.501,[127,0,0],.03194],[.75,[127,0,0],.515],[1,[127,0,0],1]]){
+ gain=v;s.preGainFeedbackValue.mOnProcessValueChange(ctx,v);
+ assert.deepEqual(colors[s.cTouch],color);assert(Math.abs(brightnesses[s.cTouch]-brightness)<1e-9);assert.equal(lamps[s.cTouch],true);
 }
 // Host feedback chooses arbitrary nonuniform enum positions; never assumed quarters.
 const process={6:.03,12:.19,24:.41,36:.73,48:.97};let slope=48;const slopeWrites=[];

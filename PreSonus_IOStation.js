@@ -940,6 +940,15 @@ function updateTouchLED(context) {
     if (value) {
         var level = value.getProcessValue(context)
         var tolerance = 1 / 16383
+        if (target === 'PreGain' && typeof level === 'number' && isFinite(level)) {
+            var distance = Math.abs(clampFader(level) - 0.5) * 2
+            var atZero = Math.abs(level - 0.5) <= tolerance
+            // Linear in physical travel; a small floor keeps near-zero color visible.
+            var brightness = atZero ? 1 : 0.03 + 0.97 * distance
+            setRGBLED_color(context, cTouch, atZero ? WHITE : level < 0.5 ? AMBER : RED, brightness)
+            setTransportLed(context, cTouch, true)
+            return
+        }
         if (level >= 1 - tolerance) color = RED
         else if (level <= tolerance) color = AMBER
         // Match the reset value directly; display callbacks may omit dB units.
