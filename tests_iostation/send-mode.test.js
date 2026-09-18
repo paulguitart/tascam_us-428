@@ -135,3 +135,18 @@ for(const destination of ['Zoom','Section','Marker']){
 }
 s.activateKnobMode(ctx,'Click',{});state.shiftEnabled='0';bypass(ctx,1);bypass(ctx,0);assert.equal(metronomeToggles,1);
 console.log('PASS: PAN/Zoom/Section/Marker force track volume from every prior target, share BYPASS across SHIFT layers, preserve held-fader safety and keep zoom on encoder only');
+
+// Live host pre/post feedback and push refresh TOUCH without moving the fader.
+s.ENABLE_VOLUME_TOUCH_GLOW=true;s.TOUCH_GLOW_MIN_BRIGHTNESS=.03;
+s.TOUCH_GLOW_LOW_COLOR=[1,2,3];s.TOUCH_GLOW_BOTTOM_COLOR=[4,5,6];s.TOUCH_GLOW_HIGH_COLOR=s.RED;
+s.activateKnobMode(ctx,'Send',{});send.mLevel.value=s.FADER_HOST_UNITY/2;
+for(const pre of [0,1])for(const enabled of [0,1]){
+ send.mPrePost.value=pre;send.mOn.value=enabled;
+ s.firstSendPrePostFeedbackValue.mOnProcessValueChange(ctx);
+ assert.deepEqual(colors[s.cTouch],{color:pre?s.CYAN:s.AMBER,brightness:.515});
+ assert.deepEqual(colors[s.cPan].color,colors[s.cTouch].color);
+ push(ctx,1);push(ctx,0);
+ assert.deepEqual(colors[s.cTouch],{color:pre?s.AMBER:s.CYAN,brightness:.515});
+ assert.equal(send.mLevel.value,s.FADER_HOST_UNITY/2);
+}
+console.log('PASS: Send pre/post feedback and push refresh matching TOUCH hue; send enable leaves level glow unchanged');

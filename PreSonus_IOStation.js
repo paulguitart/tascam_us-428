@@ -963,7 +963,11 @@ function updateTouchLED(context) {
             if (!atZero && level < unity) {
                 brightness = floor + (1 - floor) * (1 - distance)
                 glowColor = TOUCH_GLOW_LOW_COLOR
-                if (volumeGlow && target !== 'PreGain') {
+                if (target === 'Send' && context.getState('knobMode') === 'Send') {
+                    // Match PAN's pre/post hue; only level controls TOUCH brightness.
+                    var pre = firstSendPrePostFeedbackValue && firstSendPrePostFeedbackValue.getProcessValue(context) > 0
+                    glowColor = pre ? CYAN : AMBER
+                } else if (volumeGlow && target !== 'PreGain') {
                     glowColor = []
                     for (var component = 0; component < 3; component++) {
                         glowColor[component] = TOUCH_GLOW_LOW_COLOR[component]
@@ -1313,6 +1317,7 @@ function updateSendModeLED(context) {
     var enabled = firstSendEnabledFeedbackValue && firstSendEnabledFeedbackValue.getProcessValue(context) > 0
     setRGBLED_color(context, cPan, pre ? CYAN : AMBER, enabled ? FULL_BRIGHTNESS : SEND_DISABLED_BRIGHTNESS)
     onLED(context, cPan)
+    updateTouchLED(context)
 }
 
 function updateBypassLED(context) {
