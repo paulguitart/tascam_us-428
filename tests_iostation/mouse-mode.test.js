@@ -154,36 +154,47 @@ s.activateKnobMode(ctx,'Mouse',{});assert.deepEqual(activatedTargets,['Dormant',
 s.activateKnobMode(ctx,'Zoom',{});assert.equal(state.faderTarget,'Track');
 console.log('PASS: dormant LINK fader blocks input, touch and stale motor feedback; SHIFT never selects track volume; directional TOUCH colors');
 
-// Model a bounded Cubase surface accumulator independently of the host parameter.
-// Programmatic surface changes deliberately re-enter the callback to test the guard.
-let encoderPosition=1;
-s.knob.getProcessValue=()=>encoderPosition;
+// One-shot encoder alignment: never unlock the hovered target or sync continuously.
+let encoder=.9,delivery='sync';const encoderWrites=[],deferred=[],lockWrites=[];
+s.knob.getProcessValue=()=>encoder;
 s.knob.setProcessValue=(context,value)=>{
- const diff=value-encoderPosition;encoderPosition=value;
- s.knob.mOnProcessValueChange(context,value,diff);
+ const diff=value-encoder;encoder=value;encoderWrites.push(value);
+ const callback=()=>s.knob.mOnProcessValueChange(context,value,diff);
+ if(delivery==='sync')callback();else if(delivery==='deferred')deferred.push(callback);
 };
+s.mouseLockFeedbackValue.setProcessValue=(_,value)=>{locked=value;lockWrites.push(value);};
+state.mouseBypassed='';s.activateKnobMode(ctx,'Mouse',{});
+parameter=.32;s.beginMouseLinkCapture(ctx);settle();lockWrites.length=0;
+assert.deepEqual(encoderWrites,[]); // Capture leaves the encoder alone.
 function detent(diff) {
- const next=Math.max(0,Math.min(1,encoderPosition+diff));
- const applied=next-encoderPosition;encoderPosition=next;
+ const next=Math.max(0,Math.min(1,encoder+diff));
+ const applied=next-encoder;encoder=next;
  s.knob.mOnProcessValueChange(ctx,next,applied);
 }
-state.mouseBypassed='';s.activateKnobMode(ctx,'Mouse',{});
-parameter=.32;s.beginMouseLinkCapture(ctx);settle();
-assert.equal(encoderPosition,.32);assert.equal(parameter,.32);
-for(let cycle=0;cycle<3;cycle++) {
- for(let i=0;i<25;i++) detent(.05);
- assert.equal(parameter,1);
- const before=writes.length;push(1);push(1);push(0);
- assert.equal(writes.length,before+1); // Sync must not feed back as another edit.
- assert.equal(parameter,.32);assert.equal(encoderPosition,.32);
- for(let i=0;i<25;i++) detent(-.05);
- assert.equal(parameter,0);
- push(1);push(0);assert.equal(encoderPosition,.32);
+for(const callbackMode of ['sync','deferred','none']) {
+ delivery=callbackMode;
+ for(let cycle=0;cycle<3;cycle++) {
+  parameter=.9;encoder=.9;
+  const before=writes.length,encoderBefore=encoderWrites.length;
+  push(1);push(1);push(0);
+  assert.equal(writes.length,before+1);assert.equal(encoderWrites.length,encoderBefore+1);
+  while(deferred.length)deferred.shift()();
+  assert.equal(writes.length,before+1);assert.equal(parameter,.32);assert.equal(encoder,.32);
+  assert.equal(locked,1);assert.equal(state.mouseStartingValue,'0.32');
+  for(let i=0;i<25;i++)detent(.05);
+  assert.equal(parameter,1);
+  push(1);push(0);while(deferred.length)deferred.shift()();
+  for(let i=0;i<25;i++)detent(-.05);
+  assert.equal(parameter,0);
+ }
 }
-const beforeHost=writes.length;parameter=.8;s.syncMouseFader(ctx);
-assert.equal(encoderPosition,.8);assert.equal(writes.length,beforeHost);
-detent(.05);assert(Math.abs(parameter-.85)<1e-12);
-s.activateKnobMode(ctx,'MouseFader',{});parameter=.1;s.syncMouseFader(ctx);
-s.activateKnobMode(ctx,'Mouse',{});assert.equal(encoderPosition,.1);
-detent(-.05);assert(Math.abs(parameter-.05)<1e-12);
-console.log('PASS: bounded encoder reaches both LINK endpoints after repeated reset, capture, host edits and fader handoff; sync cannot edit the host');
+assert.deepEqual(lockWrites,[]);
+const encoderBefore=encoderWrites.length;
+parameter=.7;s.syncMouseFader(ctx);assert.equal(encoderWrites.length,encoderBefore);
+s.activateKnobMode(ctx,'MouseFader',{});push(1);push(0);
+assert.equal(parameter,.32);assert.equal(encoderWrites.length,encoderBefore);
+s.activateKnobMode(ctx,'Mouse',{});state.mouseBypassed='1';
+const before=writes.length;push(1);push(0);
+assert.equal(writes.length,before);assert.equal(encoderWrites.length,encoderBefore);
+assert.deepEqual(lockWrites,[]);
+console.log('PASS: one encoder alignment per LINK knob reset, sync/deferred/no callback guards, repeated full travel, preserved lock and snapshot; no host-feedback/fader/bypass alignment');
