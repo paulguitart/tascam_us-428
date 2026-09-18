@@ -61,7 +61,7 @@ for (const name of ['Link', 'Pan', 'Channel', 'Scroll', 'Master', 'Click', 'Sect
         press(context, 1);
         context.setState('shiftEnabled', shift === '1' ? '0' : '1');
         press(context, 0);
-        const expected = name === 'Pan' && shift === '1' ? 'Send' : name === 'Channel' && shift === '1' ? 'PreGain' : name === 'Scroll' && shift === '1' ? 'Zoom' : name === 'Master' && shift === '1' ? 'MasterFX' : name;
+        const expected = name === 'Scroll' && shift === '1' ? 'Zoom' : name;
         assert.deepEqual(events, [[expected, 1], [expected, 0]]);
         // Pressing the active mode returns to Pan in either SHIFT state.
         context.setState('knobMode', name === 'Link' ? (shift === '1' ? 'MouseFader' : 'Mouse') : name === 'Pan' ? (shift === '1' ? 'Send' : 'Pan') : name === 'Channel' ? (shift === '1' ? 'PreGain' : 'HighPass') : name === 'Scroll' ? 'Zoom' : name === 'Master' ? (shift === '1' ? 'MasterFX' : 'Master') : name);
@@ -74,9 +74,9 @@ for (const name of ['Link', 'Pan', 'Channel', 'Scroll', 'Master', 'Click', 'Sect
         context.setState('knobMode', '');
     }
 }
-console.log('PASS: mode buttons respect the Channel SHIFT alternate, toggle back, suppress duplicate presses and release across SHIFT changes');
+console.log('PASS: mode selection enters normal modes despite SHIFT, toggles back, suppresses duplicate presses and releases across SHIFT changes');
 
-// Normal lower modes clear both the SHIFT routing state and LED; history restores alternates.
+// Fresh mode entries clear SHIFT; history restores the exact prior mode and SHIFT bit.
 let shiftLed = false;
 scope.onLED = (_, note) => { if (note === scope.cShift) shiftLed = true; };
 scope.offLED = (_, note) => { if (note === scope.cShift) shiftLed = false; };
@@ -104,6 +104,25 @@ assert.equal(masterModes.getState('faderTarget'), 'FXReturn');
 assert.equal(masterModes.getState('shiftEnabled'), '1');
 assert.equal(scope.resolveKnobModeButton(masterModes, 'MasterFX'), 'Master');
 console.log('PASS: Master selects Stereo Out, SHIFT + Master selects FX Return 1 and restores the SHIFT layer');
+
+// A generic SHIFT state is captured with the previous mode and restored by history.
+const shiftedHistory=device();
+scope.activateKnobMode(shiftedHistory,'Click');
+shiftedHistory.setState('shiftEnabled','1');
+scope.activateKnobMode(shiftedHistory,'Pan');
+assert.equal(shiftedHistory.getState('shiftEnabled'),'0');
+assert.equal(shiftedHistory.getState('previousKnobMode'),'Click');
+assert.equal(shiftedHistory.getState('previousKnobModeShift'),'1');
+const recalledClick=scope.resolveKnobModeButton(shiftedHistory,'Pan');
+assert.equal(recalledClick,'Click');
+scope.activateKnobMode(shiftedHistory,recalledClick);
+assert.equal(shiftedHistory.getState('knobMode'),'Click');
+assert.equal(shiftedHistory.getState('shiftEnabled'),'1');
+const recalledPan=scope.resolveKnobModeButton(shiftedHistory,'Click');
+scope.activateKnobMode(shiftedHistory,recalledPan);
+assert.equal(shiftedHistory.getState('knobMode'),'Pan');
+assert.equal(shiftedHistory.getState('shiftEnabled'),'0');
+console.log('PASS: previous-mode history restores its saved SHIFT bit in both directions');
 
 // Exercise SHIFT itself: switching Pan/Send is immediate, and release is inert.
 scope.uSection={btn_Shift:{mSurfaceValue:{}}};

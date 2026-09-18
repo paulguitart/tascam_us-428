@@ -46,7 +46,7 @@ Set `ENABLE_FADER_NUDGE = false` to restore Master's Set Left/Right Locator acti
 
 ## Knob modes
 
-Press the active mode's button again to return to the previous mode. For example, Pan -> Click -> Click returns to Pan; pressing Pan again returns to Click. Channel alternates High Pass and Pre Gain; SHIFT switches Pan and Send 1; Link selects Mouse Parameter, then clears a lock or switches knob/fader mode on subsequent presses; other mode buttons share this history behavior with SHIFT on or off. Before the first mode change, Pan stays active. History resets when the mapping activates. Restored modes use their usual fader behavior; Scroll, Section and Marker select track volume.
+Press the active mode's button again to return to the previous mode. For example, Pan -> Click -> Click returns to Pan; pressing Pan again returns to Click. Selecting PAN, CHANNEL or MASTER enters its normal mode even when SHIFT is latched. Press SHIFT while one of those pairs is active to switch between Pan/Send 1, High Pass/Pre Gain, or Stereo Out/FX Return 1. LINK keeps its remembered knob/fader selection. History stores both the previous mode and its SHIFT bit, then restores both when you return by pressing the active mode button again. Before the first mode change, Pan stays active. History resets when the mapping activates. Restored modes use their prior fader behavior; Scroll, Section and Marker select track volume.
 
 Pan is selected when the Hardware page activates. Pan and Channel assign selected-track volume; Send assigns Send 1 level; Master assigns Stereo Out; SHIFT + Master assigns FX Return 1; Click assigns metronome level (Stereo Out when `ENABLE_METRONOME_FADER = false`). Scroll (including SHIFT + Scroll), Section and Marker always select track volume. All use the same motor and calibration helpers.
 
@@ -74,7 +74,7 @@ With `ENABLE_PAN_COLOR = true` (default), active Pan is white at exact center. M
 
 The recording-only red brightness pulse uses the Tascam script's tempo callback and idle-timer pattern: `60000 / BPM`, with a 120 BPM fallback and a 150 ms minimum interval. A smooth brightness cycle runs once per beat, from 15% to full brightness. It follows tempo rate, not the transport's beat position, and returns to solid blue only if the metronome and `ENABLE_NUCLEAR_METRONOME_LEDS` are both enabled; otherwise it turns off when recording stops. Set `METRONOME_PULSE_COLOR` to choose the normal metronome color. Set `ENABLE_NUCLEAR_RECORD_BLINK = false` to disable the recording indication on this group entirely. With that flag enabled, set `ENABLE_METRONOME_PULSE = false` for steady red during recording; adjust `METRONOME_PULSE_MIN_BRIGHTNESS` to change the pulse floor. Hardware smoothness depends on Cubase's idle callback cadence.
 
-All mode buttons except Channel, Pan and Master select and toggle the same modes with SHIFT on or off. SHIFT + Channel selects Pre Gain; unshifted Channel selects High Pass. Changing SHIFT switches between High Pass and Pre Gain when either Channel mode is active, and between Stereo Out and FX Return 1 fader targets in Master; other modes stay selected. Both Master modes use encoder rotation for zoom and push to zoom to locators.
+Selecting a mode with SHIFT already latched enters its normal function, apart from LINK's remembered knob/fader choice. Pressing SHIFT while PAN, CHANNEL or MASTER is active switches immediately to the corresponding alternate function; other modes stay selected. Returning to a previous mode with a repeated active-mode press restores the saved SHIFT bit along with the mode. Both Master modes use encoder rotation for zoom and push to zoom to locators.
 
 In Scroll/Zoom, Section, Click, and both Master modes, knob push runs `Zoom > Zoom to Locators`, once per press. Scroll/Zoom, Section, Marker, Click, and both Master modes share horizontal zoom rotation. BYPASS remains the metronome toggle in Click mode. Zoom pulses commands for repeated movement and seeds its comparison value on mode entry to avoid an immediate zoom jump. Like the Korg pattern, reaching the normalized range endpoint may require reversing the knob before further travel is available; verify the relative encoder behavior in Cubase.
 
@@ -93,7 +93,7 @@ SHIFT + Pan controls send slot 1 (`mSends.getByIndex(0)`) on the selected track.
 
 ## Printed SHIFT functions
 
-Press SHIFT once to enable the secondary paths and again to return to normal. This is the script's chosen behavior; hardware MIDI behavior still needs a live check. The `buttonMappings` table names every printed pair:
+Press SHIFT once to enable the secondary layer and again to return to normal. In PAN, CHANNEL and MASTER, SHIFT switches the active mode to its paired function. Selecting a different mode while SHIFT is latched enters that mode normally; LINK keeps its remembered knob/fader choice. The `buttonMappings` table lists each printed pair:
 
 | Normal | SHIFT path |
 |---|---|
@@ -202,7 +202,7 @@ BYPASS disables/enables parameter editing without releasing the lock or changing
 
 The mouse fader uses the full normalized parameter range without volume calibration or bottom snapping. Motor feedback follows the parameter and waits while the fader is touched. Switching into or out of fader LINK while holding the fader blocks input and touch automation until release. Leaving LINK clears its lock and capture; Scroll, Section and Marker restore track volume when leaving either LINK mode.
 
-SHIFT + PAN selects Send 1 fader mode, with amber/cyan PAN feedback. Mode history restores SHIFT for Send 1, Pre Gain and Mouse Fader, and clears it for normal modes. Saved LINK values are temporary and are cleared on exit or reload.
+SHIFT + PAN selects Send 1 fader mode, with amber/cyan PAN feedback. SHIFT switches PAN/Send 1, CHANNEL/Pre Gain and MASTER/FX Return 1 while their mode pair is active. Other mode buttons enter their normal function when selected with SHIFT latched. Mode history saves and restores the SHIFT bit along with the previous mode. LINK keeps its separate remembered knob/fader choice. Saved LINK values are temporary and are cleared on exit or reload.
 
 In Send mode, knob edits are explicitly routed to the current selected-track volume. The fader has a dedicated Send 1 subpage binding. Knob push toggles pre/post once per physical press. Host edits and track selection update Send 1 level, enable and pre/post feedback.
 

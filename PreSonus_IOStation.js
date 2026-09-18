@@ -326,7 +326,7 @@ var buttonMappings = [
     { physicalButton: mSection.btn_Marker, normalName: 'Marker', shiftedName: 'Marker' }
 ]
 
-// Mode buttons share one physical MIDI input; SHIFT selects the alternate MASTER fader target.
+// Printed mode pairs share one physical MIDI input; SHIFT switches between each paired function.
 // Physical surface buttons remain the single MIDI input source.
 var buttons = {}
 var selectedTrackToggleValues = {}
@@ -370,6 +370,17 @@ function assignButtonRouting(mapping) {
                 return
             }
             activeName = context.getState('shiftEnabled') === '1' ? shiftedName : normalName
+            // PAN, CHANNEL and MASTER select their normal mode when entering from
+            // elsewhere; their SHIFT variants remain available through SHIFT itself.
+            // Keep the shifted name only when it is already the active mode so a
+            // repeated mode press can restore the previous history entry.
+            var currentMode = context.getState('knobMode')
+            var shiftedModeName = normalName === 'Pan' ? 'Send'
+                : normalName === 'Channel' ? 'PreGain'
+                : normalName === 'Master' ? 'MasterFX' : ''
+            if (shiftedModeName && activeName === shiftedName && currentMode !== shiftedModeName) {
+                activeName = normalName
+            }
             if (normalName === 'Bypass' && (context.getState('knobMode') === 'HighPass'
                 || context.getState('knobMode') === 'PreGain'
                 || isMouseLinkMode(context.getState('knobMode'))
@@ -418,8 +429,6 @@ uSection.btn_Shift.mSurfaceValue.mOnProcessValueChange = function(context, value
     if (context.getState('shiftPressed') === '1') { return }
     context.setState('shiftPressed', '1')
     var enabled = context.getState('shiftEnabled') !== '1'
-    context.setState('shiftEnabled', enabled ? '1' : '0')
-    if (enabled) { onLED(context, cShift) } else { offLED(context, cShift) }
     var mode = context.getState('knobMode')
     if (mode === 'HighPass' || mode === 'PreGain') {
         pulseVar(context, enabled ? buttons.PreGain : buttons.Channel)
@@ -429,6 +438,9 @@ uSection.btn_Shift.mSurfaceValue.mOnProcessValueChange = function(context, value
         pulseVar(context, enabled ? buttons.MasterFX : buttons.Master)
     } else if (isMouseLinkMode(mode)) {
         pulseVar(context, enabled ? buttons.MouseFader : buttons.Link)
+    } else {
+        context.setState('shiftEnabled', enabled ? '1' : '0')
+        if (enabled) { onLED(context, cShift) } else { offLED(context, cShift) }
     }
 }
 
@@ -1348,6 +1360,8 @@ function updateKnobModeLEDs(context) {
 }
 
 function resolveKnobModeButton(context, name) {
+    context.setState('restoreKnobModeHistory', '')
+    context.setState('restoreKnobModeHistoryShift', '')
     var modeNames = { Link: 'Mouse', MouseFader: 'MouseFader', Send: 'Send', Pan: 'Pan', Scroll: 'Zoom', Zoom: 'Zoom',
         Master: 'Master', MasterFX: 'MasterFX', Click: 'Click', Channel: 'HighPass', PreGain: 'PreGain', Section: 'Section', Marker: 'Marker' }
     var current = context.getState('knobMode')
@@ -1375,14 +1389,23 @@ function resolveKnobModeButton(context, name) {
     // Pressing the active mode can only go back if a previous mode exists.
     if (!previous) return name
     for (var buttonName in modeNames) {
-        if (modeNames[buttonName] === previous) return buttonName
+        if (modeNames[buttonName] === previous) {
+            context.setState('restoreKnobModeHistory', previous)
+            context.setState('restoreKnobModeHistoryShift', context.getState('previousKnobModeShift'))
+            return buttonName
+        }
     }
     return name
 }
 
 function activateKnobMode(context, mode, activeMapping) {
     var current = context.getState('knobMode')
-    if (current && current !== mode) context.setState('previousKnobMode', current)
+    var restoreMode = context.getState('restoreKnobModeHistory') === mode
+    var restoreShift = context.getState('restoreKnobModeHistoryShift')
+    if (current && current !== mode) {
+        context.setState('previousKnobMode', current)
+        context.setState('previousKnobModeShift', context.getState('shiftEnabled'))
+    }
     var enteringLink = isMouseLinkMode(mode) && !isMouseLinkMode(current)
     if (isMouseLinkMode(current) && !isMouseLinkMode(mode)) leaveMouseLink(context)
     if (enteringLink) leaveMouseLink(context)
@@ -1412,15 +1435,18 @@ function activateKnobMode(context, mode, activeMapping) {
     target.mAction.mActivate.trigger(activeMapping)
     if (isMouseLinkMode(mode)) context.setState('linkShiftEnabled', mode === 'MouseFader' ? '1' : '0')
     if (mode === 'MouseFader' && !enteringLink) syncMouseFader(context)
-    // These normal modes clear SHIFT; recalled alternates restore it from their mode.
+    // Fresh mode entries use their normal SHIFT state; history restores the exact saved bit.
     if (mode === 'HighPass' || mode === 'PreGain' || mode === 'Send' || isMouseLinkMode(mode)
         || mode === 'Master' || mode === 'MasterFX' || mode === 'Click' || mode === 'Section' || mode === 'Marker'
         || mode === 'Pan' || mode === 'Zoom') {
         var alternate = mode === 'PreGain' || mode === 'Send' || mode === 'MouseFader' || mode === 'MasterFX'
-        context.setState('shiftEnabled', alternate ? '1' : '0')
-        if (alternate) onLED(context, cShift)
+        var shiftEnabled = restoreMode ? restoreShift === '1' : alternate
+        context.setState('shiftEnabled', shiftEnabled ? '1' : '0')
+        if (shiftEnabled) onLED(context, cShift)
         else offLED(context, cShift)
     }
+    context.setState('restoreKnobModeHistory', '')
+    context.setState('restoreKnobModeHistoryShift', '')
     updateTouchLED(context)
     // Seed zoom from the current knob value so switching modes doesn't zoom.
     context.setState('lastZoomValue', String(Math.floor((knob.getProcessValue(context) || 0) * 1000)))
@@ -1801,6 +1827,9 @@ page.mOnActivate = function(context, activeMapping) {
     activateFaderNudge(context, activeMapping)
     context.setState('knobMode', '')
     context.setState('previousKnobMode', '')
+    context.setState('previousKnobModeShift', '')
+    context.setState('restoreKnobModeHistory', '')
+    context.setState('restoreKnobModeHistoryShift', '')
     knobModes.Mouse.mAction.mActivate.trigger(activeMapping)
     activateKnobMode(context, 'Mouse', activeMapping)
     restoreTransportLEDs(context)
