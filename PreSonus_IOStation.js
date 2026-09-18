@@ -1313,7 +1313,7 @@ function activateKnobMode(context, mode, activeMapping) {
     }
     context.setState('knobMode', mode)
     if (isMouseLinkMode(mode)) context.setState('linkShiftEnabled', mode === 'MouseFader' ? '1' : '0')
-    if (mode === 'MouseFader' && !enteringLink) syncMouseFader(context)
+    if (isMouseLinkMode(mode) && !enteringLink) syncMouseFader(context)
     // These normal modes clear SHIFT; recalled alternates restore it from their mode.
     if (mode === 'HighPass' || mode === 'PreGain' || mode === 'Send' || isMouseLinkMode(mode)
         || mode === 'Master' || mode === 'Click' || mode === 'Section' || mode === 'Marker'
@@ -1472,6 +1472,16 @@ function restoreMouseLinkValue(context) {
 }
 
 function syncMouseFader(context) {
+    // LINK's parameter is written explicitly, so Cubase cannot align the encoder for us.
+    // Keep its bounded surface position in step after reset, capture and host edits.
+    if (context.getState('knobMode') === 'Mouse' && isMouseLinkControlEnabled(context)) {
+        var value = mouseParameterFeedbackValue.getProcessValue(context)
+        if (isFinite(value) && knob.getProcessValue(context) !== value) {
+            context.setState('syncingMouseKnob', '1')
+            try { knob.setProcessValue(context, clampFader(value)) }
+            finally { context.setState('syncingMouseKnob', '') }
+        }
+    }
     updateTouchLED(context)
     if (context.getState('faderTarget') !== 'Mouse' || !isMouseLinkControlEnabled(context)) return
     setMotorFader(context, mouseParameterFeedbackValue.getProcessValue(context))
@@ -1664,6 +1674,7 @@ function assignKnobControls() {
     // Korg zoom pattern: compare successive knob positions and fire zoom commands.
     // Pulse each command so consecutive detents in the same direction retrigger.
     knob.mOnProcessValueChange = function(context, newValue, diff) {
+        if (context.getState('syncingMouseKnob') === '1') return
         var mode = context.getState('knobMode')
         if (mode === 'Send') {
             if (isFinite(diff) && diff !== 0) {
@@ -1676,7 +1687,7 @@ function assignKnobControls() {
             if (isMouseLinkControlEnabled(context) && isFinite(diff) && diff !== 0) {
                 var current = mouseParameterFeedbackValue.getProcessValue(context)
                 mouseParameterFeedbackValue.setProcessValue(context, clampFader(current + diff))
-                updateTouchLED(context)
+                syncMouseFader(context)
             }
             return
         }

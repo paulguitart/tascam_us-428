@@ -14,7 +14,7 @@ const s={Date,Math,Number,String,isFinite,
  isMetronomeBypassMode:()=>false,selectedTrackToggleValues:{},buttons:{},
  mappedFaderTouch:{setProcessValue(){}},faderTouch:{getProcessValue:()=>touched},fader:{mSurfaceValue:{}},var_faderInput:{},
  midiOut:{sendMidi:(_,m)=>motors.push(m)},mSection:{knob_Press:{mSurfaceValue:{}}},
- knob:{getProcessValue:()=>parameter},faderTargetFeedback:{},
+ knob:{getProcessValue:()=>parameter,setProcessValue(){}},faderTargetFeedback:{},
  surface:{makeCustomValueVariable:()=>({setProcessValue(){}})},
  faderModes:Object.fromEntries(['Track','StereoOut','Metronome','Mouse','Dormant'].map(k=>[k,{mAction:{mActivate:{trigger(){}}}}]))
 };
@@ -153,3 +153,37 @@ s.activateKnobMode(ctx,'MouseFader',{});assert.equal(motors.length,dormantMotors
 s.activateKnobMode(ctx,'Mouse',{});assert.deepEqual(activatedTargets,['Dormant','Mouse','Dormant']);
 s.activateKnobMode(ctx,'Zoom',{});assert.equal(state.faderTarget,'Track');
 console.log('PASS: dormant LINK fader blocks input, touch and stale motor feedback; SHIFT never selects track volume; directional TOUCH colors');
+
+// Model a bounded Cubase surface accumulator independently of the host parameter.
+// Programmatic surface changes deliberately re-enter the callback to test the guard.
+let encoderPosition=1;
+s.knob.getProcessValue=()=>encoderPosition;
+s.knob.setProcessValue=(context,value)=>{
+ const diff=value-encoderPosition;encoderPosition=value;
+ s.knob.mOnProcessValueChange(context,value,diff);
+};
+function detent(diff) {
+ const next=Math.max(0,Math.min(1,encoderPosition+diff));
+ const applied=next-encoderPosition;encoderPosition=next;
+ s.knob.mOnProcessValueChange(ctx,next,applied);
+}
+state.mouseBypassed='';s.activateKnobMode(ctx,'Mouse',{});
+parameter=.32;s.beginMouseLinkCapture(ctx);settle();
+assert.equal(encoderPosition,.32);assert.equal(parameter,.32);
+for(let cycle=0;cycle<3;cycle++) {
+ for(let i=0;i<25;i++) detent(.05);
+ assert.equal(parameter,1);
+ const before=writes.length;push(1);push(1);push(0);
+ assert.equal(writes.length,before+1); // Sync must not feed back as another edit.
+ assert.equal(parameter,.32);assert.equal(encoderPosition,.32);
+ for(let i=0;i<25;i++) detent(-.05);
+ assert.equal(parameter,0);
+ push(1);push(0);assert.equal(encoderPosition,.32);
+}
+const beforeHost=writes.length;parameter=.8;s.syncMouseFader(ctx);
+assert.equal(encoderPosition,.8);assert.equal(writes.length,beforeHost);
+detent(.05);assert(Math.abs(parameter-.85)<1e-12);
+s.activateKnobMode(ctx,'MouseFader',{});parameter=.1;s.syncMouseFader(ctx);
+s.activateKnobMode(ctx,'Mouse',{});assert.equal(encoderPosition,.1);
+detent(-.05);assert(Math.abs(parameter-.05)<1e-12);
+console.log('PASS: bounded encoder reaches both LINK endpoints after repeated reset, capture, host edits and fader handoff; sync cannot edit the host');
