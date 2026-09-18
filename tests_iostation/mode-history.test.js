@@ -48,6 +48,9 @@ scope.surface = { makeCustomValueVariable: name => ({
     setProcessValue(context, value) { events.push([name, value]); }
 }) };
 scope.buttons.Pan = scope.surface.makeCustomValueVariable('Pan');
+scope.CLICK_HOLD_MS=600;
+scope.pulseVar=(c,v)=>{v.setProcessValue(c,1);v.setProcessValue(c,0)};
+vm.runInContext(source.slice(source.indexOf('function updateClickHold('),source.indexOf('function setupTransportFeedback(')),scope);
 vm.runInContext(source.slice(source.indexOf('function assignButtonRouting('), source.indexOf('for (var buttonIndex =')).trimEnd(), scope);
 for (const name of ['Link', 'Pan', 'Channel', 'Scroll', 'Master', 'Click', 'Section', 'Marker']) {
     const match = source.match(new RegExp("normalName: '" + name + "', shiftedName: '([^']+)'"));

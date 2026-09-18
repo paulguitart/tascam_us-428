@@ -36,6 +36,6 @@ channel(ctx,1);channel(ctx,0);assert.equal(state.knobMode,'HighPass');assert.equ
 const shift=s.uSection.btn_Shift.mSurfaceValue.mOnProcessValueChange;
 shift(ctx,1);shift(ctx,1);shift(ctx,0);assert.equal(state.knobMode,'PreGain');assert.equal(shiftLED,true);
 shift(ctx,1);shift(ctx,0);assert.equal(state.knobMode,'HighPass');assert.equal(shiftLED,false);
-s.activateKnobMode(ctx,'PreGain',{});s.activateKnobMode(ctx,'Pan',{});state.shiftEnabled='0';
-assert.equal(s.resolveKnobModeButton(ctx,'Pan'),'PreGain');s.buttons.PreGain.setProcessValue(ctx,1);assert.equal(state.shiftEnabled,'1');assert.equal(shiftLED,true);
+s.activateKnobMode(ctx,'PreGain',{});s.activateKnobMode(ctx,'Section',{});state.shiftEnabled='0';
+assert.equal(s.resolveKnobModeButton(ctx,'Section'),'PreGain');s.buttons.PreGain.setProcessValue(ctx,1);assert.equal(state.shiftEnabled,'1');assert.equal(shiftLED,true);
 console.log('PASS: Channel toggles, immediate SHIFT transitions, duplicate presses and restored SHIFT LED');

@@ -86,10 +86,10 @@ SHIFT + Pan controls send slot 1 (`mSends.getByIndex(0)`) on the selected track.
 ## Basic editing and metronome
 
 - With SHIFT enabled, Prev triggers Undo and Next triggers Redo, following the printed labels.
-- With either SHIFT state, Click selects its mode; knob rotation controls horizontal zoom and encoder push zooms to locators. BYPASS toggles Cubase's metronome. The fader controls metronome click level when `ENABLE_METRONOME_FADER = true`.
+- With either SHIFT state, a short Click press selects its mode on release; knob rotation controls horizontal zoom and encoder push zooms to locators. BYPASS toggles Cubase's metronome. The fader controls metronome click level when `ENABLE_METRONOME_FADER = true`.
 - With either SHIFT state, Marker selects Marker mode; Prev/Next locate the previous/next marker, and encoder push inserts a marker.
 - Metronome feedback follows Cubase state, including mouse changes, on the CLICK-mode BYPASS LED and the global CLICK LED and, when enabled by `ENABLE_NUCLEAR_METRONOME_LEDS`, the inactive Pan/Send/Channel/Scroll LEDs. Click flashes while Click mode is active; outside it, the LED steadily follows metronome on/off.
-- SHIFT + Click selects or toggles Click mode, just like Click alone.
+- SHIFT + Click behaves like Click alone: a short press selects or recalls the previous mode on release; a long press toggles the metronome without changing modes.
 - Cycle toggles loop mode and follows Cubase's cycle state with its LED. Cycle feedback remains live during Save confirmation blinking.
 
 ## Printed SHIFT functions
@@ -231,3 +231,7 @@ PreGain glow is always enabled. `ENABLE_VOLUME_TOUCH_GLOW = true` enables the sa
 - `TOUCH_GLOW_MIN_BRIGHTNESS = 0.03`: dim end of each ramp (0–1).
 
 Colors accept the named color constants or RGB arrays such as `[127, 48, 0]`. In SHIFT + PAN, below-unity TOUCH uses the PAN pre/post hue (cyan for pre-fader, amber for post-fader), fading from bright near unity to dim at minimum without blending. Pre/post changes update it immediately; send enable does not alter this level-based brightness. White at unity and the red above-unity ramp are unchanged. Other volume targets fade from bright LOW_COLOR toward dim BOTTOM_COLOR; PreGain dims TOUCH_PREGAIN_LOW_COLOR without blending. Above unity, the existing HIGH_COLOR brightness ramp is unchanged. Unity stays full white. Volume ramps account for the unequal travel above and below unity. LINK colors and behavior are unaffected. `node tests_iostation/touch-glow.test.js` verifies custom colors, ramps, disabled options, mandatory PreGain glow and LINK isolation.
+
+### CLICK hold shortcut
+
+Hold CLICK for `CLICK_HOLD_MS = 600` milliseconds to toggle the metronome once, from any mode and with either SHIFT state. The successful hold consumes its release and leaves the active mode, fader target and SHIFT state unchanged. A short press runs the existing CLICK mode selection on release (including previous-mode recall when already in CLICK). BYPASS in CLICK still toggles the metronome. Disconnect or page deactivation cancels a pending hold. `node tests_iostation/click-hold.test.js` covers timing, duplicate input, release suppression and cancellation.

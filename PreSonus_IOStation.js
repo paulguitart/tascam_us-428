@@ -12,6 +12,7 @@ const CYCLE_MARKER_MAX = 9
 const ENABLE_FADER_NUDGE = true // PREV/NEXT nudge Stereo Out in either MASTER mode
 const FADER_NUDGE_DB_INCREMENT = 0.5
 const ENABLE_METRONOME_FADER = true // CLICK fader controls metronome level; false: Stereo Out
+const CLICK_HOLD_MS = 600 // Short press selects mode on release; hold toggles metronome.
 
 var ENABLE_STOP_HOLD_SAVE = true
 var STOP_SAVE_HOLD_MS = 1500
@@ -364,6 +365,10 @@ function assignButtonRouting(mapping) {
     if (shiftedName !== normalName) buttons[shiftedName] = surface.makeCustomValueVariable(shiftedName)
     var stateKey = 'held.' + normalName
     mapping.physicalButton.mSurfaceValue.mOnProcessValueChange = function(context, value) {
+        if (normalName === 'Click') {
+            handleClickPress(context, value)
+            return
+        }
         // PAN owns navigation LEDs for direction; all other modes keep press feedback.
         if ((normalName === 'Prev' || normalName === 'Next') && context.getState('knobMode') === 'Pan') {
             updatePanLED(context)
@@ -457,6 +462,7 @@ uSection.btn_Shift.mSurfaceValue.mOnProcessValueChange = function(context, value
 }
 
 function resetButtonRouting(context) {
+    context.setState('clickHoldStart', '')
     context.setState('shiftEnabled', '0')
     context.setState('shiftPressed', '')
     for (var i = 0; i < buttonMappings.length; i++) {
@@ -619,6 +625,7 @@ fsSection.btn_Footswitch.mSurfaceValue.mOnProcessValueChange = function(context,
 }
 
 function resetHardwareState(context) {
+    context.setState('clickHoldStart', '')
     context.setState('lastMotorPosition', '')
     context.setState('pendingMotorPosition', '')
     context.setState('processingFaderInput', '')
@@ -1145,6 +1152,27 @@ function toggleMetronome(context) {
     metronomeFeedbackValue.setProcessValue(context, currentValue > 0 ? 0 : 1)
 }
 
+function updateClickHold(context, now) {
+    var start = context.getState('clickHoldStart')
+    if (start === '' || start === 'done' || now - Number(start) < CLICK_HOLD_MS) return
+    context.setState('clickHoldStart', 'done') // Mark before host callbacks; fire only once.
+    toggleMetronome(context)
+}
+
+function handleClickPress(context, value) {
+    var start = context.getState('clickHoldStart')
+    if (value > 0) {
+        if (start === '') context.setState('clickHoldStart', String(Date.now()))
+        return
+    }
+    if (start === '') return
+    // Classify a long release even if no idle tick arrived at the threshold.
+    updateClickHold(context, Date.now())
+    var held = context.getState('clickHoldStart') === 'done'
+    context.setState('clickHoldStart', '')
+    if (!held) pulseVar(context, buttons[resolveKnobModeButton(context, 'Click')])
+}
+
 function setupTransportFeedback() {
 	sendTransportFeedback(hostTransport.mRewind, cRWD, 'Rewind')
 	sendTransportFeedback(hostTransport.mForward, cFWD, 'Fast Forward')
@@ -1198,6 +1226,7 @@ function blinkConfirmTransportLEDs(context) {
 
 deviceDriver.mOnIdle = function(context) {
 	var now = Date.now()
+    updateClickHold(context, now)
     updateMouseLinkCapture(context, now)
     updateMetronomeModeLEDs(context, now)
 	var holdStart = context.getState('stopHoldStartMs')
@@ -1933,6 +1962,7 @@ function assignKnobControls() {
 }
 
 page.mOnActivate = function(context, activeMapping) {
+    context.setState('clickHoldStart', '')
     activateFaderNudge(context, activeMapping)
     context.setState('knobMode', '')
     context.setState('previousKnobMode', '')
@@ -1945,6 +1975,7 @@ page.mOnActivate = function(context, activeMapping) {
 }
 
 page.mOnDeactivate = function(context, activeMapping) {
+    context.setState('clickHoldStart', '')
     leaveMouseLink(context)
     deactivateFaderNudge(context, activeMapping)
 }
