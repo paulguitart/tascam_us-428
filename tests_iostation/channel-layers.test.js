@@ -51,7 +51,7 @@ function hostStep(m,d){
  assert.equal(m,mapping);
  slope=choices[Math.max(0,Math.min(4,choices.indexOf(slope)+d))];
  slopeWrites.push(slope);
- if(!deferred){displaySlope=slope;s.lowCutSlopeFeedbackValue.mOnDisplayValueChange(ctx,slope+' dB/oct')}
+ if(!deferred)displaySlope=slope;
 }
 pre.mLowCutSlope.increment=m=>hostStep(m,1);
 pre.mLowCutSlope.decrement=m=>hostStep(m,-1);
@@ -63,7 +63,6 @@ const turn=(v,d)=>s.mouseKnobInput.mOnProcessValueChange(ctx,v,d);
 push();assert.deepEqual(slopeWrites,[36,24,12]);turn(0,-.01);assert.equal(slope,6);
 push();turn(1,.01);assert.equal(slope,24);turn(1,.01);assert.equal(slope,36);turn(1,.01);assert.equal(slope,48);turn(1,.01);assert.equal(slope,48);
 for(let i=0;i<5;i++)turn(0,-.01);assert.equal(slope,6);
-for(const [choice,p] of Object.entries(process))assert.equal(Number(state['lowCutSlopeProcess'+choice]),p);
 for(const d of [0,NaN,Infinity])turn(.5,d);assert.equal(slope,6);
 // Reset from every choice, even when feedback is delivered after all host steps.
 for(const initial of choices){

@@ -2,7 +2,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('nod
 const source=fs.readFileSync(require('node:path').join(__dirname,'..','PreSonus_IOStation.js'),'utf8');
 const state={},messages=[],ctx={getState:k=>state[k]||'',setState:(k,v)=>state[k]=v};
 let metronome=0;
-const s={Date,ENABLE_MIDI_OUTPUT_CACHE:true,cClick:0x3B,metronomeFeedbackValue:null,
+const s={rgbNotes:[],Date,ENABLE_MIDI_OUTPUT_CACHE:true,cClick:0x3B,metronomeFeedbackValue:null,
  midiOut:{sendMidi:(_,m)=>messages.push(Array.from(m))},hostMetronomeActive:{},
  surface:{makeCustomValueVariable:()=>({getProcessValue:()=>metronome})},page:{makeValueBinding(){}},
  updateMetronomeModeLEDs(){},updateBypassLED(){}};

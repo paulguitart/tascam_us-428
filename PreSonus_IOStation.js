@@ -38,7 +38,6 @@ const ENABLE_FADER_UNITY_CALIBRATION = false
 // LED color values
 const FULL_BRIGHTNESS = 1
 const HALF_BRIGHTNESS = 0.5
-const LED_OFF_COLOR = [0, 0, 0]
 const RED = [127, 0, 0]
 const GREEN = [0, 127, 0]
 const BLUE =  [0, 0, 127]
@@ -101,7 +100,7 @@ LINK (Normal)            : Mouse parameter on knob; fader dormant; push restores
                          : LINK LED white = unlocked, amber = locked
                          : Press LINK inside mode: clear lock if locked; otherwise toggle knob/fader
 SHIFT inside LINK       : Toggle knob/fader; selection recalled on return, isolated from other modes
-                         : TOUCH captures/locks (green = saved value, magenta = above, cyan = below); BYPASS disables controls
+                         : TOUCH captures/locks (green = saved value, magenta = above, red-leaning magenta = below); BYPASS disables controls
 PAN (Normal)             : Select Pan knob mode; knob push centers pan
 SCROLL / SHIFT + SCROLL  : Zoom knob mode; Prev/Next recall cycle markers (wrap)
 MASTER (Normal)          : Select Master mode; encoder zooms; fader controls Stereo Out
@@ -109,7 +108,7 @@ SHIFT + MASTER           : Fader controls FX Return 1; knob rotates/presses for 
 CLICK (Normal)           : Select Click mode; knob zooms; fader controls Click level
 KNOB PUSH (Click Mode)   : Zoom to Locators; BYPASS toggles metronome
 CHANNEL (Normal)         : Select High Pass (Low Cut); knob push toggles filter; BYPASS flips polarity
-SHIFT + CHANNEL         : Pre-gain; push resets 0 dB; BYPASS flips polarity (LED on = inverted)
+SHIFT + CHANNEL         : Fader = pre-gain; knob = low-cut slope; push resets 12 dB/oct; BYPASS flips polarity (LED on = inverted)
 SECTION (Normal)         : Prev/Next set left/right locators; fader controls selected-track volume
 MARKER (Normal)          : Select Marker mode; Prev/Next locate markers; knob push inserts marker
 
@@ -123,7 +122,7 @@ SHIFT + MASTER           : Encoder zooms horizontally; push zooms to locators; f
 CLICK                    : Knob controls horizontal zoom; fader controls Metronome Click Level
 HIGH PASS                : Selected Track Low Cut Frequency; knob push toggles filter; BYPASS toggles phase
 HIGH PASS LED            : White when disabled; red when enabled
-PRE GAIN LED             : White at 0 dB; magenta otherwise
+PRE GAIN LED             : White when high-pass is disabled; red when enabled; TOUCH reports gain
 MARKER                   : Prev/Next locate previous/next marker; knob push inserts marker
 
 FADER / FOOTSWITCH:
@@ -142,9 +141,9 @@ BYPASS                   : PAN / SCROLL / SECTION / MARKER: shared fader bypass;
 						 
 UNASSIGNED BUTTON PATHS:
 ----------------------------------------------------------------------------------------------------
-TOUCH                    : Normal path
+TOUCH                    : Resets the current fader target; captures/locks in LINK
 SHIFT + BYPASS / TOUCH / WRITE / READ          : BypassAll / Latch* / Trim / Off
-                         : * TOUCH resets the fader in LINK, Send, and both CHANNEL modes
+                         : * TOUCH captures/locks in LINK; resets the fader in Send and both CHANNEL modes
 SHIFT inside LINK        : Toggle remembered knob/fader selection
 SHIFT + PAN              : Send 1 fader mode
 SHIFT + CHANNEL          : Pre Gain mode
@@ -1547,8 +1546,6 @@ function activateKnobMode(context, mode, activeMapping) {
     context.setState('restoreKnobModeHistory', '')
     context.setState('restoreKnobModeHistoryShift', '')
     updateTouchLED(context)
-    // Seed zoom from the current knob value so switching modes doesn't zoom.
-    context.setState('lastZoomValue', String(Math.floor((knob.getProcessValue(context) || 0) * 1000)))
     updateKnobModeLEDs(context)
 }
 
@@ -1719,13 +1716,6 @@ function setupPreGainFeedback() {
     }
     lowCutSlopeFeedbackValue = surface.makeCustomValueVariable('Low Cut Slope Feedback')
     page.makeValueBinding(lowCutSlopeFeedbackValue, pre.mLowCutSlope)
-    lowCutSlopeFeedbackValue.mOnDisplayValueChange = function(context, text) {
-        // Only host-confirmed display/process pairs; never assume enum spacing.
-        var slope = parseLowCutSlope(text)
-        var process = lowCutSlopeFeedbackValue.getProcessValue(context)
-        if (slope && typeof process === 'number' && isFinite(process))
-            context.setState('lowCutSlopeProcess' + slope, String(process))
-    }
     polarityFeedbackValue.mOnProcessValueChange = function(context) { updateBypassLED(context) }
 }
 
