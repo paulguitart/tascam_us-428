@@ -7,7 +7,7 @@ const s={Date,Math,Number,String,isFinite,
  ENABLE_METRONOME_FADER:true,FADER_HOST_UNITY:.789087,FADER_HARDWARE_UNITY:.7,
  ENABLE_FADER_TOUCH_INPUT:true,ENABLE_FADER_UNITY_CALIBRATION:true,ENABLE_FADER_LOW_END_SNAP:true,FADER_LOW_END_THRESHOLD:.02,
  ENABLE_FADER_TOUCH_PROTECTION:true,ENABLE_MIDI_OUTPUT_CACHE:true,
- cLink:5,WHITE:[127,127,127],AMBER:[127,64,0],GREEN:[0,127,0],CYAN:[0,127,127],MAGENTA:[127,0,127],cTouch:77,cBypass:3,
+ cLink:5,WHITE:[127,127,127],AMBER:[127,64,0],GREEN:[0,127,0],LINK_LOWER_COLOR:[127,0,40],MAGENTA:[127,0,127],cTouch:77,cBypass:3,
  setRGBLED_color:(_,note,color)=>{if(note===77)touchColor=color;if(note===5)linkColor=color},
  setTransportLed:(_,note,on)=>{if(note===77)touchOn=on;if(note===3)bypassOn=on},
  cShift:6,onLED(){},offLED(){},updateTouchLED(){},updateKnobModeLEDs(){},updateBypassLED(){},
@@ -67,7 +67,7 @@ s.var_faderInput.mOnProcessValueChange(ctx,.6);assert.equal(writes.length,count)
 touched=0;s.faderTouch.mOnProcessValueChange(ctx,0);
 push(1);push(0);assert.equal(parameter,.32);assert.deepEqual(touchColor,s.GREEN);
 // Parameter input bypasses volume calibration and low-end snapping.
-touched=1;s.var_faderInput.mOnProcessValueChange(ctx,.01);assert.equal(parameter,.01);assert.deepEqual(touchColor,s.CYAN);
+touched=1;s.var_faderInput.mOnProcessValueChange(ctx,.01);assert.equal(parameter,.01);assert.deepEqual(touchColor,s.LINK_LOWER_COLOR);
 s.var_faderInput.mOnProcessValueChange(ctx,.7);assert.equal(parameter,.7);
 touched=0;s.faderTouch.mOnProcessValueChange(ctx,0);
 // Shifted TOUCH captures a new target/value instead of applying volume unity.
@@ -145,7 +145,7 @@ assert.equal(state.lastMotorPosition,'');
 s.fader.mSurfaceValue.mOnProcessValueChange(ctx,.9);s.setMotorFader(ctx,.9);
 s.faderTouch.mOnProcessValueChange(ctx,1);touched=0;s.faderTouch.mOnProcessValueChange(ctx,0);
 assert.equal(mappedTouch,0);assert.equal(motors.length,dormantMotors);assert.equal(writes.length,dormantWrites);
-for(const [value,color] of [[.57,s.MAGENTA],[.37,s.CYAN],[.47,s.GREEN],[.47-1e-7,s.GREEN]]){
+for(const [value,color] of [[.57,s.MAGENTA],[.37,s.LINK_LOWER_COLOR],[.47,s.GREEN],[.47-1e-7,s.GREEN]]){
  parameter=value;s.syncMouseFader(ctx);assert.deepEqual(touchColor,color);
 }
 assert.equal(motors.length,dormantMotors);

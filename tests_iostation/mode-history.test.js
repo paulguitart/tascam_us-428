@@ -60,7 +60,7 @@ for (const name of ['Link', 'Pan', 'Channel', 'Scroll', 'Master', 'Click', 'Sect
         press(context, 1);
         context.setState('shiftEnabled', shift === '1' ? '0' : '1');
         press(context, 0);
-        const expected = name === 'Link' && shift === '1' ? 'MouseFader' : name === 'Pan' && shift === '1' ? 'Send' : name === 'Channel' && shift === '1' ? 'PreGain' : name === 'Scroll' && shift === '1' ? 'Zoom' : name;
+        const expected = name === 'Pan' && shift === '1' ? 'Send' : name === 'Channel' && shift === '1' ? 'PreGain' : name === 'Scroll' && shift === '1' ? 'Zoom' : name;
         assert.deepEqual(events, [[expected, 1], [expected, 0]]);
         // Pressing the active mode returns to Pan in either SHIFT state.
         context.setState('knobMode', name === 'Link' ? (shift === '1' ? 'MouseFader' : 'Mouse') : name === 'Pan' ? (shift === '1' ? 'Send' : 'Pan') : name === 'Channel' ? (shift === '1' ? 'PreGain' : 'HighPass') : name === 'Scroll' ? 'Zoom' : name);
@@ -119,3 +119,38 @@ assert.equal(toggles,4);
 scope.activateKnobMode(context,'Mouse');shift(context,1);shift(context,0);
 assert.equal(context.getState('knobMode'),'MouseFader');
 console.log('PASS: immediate Pan/Send SHIFT switching, duplicate suppression, BYPASS in both layers and stable Mouse mode');
+
+// LINK remembers its own selection and never routes its SHIFT into another mode.
+for (const linkMode of ['Mouse', 'MouseFader']) {
+    for (const [normalName, shiftedName, destination] of [
+        ['Pan', 'Send', 'Pan'], ['Channel', 'PreGain', 'HighPass'],
+        ['Scroll', 'Zoom', 'Zoom'], ['Master', 'Master', 'Master'],
+        ['Click', 'Click', 'Click'], ['Section', 'Section', 'Section'], ['Marker', 'Marker', 'Marker']
+    ]) {
+        const context = device();
+        scope.activateKnobMode(context, linkMode);
+        const mapping = { normalName, shiftedName, physicalButton: { mSurfaceValue: {} } };
+        scope.assignButtonRouting(mapping);
+        events.length = 0;
+        const press = mapping.physicalButton.mSurfaceValue.mOnProcessValueChange;
+        press(context, 1); press(context, 0);
+        assert.deepEqual(events, [[normalName, 1], [normalName, 0]]);
+        scope.activateKnobMode(context, destination);
+        assert.equal(context.getState('shiftEnabled'), '0');
+        assert.equal(shiftLed, false);
+        for (const incomingShift of ['0', '1']) {
+            context.setState('shiftEnabled', incomingShift);
+            const recalled = scope.resolveKnobModeButton(context, incomingShift === '1' ? 'MouseFader' : 'Link');
+            assert.equal(recalled, linkMode === 'MouseFader' ? 'MouseFader' : 'Link');
+        }
+        scope.activateKnobMode(context, linkMode);
+        assert.equal(context.getState('shiftEnabled'), linkMode === 'MouseFader' ? '1' : '0');
+        assert.equal(shiftLed, linkMode === 'MouseFader');
+        // Switching back to knob control updates the remembered preference too.
+        scope.activateKnobMode(context, 'Mouse');
+        scope.activateKnobMode(context, 'Send');
+        assert.equal(scope.resolveKnobModeButton(context, 'MouseFader'), 'Link');
+        assert.equal(scope.resolveKnobModeButton(device(), 'MouseFader'), 'Link');
+    }
+}
+console.log('PASS: LINK selection recall, isolated SHIFT, normal mode exits and per-device defaults');

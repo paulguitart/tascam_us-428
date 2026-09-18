@@ -90,7 +90,7 @@ SHIFT + PREV / NEXT      : Undo / Redo
 LINK (Normal)            : Mouse parameter on knob; fader dormant; push restores captured starting value
                          : LINK LED white = unlocked, amber = locked
                          : Press LINK inside mode: clear lock if locked; otherwise toggle knob/fader
-SHIFT + LINK            : Mouse parameter on fader; knob rotation disabled; push restores starting value
+SHIFT inside LINK       : Toggle knob/fader; selection recalled on return, isolated from other modes
                          : TOUCH captures/locks (green = saved value, magenta = above, cyan = below); BYPASS disables controls
 PAN (Normal)             : Select Pan knob mode; knob push centers pan
 SCROLL / SHIFT + SCROLL  : Select Zoom knob mode
@@ -131,7 +131,7 @@ UNASSIGNED BUTTON PATHS:
 ----------------------------------------------------------------------------------------------------
 TOUCH                    : Normal path
 SHIFT + BYPASS / TOUCH / WRITE / READ          : BypassAll / Latch / Trim / Off
-SHIFT + LINK             : Mouse Fader mode
+SHIFT inside LINK        : Toggle remembered knob/fader selection
 SHIFT + PAN              : Send 1 mode
 SHIFT + CHANNEL          : High Pass mode
 SHIFT + MASTER / CLICK   : Master / Click modes
@@ -1259,8 +1259,18 @@ function updateKnobModeLEDs(context) {
 function resolveKnobModeButton(context, name) {
     var modeNames = { Link: 'Mouse', MouseFader: 'MouseFader', Send: 'Send', Pan: 'Pan', Scroll: 'Zoom', Zoom: 'Zoom',
         Master: 'Master', Click: 'Click', Channel: 'HighPass', PreGain: 'PreGain', Section: 'Section', Marker: 'Marker' }
-    // Channel always alternates its two functions, independent of mode history.
     var current = context.getState('knobMode')
+    // LINK owns its knob/fader selection; the other modes' SHIFT cannot override it.
+    if (!isMouseLinkMode(current) && (name === 'Link' || name === 'MouseFader')) {
+        return context.getState('linkShiftEnabled') === '1' ? 'MouseFader' : 'Link'
+    }
+    // Leaving LINK selects normal modes, regardless of its fader-selection SHIFT.
+    if (isMouseLinkMode(current)) {
+        if (name === 'Send') name = 'Pan'
+        else if (name === 'PreGain') name = 'Channel'
+        else if (name === 'Zoom') name = 'Scroll'
+    }
+    // Channel always alternates its two functions, independent of mode history.
     if ((name === 'Channel' || name === 'PreGain') && (current === 'HighPass' || current === 'PreGain')) {
         return current === 'HighPass' ? 'PreGain' : 'Channel'
     }
@@ -1301,6 +1311,7 @@ function activateKnobMode(context, mode, activeMapping) {
         target.mAction.mActivate.trigger(activeMapping)
     }
     context.setState('knobMode', mode)
+    if (isMouseLinkMode(mode)) context.setState('linkShiftEnabled', mode === 'MouseFader' ? '1' : '0')
     if (mode === 'MouseFader' && !enteringLink) syncMouseFader(context)
     // These normal modes clear SHIFT; recalled alternates restore it from their mode.
     if (mode === 'HighPass' || mode === 'PreGain' || mode === 'Send' || isMouseLinkMode(mode)

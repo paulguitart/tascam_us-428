@@ -32,7 +32,8 @@ for (const mapping of scope.buttonMappings) {
     press(mapping, 1); press(mapping, 0);
     shift(1); shift(1); shift(0); // Duplicate press cannot toggle back off.
     press(mapping, 1); press(mapping, 1); press(mapping, 0);
-    assert.deepStrictEqual(events, [[mapping.normalName, 1], [mapping.normalName, 0], [mapping.shiftedName, 1], [mapping.shiftedName, 0]]);
+    const shiftedTarget = mapping.normalName === 'Link' ? 'Link' : mapping.shiftedName;
+    assert.deepStrictEqual(events, [[mapping.normalName, 1], [mapping.normalName, 0], [shiftedTarget, 1], [shiftedTarget, 0]]);
     assert.equal(a.getState('shiftEnabled'), '1');
 }
 // Selected-track buttons change host state once on press; duplicates and release do not undo it.
