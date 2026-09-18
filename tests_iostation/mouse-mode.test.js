@@ -4,7 +4,7 @@ const source=fs.readFileSync(require('node:path').join(__dirname,'..','PreSonus_
 const state={},ctx={getState:k=>state[k]||'',setState:(k,v)=>state[k]=v};
 let parameter=.32,locked=0,touched=0;const motors=[],writes=[],bindings=[];let touchOn=false,touchColor=null,bypassOn=false,linkColor=null;
 const s={Date,Math,Number,String,isFinite,
- ENABLE_METRONOME_FADER:true,FADER_HOST_UNITY:.789087,FADER_HARDWARE_UNITY:.7,
+ ENABLE_METRONOME_FADER:true,ENABLE_VOLUME_TOUCH_GLOW:false,ENABLE_CLICK_TOUCH_GLOW:false,FADER_HOST_UNITY:.789087,FADER_HARDWARE_UNITY:.7,
  ENABLE_FADER_TOUCH_INPUT:true,ENABLE_FADER_UNITY_CALIBRATION:true,ENABLE_FADER_LOW_END_SNAP:true,FADER_LOW_END_THRESHOLD:.02,
  ENABLE_FADER_TOUCH_PROTECTION:true,ENABLE_MIDI_OUTPUT_CACHE:true,
  cLink:5,WHITE:[127,127,127],AMBER:[127,64,0],GREEN:[0,127,0],LINK_LOWER_COLOR:[127,0,40],MAGENTA:[127,0,127],cTouch:77,cBypass:3,

@@ -7,7 +7,7 @@ function host(value){return {value};}
 const send={mLevel:host(.25),mOn:host(1),mPrePost:host(0)};
 const track={mValue:{mVolume:host(.6)},mSends:{getByIndex:i=>{assert.equal(i,0);return send;}}};
 const surface={makeCustomValueVariable:name=>({name,getProcessValue(){return this.host?this.host.value:0},setProcessValue(context,v){if(this.host){this.host.value=v;writes.push([name,v]);if(this.mOnProcessValueChange)this.mOnProcessValueChange(context,v)}}})};
-const s={Math,Number,String,Date,isFinite,ENABLE_METRONOME_FADER:true,ENABLE_FADER_NUDGE:false,
+const s={Math,Number,String,Date,isFinite,ENABLE_METRONOME_FADER:true,ENABLE_VOLUME_TOUCH_GLOW:false,ENABLE_CLICK_TOUCH_GLOW:false,ENABLE_FADER_NUDGE:false,
  ENABLE_FADER_TOUCH_INPUT:true,ENABLE_FADER_TOUCH_PROTECTION:true,ENABLE_MIDI_OUTPUT_CACHE:true,
  ENABLE_FADER_UNITY_CALIBRATION:false,ENABLE_FADER_LOW_END_SNAP:false,FADER_LOW_END_THRESHOLD:.012,
  FADER_HOST_UNITY:.789087,FADER_HARDWARE_UNITY:.789087,FULL_BRIGHTNESS:1,SEND_DISABLED_BRIGHTNESS:.25,

@@ -46,6 +46,13 @@ const MAGENTA = [127, 0, 127]
 const CYAN = [0, 127, 127]
 const SEND_DISABLED_BRIGHTNESS = 0.25
 const LINK_LOWER_COLOR = [127, 0, 40] // red-leaning magenta; distinct from green and amber
+// TOUCH appearance only. PreGain always glows; LINK keeps its captured-value colors.
+const ENABLE_VOLUME_TOUCH_GLOW = true
+const ENABLE_CLICK_TOUCH_GLOW = true
+const TOUCH_GLOW_LOW_COLOR = AMBER
+const TOUCH_GLOW_HIGH_COLOR = RED
+const TOUCH_CLICK_GLOW_COLOR = GREEN
+const TOUCH_GLOW_MIN_BRIGHTNESS = 0.03
 
 // button color values
 const ENABLE_PAN_COLOR = true             // white center, blue left, magenta right
@@ -940,12 +947,23 @@ function updateTouchLED(context) {
     if (value) {
         var level = value.getProcessValue(context)
         var tolerance = 1 / 16383
-        if (target === 'PreGain' && typeof level === 'number' && isFinite(level)) {
-            var distance = Math.abs(clampFader(level) - 0.5) * 2
-            var atZero = Math.abs(level - 0.5) <= tolerance
+        var volumeGlow = ENABLE_VOLUME_TOUCH_GLOW && (target === 'Track' || target === 'Send'
+            || target === 'StereoOut' || target === 'FXReturn')
+        if ((target === 'PreGain' || volumeGlow) && typeof level === 'number' && isFinite(level)) {
+            var unity = target === 'PreGain' ? 0.5 : FADER_HOST_UNITY
+            var distance = level < unity ? (unity - clampFader(level)) / unity
+                : (clampFader(level) - unity) / (1 - unity)
+            var atZero = Math.abs(level - unity) <= tolerance
             // Linear in physical travel; a small floor keeps near-zero color visible.
-            var brightness = atZero ? 1 : 0.03 + 0.97 * distance
-            setRGBLED_color(context, cTouch, atZero ? WHITE : level < 0.5 ? AMBER : RED, brightness)
+            var floor = clampFader(TOUCH_GLOW_MIN_BRIGHTNESS)
+            var brightness = atZero ? 1 : floor + (1 - floor) * distance
+            setRGBLED_color(context, cTouch, atZero ? WHITE : level < unity ? TOUCH_GLOW_LOW_COLOR : TOUCH_GLOW_HIGH_COLOR, brightness)
+            setTransportLed(context, cTouch, true)
+            return
+        }
+        if (target === 'Metronome' && ENABLE_CLICK_TOUCH_GLOW && typeof level === 'number' && isFinite(level)) {
+            var floor = clampFader(TOUCH_GLOW_MIN_BRIGHTNESS)
+            setRGBLED_color(context, cTouch, TOUCH_CLICK_GLOW_COLOR, floor + (1 - floor) * clampFader(level))
             setTransportLed(context, cTouch, true)
             return
         }
