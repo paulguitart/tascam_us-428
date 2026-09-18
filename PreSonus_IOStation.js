@@ -49,7 +49,8 @@ const LINK_LOWER_COLOR = [127, 0, 40] // red-leaning magenta; distinct from gree
 // TOUCH appearance only. PreGain always glows; LINK keeps its captured-value colors.
 const ENABLE_VOLUME_TOUCH_GLOW = true
 const ENABLE_CLICK_TOUCH_GLOW = true
-const TOUCH_GLOW_LOW_COLOR = AMBER
+const TOUCH_GLOW_LOW_COLOR = MAGENTA
+const TOUCH_PREGAIN_LOW_COLOR = AMBER
 const TOUCH_GLOW_BOTTOM_COLOR = BLUE // Volume only; set equal to LOW_COLOR for a single-color fade.
 const TOUCH_GLOW_HIGH_COLOR = RED
 const TOUCH_CLICK_GLOW_COLOR = GREEN
@@ -962,7 +963,7 @@ function updateTouchLED(context) {
             var glowColor = atZero ? WHITE : TOUCH_GLOW_HIGH_COLOR
             if (!atZero && level < unity) {
                 brightness = floor + (1 - floor) * (1 - distance)
-                glowColor = TOUCH_GLOW_LOW_COLOR
+                glowColor = target === 'PreGain' ? TOUCH_PREGAIN_LOW_COLOR : TOUCH_GLOW_LOW_COLOR
                 if (target === 'Send' && context.getState('knobMode') === 'Send') {
                     // Match PAN's pre/post hue; only level controls TOUCH brightness.
                     var pre = firstSendPrePostFeedbackValue && firstSendPrePostFeedbackValue.getProcessValue(context) > 0
