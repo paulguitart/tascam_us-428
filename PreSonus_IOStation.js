@@ -1659,20 +1659,31 @@ function parseLowCutSlope(text) {
     var match = String(text).match(/^\s*(6|12|24|36|48)(?=\s|dB|$)/i)
     return match ? Number(match[1]) : 0
 }
+function stepLowCutSlope(context, direction) {
+    var key = context.getState('faderNudgeMapping')
+    var activeMapping = key === '' ? null : faderNudgeMappings[Number(key)]
+    if (!activeMapping) return
+    var hostSlope = page.mHostAccess.mTrackSelection.mMixerChannel.mPreFilter.mLowCutSlope
+    // Use the host's enum stepping, not display text writes (which clamp to 48).
+    if (direction > 0) hostSlope.increment(activeMapping)
+    else hostSlope.decrement(activeMapping)
+}
 function setLowCutSlope(context, slope) {
-    // Cubase converts the display choice; feedback supplies its process value.
-    // Never align the encoder on reset or feedback: it must remain endless.
-    lowCutSlopeFeedbackValue.setDisplayValue(context, String(slope))
+    // Count enum steps from confirmed host feedback. No normalized constants and
+    // no encoder alignment; the very next detent is still a relative step.
+    var current = parseLowCutSlope(lowCutSlopeFeedbackValue.getDisplayValue(context))
+    var from = -1, to = -1
+    for (var i = 0; i < lowCutSlopes.length; i++) {
+        if (lowCutSlopes[i] === current) from = i
+        if (lowCutSlopes[i] === slope) to = i
+    }
+    if (from < 0 || to < 0) return
+    var direction = to > from ? 1 : -1
+    for (var step = 0; step < Math.abs(to - from); step++) stepLowCutSlope(context, direction)
 }
 function turnLowCutSlope(context, diff) {
     if (!isFinite(diff) || diff === 0) return
-    var current = parseLowCutSlope(lowCutSlopeFeedbackValue.getDisplayValue(context))
-    for (var i = 0; i < lowCutSlopes.length; i++) {
-        if (lowCutSlopes[i] !== current) continue
-        var next = Math.max(0, Math.min(lowCutSlopes.length - 1, i + (diff > 0 ? 1 : -1)))
-        if (next !== i) setLowCutSlope(context, lowCutSlopes[next])
-        return
-    }
+    stepLowCutSlope(context, diff > 0 ? 1 : -1)
 }
 
 var panFeedbackValue = null

@@ -15,8 +15,8 @@ for(const [v,c] of [[.5,[127,127,127]],[0,[127,48,0]],[.499,[127,48,0]],[.501,[1
 }
 s.toggleModeEffect(ctx);s.updateBypassLED(ctx);assert.equal(polarity,1);assert.equal(bypass,true);
 s.toggleModeEffect(ctx);s.updateBypassLED(ctx);assert.equal(polarity,0);assert.equal(bypass,false);
-const slopeWrites=[];s.lowCutSlopeFeedbackValue.setDisplayValue=(_,v)=>slopeWrites.push(v);
-gain=.1;const push=s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange;push(ctx,1);push(ctx,1);push(ctx,0);assert.deepEqual(writes,[]);assert.deepEqual(slopeWrites,['12']);
+const slopeWrites=[];s.setLowCutSlope=(_,v)=>slopeWrites.push(v);
+gain=.1;const push=s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange;push(ctx,1);push(ctx,1);push(ctx,0);assert.deepEqual(writes,[]);assert.deepEqual(slopeWrites,[12]);
 s.faderModes.Track.mAction.mActivate.trigger=()=>{};s.updateKnobModeLEDs=()=>{};s.updateTouchLED=()=>{};s.knob.getProcessValue=()=>.5;
 s.activateKnobMode(ctx,'PreGain',{});assert.equal(state.faderTarget,'PreGain');
 state.shiftEnabled='0';state.knobMode='HighPass';s.buttons.Bypass.setProcessValue=()=>{};
