@@ -7,6 +7,8 @@ s.midiOut.sendMidi=(_,m)=>midi.push(Array.from(m));
 s.knob.getProcessValue=()=>.5;
 s.var_zoomIn.setProcessValue=(_,v)=>events.push(['in',v]);
 s.var_zoomOut.setProcessValue=(_,v)=>events.push(['out',v]);
+const locatorPulses=[];
+s.var_zoomToLocators.setProcessValue=(_,v)=>locatorPulses.push(v);
 function capture(list,info){list.push(info);return {setSubPage(page){info.page=page;return this;},setTypeToggle(){info.toggle=true;return this;},setValueTakeOverModeScaled(){info.scaled=true;return this;},mapToValueRange(min,max){info.range=[min,max];return this;}};}
 s.page.makeValueBinding=(input,host)=>capture(bindings,{input,host});
 s.page.makeActionBinding=(input,action)=>actions.push({input,action});
@@ -36,7 +38,7 @@ for(const mode of ['Zoom','Section','Marker','Master','MasterFX']) {
   assert(commands.some(b=>b.input===input&&b.category==='Zoom'&&b.command===command&&b.page===s.knobModes[mode]));
  }
 }
-for(const mode of ['Zoom','Section']) assert(commands.some(b=>b.input===s.var_zoomToLocators&&b.command==='Zoom to Locators'&&b.page===s.knobModes[mode]));
+for(const mode of ['Zoom','Section','Master','MasterFX']) assert(commands.some(b=>b.input===s.var_zoomToLocators&&b.command==='Zoom to Locators'&&b.page===s.knobModes[mode]));
 assert(!bindings.some(b=>b.input===s.fader.mSurfaceValue)); // Fader has independent subpages.
 assert(!bindings.some(b=>b.input===s.knob&&(b.page===s.knobModes.Mouse||b.page===s.knobModes.MouseFader)));
 for(const mapping of s.knobModeButtons) assert(actions.some(a=>a.input===mapping.button&&a.action===mapping.mode.mAction.mActivate));
@@ -45,18 +47,14 @@ assert(actions.some(a=>a.input===s.buttons.Zoom&&a.action===s.knobModes.Zoom.mAc
 assert(actions.some(a=>a.input===s.buttons.MasterFX&&a.action===s.knobModes.MasterFX.mAction.mActivate));
 assert(actions.some(a=>a.input===s.buttons.Click&&a.action===s.knobModes.Click.mAction.mActivate));
 assert(actions.some(a=>a.input===s.buttons.Marker&&a.action===s.knobModes.Marker.mAction.mActivate));
-assert(commands.some(binding=>binding.input===s.var_masterInsertPressed&&binding.category==='Mixer'
+assert(commands.some(binding=>binding.input===s.buttons.Bypass&&binding.category==='Mixer'
  &&binding.command==='Bypass: Inserts on Main Mix'&&binding.page===s.knobModes.Master));
-for(const mode of ['Master','MasterFX']) {
- for(const input of [s.buttons.Bypass,s.var_masterInsertPressed]) {
-  assert(commands.some(binding=>binding.input===input&&binding.category==='Mixer'
-   &&binding.command==='Bypass: Inserts on Main Mix'&&binding.page===s.knobModes[mode]));
- }
-}
+assert(!commands.some(binding=>binding.input===s.buttons.Bypass&&binding.page===s.knobModes.MasterFX));
 s.assignSelectedTrackControls();
 const fxFaderBinding=bindings.find(b=>b.input===s.fader.mSurfaceValue&&b.host===s.fxChannel.mValue.mVolume&&b.page===s.faderModes.FXReturn);
 assert(fxFaderBinding);
 assert(bindings.some(b=>b.input===s.faderTargetFeedback.FXReturn&&b.host===s.fxChannel.mValue.mVolume));
+assert(bindings.some(b=>b.input===s.fxReturnMuteFeedback&&b.host===s.fxChannel.mValue.mMute));
 for(const mode of ['Pan','Click','HighPass']){
  s.knobModes[mode].mOnActivate(ctx);s.knob.mOnProcessValueChange(ctx,.6,.1);
  assert.equal(events.length,0);assert.equal(ctx.getState('knobMode'),mode);
@@ -129,11 +127,9 @@ assert(commands.some(binding=>binding.input===s.var_markerNext&&binding.category
 const markerInsertCommand=s.cubase13OrHigher?'Marker':'Transport';
 assert.equal(markerModeCommands.filter(binding=>binding.category===markerInsertCommand&&binding.command==='Insert Marker').length,1);
 const markerPulses=[];
-const masterInsertPulses=[];
 const metronomePulses=[];
 let metronomeValue=0;
 s.var_markerInsertPressed.setProcessValue=(_,value)=>markerPulses.push(value);
-s.var_masterInsertPressed.setProcessValue=(_,value)=>masterInsertPulses.push(value);
 s.metronomeFeedbackValue.getProcessValue=()=>metronomeValue;
 s.metronomeFeedbackValue.setProcessValue=(_,value)=>{metronomeValue=value;metronomePulses.push(value)};
 s.knobModes.Pan.mOnActivate(ctx);
@@ -159,11 +155,11 @@ assert.deepStrictEqual(metronomePulses,[1,0]);
 s.knobModes.Master.mOnActivate(ctx);
 s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(ctx,1);
 s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(ctx,0);
- s.knobModes.MasterFX.mOnActivate(ctx);
- s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(ctx,1);
- s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(ctx,0);
-assert.deepStrictEqual(masterInsertPulses,[1,0,1,0]);
-console.log('PASS: Marker navigation/insert, Click metronome toggle and insert-bypass push in both Master modes');
+s.knobModes.MasterFX.mOnActivate(ctx);
+s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(ctx,1);
+s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(ctx,0);
+assert.deepStrictEqual(locatorPulses,[1,0,1,0]);
+console.log('PASS: Marker navigation/insert, Click metronome toggle and Zoom to Locators push in both Master modes');
 
 // Send edits must never share the physical knob's automatic host-binding path.
 // Drive actual mode activation and knob callbacks, including endpoint detents.

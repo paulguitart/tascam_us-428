@@ -97,7 +97,7 @@ SHIFT inside LINK       : Toggle knob/fader; selection recalled on return, isola
 PAN (Normal)             : Select Pan knob mode; knob push centers pan
 SCROLL / SHIFT + SCROLL  : Select Zoom knob mode
 MASTER (Normal)          : Select Master mode; encoder zooms; fader controls Stereo Out
-SHIFT + MASTER           : Fader controls FX Return 1; encoder zooms; knob push/BYPASS toggle Main Mix inserts
+SHIFT + MASTER           : Fader controls FX Return 1; knob rotates/presses for zoom; BYPASS toggles FX Return mute
 CLICK (Normal)           : Select Click Level knob mode
 KNOB PUSH (Click Mode)   : Metronome on/off; Click LED shows Click mode; inactive RGB mode LEDs optionally show metronome
 CHANNEL (Normal)         : Select High Pass (Low Cut) knob mode for the selected track
@@ -110,8 +110,8 @@ KNOB MODES:
 SHIFT + PAN              : Fader = Send 1; TOUCH resets 0 dB; knob = track volume; push toggles pre/post
 PAN                      : Selected Track Pan; press knob to center pan
 ZOOM                     : Horizontal Zoom In / Out commands
-MASTER                   : Encoder controls horizontal zoom; fader controls Stereo Out Volume
-SHIFT + MASTER           : Encoder controls horizontal zoom; fader controls FX Return 1
+MASTER                   : Encoder zooms horizontally; push zooms to locators; fader controls Stereo Out; BYPASS toggles Main Mix inserts
+SHIFT + MASTER           : Encoder zooms horizontally; push zooms to locators; fader controls FX Return 1; BYPASS mutes FX Return
 CLICK                    : Metronome Click Level; fader controls Stereo Out Volume
 HIGH PASS                : Selected Track Low Cut Frequency; push resets minimum; BYPASS toggles filter
 HIGH PASS LED            : White when disabled; color indicates frequency when enabled
@@ -129,7 +129,7 @@ BYPASS BUTTON PATHS:
 BYPASS                   : PAN / SCROLL / SECTION / MARKER: shared fader bypass; SHIFT + PAN: send 1 enable
                          : CHANNEL: high pass
 						 : CLICK: metronome enabled
-                         : MASTER: Main Mix inserts (LED means not bypassed)
+						 : MASTER: Main Mix inserts (LED means not bypassed); SHIFT + MASTER: FX Return mute (LED means muted)
 						 
 UNASSIGNED BUTTON PATHS:
 ----------------------------------------------------------------------------------------------------
@@ -1211,11 +1211,11 @@ var knobModeButtons = [
 ]
 var firstSendPrePostFeedbackValue
 var firstSendLevelFeedbackValue
+var fxReturnMuteFeedback
 var var_zoomIn = surface.makeCustomValueVariable('Zoom In')
 var var_zoomOut = surface.makeCustomValueVariable('Zoom Out')
 var var_zoomToLocators = surface.makeCustomValueVariable('Zoom to Locators')
 var var_markerInsertPressed = surface.makeCustomValueVariable('Marker Insert Pressed')
-var var_masterInsertPressed = surface.makeCustomValueVariable('Master Insert Pressed')
 
 // Same output-bank approach as the Korg: the FIRST output channel is Stereo Out.
 // Projects with multiple output buses must place the intended master first.
@@ -1249,8 +1249,10 @@ function updateSendModeLED(context) {
 function updateBypassLED(context) {
     var mode = context.getState('knobMode')
     var enabled = false
-    if (mode === 'Master' || mode === 'MasterFX') {
+    if (mode === 'Master') {
         enabled = masterInsertBypassFeedback.getProcessValue(context) === 0
+    } else if (mode === 'MasterFX') {
+        enabled = fxReturnMuteFeedback.getProcessValue(context) > 0
     } else if (isTrackFaderBypassMode(mode)) {
         enabled = context.getState('panFaderBypassed') === '1'
     } else if (mode === 'Send') {
@@ -1270,6 +1272,12 @@ function updateBypassLED(context) {
 // BYPASS toggles the mode effect; Pan knob push separately centers pan.
 function toggleModeEffect(context) {
     var mode = context.getState('knobMode')
+    if (mode === 'MasterFX') {
+        var isMuted = fxReturnMuteFeedback.getProcessValue(context) > 0
+        fxReturnMuteFeedback.setProcessValue(context, isMuted ? 0 : 1)
+        updateBypassLED(context)
+        return
+    }
     if (isTrackFaderBypassMode(mode)) {
         context.setState('panFaderBypassed', context.getState('panFaderBypassed') === '1' ? '' : '1')
         context.setState('pendingMotorPosition', '')
@@ -1683,6 +1691,9 @@ function assignKnobControls() {
         var mapping = knobModeButtons[i]
         page.makeActionBinding(mapping.button, mapping.mode.mAction.mActivate)
     }
+    fxReturnMuteFeedback = surface.makeCustomValueVariable('FX Return 1 Mute Feedback')
+    page.makeValueBinding(fxReturnMuteFeedback, fxChannel.mValue.mMute)
+    fxReturnMuteFeedback.mOnProcessValueChange = function(context) { updateBypassLED(context) }
     page.makeValueBinding(knob, page.mHostAccess.mTrackSelection.mMixerChannel.mValue.mPan)
         .setSubPage(knobModes.Pan)
     var firstSend = page.mHostAccess.mTrackSelection.mMixerChannel.mSends.getByIndex(0)
@@ -1722,6 +1733,8 @@ function assignKnobControls() {
     }
     page.makeCommandBinding(var_zoomToLocators, 'Zoom', 'Zoom to Locators').setSubPage(knobModes.Zoom)
     page.makeCommandBinding(var_zoomToLocators, 'Zoom', 'Zoom to Locators').setSubPage(knobModes.Section)
+    page.makeCommandBinding(var_zoomToLocators, 'Zoom', 'Zoom to Locators').setSubPage(knobModes.Master)
+    page.makeCommandBinding(var_zoomToLocators, 'Zoom', 'Zoom to Locators').setSubPage(knobModes.MasterFX)
     if (cubase13OrHigher) {
         page.makeCommandBinding(var_markerInsertPressed,
             'Marker', 'Insert Marker').setSubPage(knobModes.Marker)
@@ -1731,12 +1744,6 @@ function assignKnobControls() {
     }
     page.makeCommandBinding(buttons.Bypass,
         'Mixer', 'Bypass: Inserts on Main Mix').setSubPage(knobModes.Master)
-    page.makeCommandBinding(buttons.Bypass,
-        'Mixer', 'Bypass: Inserts on Main Mix').setSubPage(knobModes.MasterFX)
-    page.makeCommandBinding(var_masterInsertPressed,
-        'Mixer', 'Bypass: Inserts on Main Mix').setSubPage(knobModes.Master)
-    page.makeCommandBinding(var_masterInsertPressed,
-        'Mixer', 'Bypass: Inserts on Main Mix').setSubPage(knobModes.MasterFX)
     page.makeCommandBinding(var_markerPrev,
         'Transport', 'Locate Previous Marker')
     page.makeCommandBinding(var_markerNext,
@@ -1783,10 +1790,9 @@ function assignKnobControls() {
             highPassFrequencyFeedbackValue.setProcessValue(context, 0)
         } else if (mode === 'Marker') {
             pulseVar(context, var_markerInsertPressed)
-        } else if (mode === 'Zoom' || mode === 'Section') {
+        } else if (mode === 'Zoom' || mode === 'Section'
+            || mode === 'Master' || mode === 'MasterFX') {
             pulseVar(context, var_zoomToLocators)
-        } else if (mode === 'Master' || mode === 'MasterFX') {
-            pulseVar(context, var_masterInsertPressed)
         }
     }
 
