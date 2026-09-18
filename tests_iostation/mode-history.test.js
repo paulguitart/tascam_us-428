@@ -14,6 +14,7 @@ const scope = {
     mappedFaderTouch: {setProcessValue(){}}, faderTouch: {getProcessValue:()=>0}
 };
 vm.createContext(scope);
+vm.runInContext(source.slice(source.indexOf('function isPanFaderBypassed('), source.indexOf('function clampFader(')), scope);
 vm.runInContext(source.slice(source.indexOf('function resolveKnobModeButton('), source.indexOf('var highPassColors')), scope);
 function device() {
     const state = {};

@@ -26,7 +26,7 @@ s.mouseParameterFeedbackValue={getProcessValue:()=>parameter,setProcessValue:(_,
 run('function resolveKnobModeButton(', 'var highPassColors');
 run('function toggleModeEffect(', 'function updateKnobModeLEDs');
 run('function updateTouchLED(', 'function setupFaderTargetFeedback');
-run('function clampFader(', '// Future footswitch assignments');
+run('function isPanFaderBypassed(', '// Future footswitch assignments');
 s.fader.mSurfaceValue.setProcessValue=(_,v)=>{parameter=v;writes.push(v);s.syncMouseFader(ctx)};
 run('    mSection.knob_Press.mSurfaceValue.mOnProcessValueChange =', '    // Korg zoom pattern:');
 run('function assignButtonRouting(', 'for (var buttonIndex =');
@@ -95,9 +95,9 @@ for (const mode of ['Mouse','MouseFader']) {
  }
 }
 s.firstSendEnabledFeedbackValue={getProcessValue:()=>1};
-state.knobMode='Pan';s.updateBypassLED(ctx);assert.equal(bypassOn,true);
+state.knobMode='Send';s.updateBypassLED(ctx);assert.equal(bypassOn,true);
 s.firstSendEnabledFeedbackValue.getProcessValue=()=>0;s.updateBypassLED(ctx);assert.equal(bypassOn,false);
-console.log('PASS: LINK BYPASS LED on means bypassed in both variants; Pan retains its enable indication');
+console.log('PASS: LINK BYPASS LED on means bypassed in both variants; Send retains its enable indication');
 
 // Physical LINK clears a lock first, then switches modes on a separate unlocked press.
 s.pulseVar=(context,button)=>{button.setProcessValue(context,1);button.setProcessValue(context,0)};

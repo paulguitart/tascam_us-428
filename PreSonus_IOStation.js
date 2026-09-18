@@ -451,6 +451,11 @@ function offLED(context, note) { sendHardwareMidi(context, 0x90, note, 0) }
 function onLED(context, note) { sendHardwareMidi(context, 0x90, note, 127) }
 function flashingLED(context, note) { sendHardwareMidi(context, 0x90, note, 1) }
 function midi7(value) { return Math.max(0, Math.min(127, Math.round(value))) }
+function isPanFaderBypassed(context) {
+    var mode = context.getState('knobMode')
+    return (mode === 'Pan' || mode === 'Send') && context.getState('panFaderBypassed') === '1'
+}
+
 function clampFader(value) { return Math.max(0, Math.min(1, value)) }
 
 // RGB color and on/off/flash state are separate hardware messages.
@@ -482,7 +487,7 @@ function snapFaderBottom(value) {
 // Raw physical position 0..1. All motor commands, including mapped feedback,
 // pass here. Cache the complete 14-bit position, not its individual MIDI bytes.
 function setMotorFader(context, position) {
-    if (context.getState('faderTarget') === 'Dormant'
+    if (context.getState('faderTarget') === 'Dormant' || isPanFaderBypassed(context)
         || (context.getState('faderTarget') === 'Mouse' && !isMouseLinkControlEnabled(context))) {
         context.setState('pendingMotorPosition', '')
         return
@@ -501,7 +506,7 @@ function setMotorFader(context, position) {
 }
 
 var_faderInput.mOnProcessValueChange = function(context, value) {
-    if (context.getState('faderTarget') === 'Dormant'
+    if (context.getState('faderTarget') === 'Dormant' || isPanFaderBypassed(context)
         || (context.getState('faderTarget') === 'Mouse' && !isMouseLinkControlEnabled(context))) {
         // A manual move while dormant must not suppress the next linked motor target.
         context.setState('lastMotorPosition', '')
@@ -535,11 +540,11 @@ fader.mSurfaceValue.mOnProcessValueChange = function(context, value) {
 }
 
 faderTouch.mOnProcessValueChange = function(context, value) {
-    if (value > 0 && context.getState('faderTarget') === 'Mouse' && !isMouseLinkControlEnabled(context)) {
+    if (value > 0 && (isPanFaderBypassed(context) || (context.getState('faderTarget') === 'Mouse' && !isMouseLinkControlEnabled(context)))) {
         context.setState('mouseFaderWaitRelease', '1')
     }
     mappedFaderTouch.setProcessValue(context,
-        context.getState('faderTarget') === 'Dormant' || context.getState('mouseFaderWaitRelease') === '1'
+        context.getState('faderTarget') === 'Dormant' || isPanFaderBypassed(context) || context.getState('mouseFaderWaitRelease') === '1'
         || (context.getState('faderTarget') === 'Mouse' && !isMouseLinkControlEnabled(context)) ? 0 : value)
     if (value > 0) return
     context.setState('mouseFaderWaitRelease', '')
@@ -1209,7 +1214,9 @@ function updateBypassLED(context) {
     var enabled = false
     if (mode === 'Master') {
         enabled = masterInsertBypassFeedback.getProcessValue(context) === 0
-    } else if (mode === 'Send' || mode === 'Pan') {
+    } else if (mode === 'Pan') {
+        enabled = context.getState('panFaderBypassed') === '1'
+    } else if (mode === 'Send') {
         enabled = firstSendEnabledFeedbackValue && firstSendEnabledFeedbackValue.getProcessValue(context) > 0
     } else if (isMetronomeBypassMode(mode)) {
         enabled = metronomeFeedbackValue && metronomeFeedbackValue.getProcessValue(context) > 0
@@ -1226,6 +1233,19 @@ function updateBypassLED(context) {
 // BYPASS toggles the mode effect; Pan knob push separately centers pan.
 function toggleModeEffect(context) {
     var mode = context.getState('knobMode')
+    if (mode === 'Pan') {
+        context.setState('panFaderBypassed', context.getState('panFaderBypassed') === '1' ? '' : '1')
+        context.setState('pendingMotorPosition', '')
+        context.setState('lastMotorPosition', '')
+        context.setState('mouseFaderWaitRelease', faderTouch.getProcessValue(context) > 0 ? '1' : '')
+        mappedFaderTouch.setProcessValue(context, 0)
+        if (!isPanFaderBypassed(context) && faderTargetFeedback.Track) {
+            var level = faderTargetFeedback.Track.getProcessValue(context)
+            setMotorFader(context, snapFaderBottom(scaleFaderUnity(clampFader(level), FADER_HOST_UNITY, FADER_HARDWARE_UNITY)))
+        }
+        updateBypassLED(context)
+        return
+    }
     if (isMouseLinkMode(mode)) {
         context.setState('mouseBypassed', context.getState('mouseBypassed') === '1' ? '' : '1')
         context.setState('pendingMotorPosition', '')
@@ -1241,7 +1261,7 @@ function toggleModeEffect(context) {
         toggleMetronome(context)
         return
     }
-    var value = mode === 'Send' || mode === 'Pan' ? firstSendEnabledFeedbackValue
+    var value = mode === 'Send' ? firstSendEnabledFeedbackValue
         : mode === 'HighPass' ? highPassEnabledFeedbackValue
         : mode === 'PreGain' ? polarityFeedbackValue : null
     if (value) {
@@ -1297,6 +1317,12 @@ function activateKnobMode(context, mode, activeMapping) {
     var enteringLink = isMouseLinkMode(mode) && !isMouseLinkMode(current)
     if (isMouseLinkMode(current) && !isMouseLinkMode(mode)) leaveMouseLink(context)
     if (enteringLink) leaveMouseLink(context)
+    context.setState('knobMode', mode)
+    if (isPanFaderBypassed(context)) {
+        context.setState('pendingMotorPosition', '')
+        context.setState('mouseFaderWaitRelease', faderTouch.getProcessValue(context) > 0 ? '1' : '')
+        mappedFaderTouch.setProcessValue(context, 0)
+    }
     // Mouse control ends on mode exit, even for modes that normally retain the fader.
     if (isMouseLinkMode(current) || (mode !== 'Zoom' && mode !== 'Section' && mode !== 'Marker')) {
         var target = mode === 'MouseFader' ? faderModes.Mouse : mode === 'Mouse' ? faderModes.Dormant
@@ -1313,7 +1339,6 @@ function activateKnobMode(context, mode, activeMapping) {
         }
         target.mAction.mActivate.trigger(activeMapping)
     }
-    context.setState('knobMode', mode)
     if (isMouseLinkMode(mode)) context.setState('linkShiftEnabled', mode === 'MouseFader' ? '1' : '0')
     if (mode === 'MouseFader' && !enteringLink) syncMouseFader(context)
     // These normal modes clear SHIFT; recalled alternates restore it from their mode.
