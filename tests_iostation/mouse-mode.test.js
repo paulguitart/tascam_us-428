@@ -263,7 +263,7 @@ for(const feedbackDelivery of ['sync','deferred']) {
  s.knob.mOnProcessValueChange(ctx,.9,.35);assert.equal(editCount,1);
  push(1);push(0);while(feedbackQueue.length)feedbackQueue.shift()();
  assert.equal(editCount,2);assert.equal(parameter,.5);
- for(const mode of ['Pan','Send','MouseFader','Zoom','Section','Marker']) {
+ for(const mode of ['MouseFader']) {
   state.knobMode=mode;s.mouseKnobInput.mOnProcessValueChange(ctx,.8,.1);
  }
  assert.equal(editCount,2);state.knobMode='Mouse';

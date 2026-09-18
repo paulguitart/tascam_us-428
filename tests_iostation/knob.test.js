@@ -177,3 +177,32 @@ for(const zoomMode of ['Zoom','Section','Marker']) {
  sendLevel=.01;s.knob.mOnProcessValueChange(ctx,0,-.1);assert.equal(sendLevel,0);
 }
 console.log('PASS: Send-to-zoom isolation in Scroll/Section/Marker, host changes, return to Send and level limits');
+
+// One physical receiver, with explicit routing: host-bound PAN cannot hear LINK turns.
+const script=fs.readFileSync(path.join(__dirname,'..','PreSonus_IOStation.js'),'utf8');
+assert.equal((script.match(/bindToControlChange\(0, cKnobRotate\)/g)||[]).length,1);
+let raw=.5,hostKnob=.5;const forwarded=[];
+s.knob.getProcessValue=()=>hostKnob;
+s.knob.setProcessValue=(_,value)=>{hostKnob=value;forwarded.push(value);};
+s.mouseKnobInput.setProcessValue=(context,value)=>{
+ const diff=value-raw;raw=value;s.mouseKnobInput.mOnProcessValueChange(context,value,diff);
+};
+function physicalTurn(diff){const next=Math.max(0,Math.min(1,raw+diff));const applied=next-raw;raw=next;s.mouseKnobInput.mOnProcessValueChange(ctx,next,applied);}
+for(const mode of ['Pan','Master','Click','PreGain','HighPass']) {
+ state.knobMode=mode;raw=.5;hostKnob=.5;forwarded.length=0;
+ for(let i=0;i<30;i++)physicalTurn(.05);
+ assert.equal(hostKnob,1);assert.equal(forwarded.length,30);
+ for(let i=0;i<30;i++)physicalTurn(-.05);
+ assert.equal(hostKnob,0);assert.equal(forwarded.length,60);
+}
+for(const mode of ['Zoom','Section','Marker']) {
+ state.knobMode=mode;raw=.5;forwarded.length=0;events.length=0;
+ for(let i=0;i<30;i++)physicalTurn(.05);
+ assert.equal(events.length,60);assert.deepStrictEqual(forwarded,[]);
+}
+for(const mode of ['Mouse','MouseFader']) {
+ state.knobMode=mode;state.mouseStartingValue='';raw=.5;forwarded.length=0;
+ physicalTurn(.05);physicalTurn(-.05);
+ assert.deepStrictEqual(forwarded,[]); // Unlocked LINK cannot forward MIDI to PAN.
+}
+console.log('PASS: sole MIDI receiver, normal-mode routing and full travel, repeated zoom, and zero PAN forwarding in unlocked LINK');

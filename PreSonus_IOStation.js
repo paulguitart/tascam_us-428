@@ -293,10 +293,7 @@ bindButton(tpSection.btn_Play, cPlay)
 bindButton(tpSection.btn_Record, cRecord)
 bindButton(fsSection.btn_Footswitch, cFootswitch)
 bindButton(mSection.knob_Press, cKnobPress)
-mSection.knob_vis.mSurfaceValue.mMidiBinding.setInputPort(midiIn)
-    .bindToControlChange(0, cKnobRotate).setTypeRelativeSignedBit()
-
-// Separate LINK input has no host binding, so PAN feedback cannot become LINK input.
+// Sole encoder MIDI receiver. The host-bound visible knob is driven only outside LINK.
 var mouseKnobInput = surface.makeCustomValueVariable('LINK Encoder Input')
 mouseKnobInput.mMidiBinding.setInputPort(midiIn)
     .bindToControlChange(0, cKnobRotate).setTypeRelativeSignedBit()
@@ -1688,7 +1685,7 @@ function assignKnobControls() {
         }
     }
 
-    // Korg zoom pattern: compare successive knob positions and fire zoom commands.
+    // Korg zoom pattern: pulse commands per detent, using relative direction.
     // Pulse each command so consecutive detents in the same direction retrigger.
     knob.mOnProcessValueChange = function(context, newValue, diff) {
         var mode = context.getState('knobMode')
@@ -1700,15 +1697,12 @@ function assignKnobControls() {
             return
         }
         if (mode !== 'Zoom' && mode !== 'Section' && mode !== 'Marker') return
-        var newZoomValue = Math.floor(newValue * 1000)
-        var lastZoomValue = Number(context.getState('lastZoomValue'))
         var zoomCommand
-        if (newZoomValue < lastZoomValue || (newZoomValue <= 0 && diff < 0)) {
+        if (diff < 0) {
             zoomCommand = var_zoomOut
-        } else if (newZoomValue > lastZoomValue || (newZoomValue >= 1000 && diff > 0)) {
+        } else if (diff > 0) {
             zoomCommand = var_zoomIn
         }
-        context.setState('lastZoomValue', String(newZoomValue))
         if (zoomCommand) {
             pulseVar(context, zoomCommand)
         }
@@ -1722,6 +1716,18 @@ function assignKnobControls() {
         }
         if (context.getState('mouseKnobResetting') === '1') return
         var mode = context.getState('knobMode')
+        if (!isMouseLinkMode(mode)) {
+            if (!mode || !isFinite(diff) || diff === 0) return
+            // Recenter only the unbound input; normal host bindings keep their own position.
+            context.setState('mouseKnobResetEcho', '0.5')
+            mouseKnobInput.setProcessValue(context, 0.5)
+            if (mode === 'Send' || mode === 'Zoom' || mode === 'Section' || mode === 'Marker') {
+                knob.mOnProcessValueChange(context, newValue, diff)
+            } else {
+                knob.setProcessValue(context, clampFader(knob.getProcessValue(context) + diff))
+            }
+            return
+        }
         if (mode === 'Mouse') {
             if (isMouseLinkControlEnabled(context) && isFinite(diff) && diff !== 0) {
                 var current = mouseParameterFeedbackValue.getProcessValue(context)
