@@ -13,15 +13,16 @@ state.knobMode='PreGain';
 for(const [v,c] of [[.5,[127,127,127]],[0,[127,0,127]],[.499,[127,0,127]],[.501,[127,0,127]],[1,[127,0,127]]]){
   gain=v;s.preGainFeedbackValue.mOnProcessValueChange(ctx);assert.deepEqual(colors.pop(),c);
 }
-s.toggleModeEffect(ctx);s.updateBypassLED(ctx);assert.equal(polarity,1);assert.equal(bypass,true);
+s.toggleModeEffect(ctx);s.updateBypassLED(ctx);assert.equal(polarity,0);assert.equal(bypass,false);
 s.toggleModeEffect(ctx);s.updateBypassLED(ctx);assert.equal(polarity,0);assert.equal(bypass,false);
 gain=.1;const push=s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange;push(ctx,1);push(ctx,1);push(ctx,0);assert.deepEqual(writes,[.5]);
 s.faderModes.Track.mAction.mActivate.trigger=()=>{};s.updateKnobModeLEDs=()=>{};s.updateTouchLED=()=>{};s.knob.getProcessValue=()=>.5;
 s.activateKnobMode(ctx,'PreGain',{});assert.equal(state.faderTarget,'Track');
-state.shiftEnabled='1';s.buttons.Bypass.setProcessValue=()=>{};
+state.shiftEnabled='0';state.knobMode='HighPass';s.buttons.Bypass.setProcessValue=()=>{};
 const press=s.uSection.btn_Bypass.mSurfaceValue.mOnProcessValueChange;press(ctx,1);press(ctx,1);press(ctx,0);assert.equal(polarity,1);
+state.shiftEnabled='1';state.knobMode='PreGain';press(ctx,1);press(ctx,0);assert.equal(polarity,1);
 state.knobMode='Pan';s.preGainFeedbackValue.mOnProcessValueChange(ctx);assert.equal(colors.length,0);
-console.log('PASS: pre-gain white at 0 dB and magenta otherwise; host feedback, reset, polarity LED/toggle, shifted BYPASS and track fader');
+console.log('PASS: pre-gain white at 0 dB and magenta otherwise; reset, normal-Channel phase BYPASS and shifted BYPASS isolation');
 
 // Exercise Channel/SHIFT transitions with action bindings simulated by their targets.
 s.buttons.Channel.setProcessValue=(ctx,v)=>{if(v)s.activateKnobMode(ctx,'HighPass',{})};

@@ -99,8 +99,8 @@ MASTER (Normal)          : Select Master mode; encoder zooms; fader controls Ste
 SHIFT + MASTER           : Fader controls FX Return 1; knob rotates/presses for zoom; BYPASS toggles FX Return mute
 CLICK (Normal)           : Select Click mode; knob zooms; fader controls Click level
 KNOB PUSH (Click Mode)   : Zoom to Locators; BYPASS toggles metronome
-CHANNEL (Normal)         : Select High Pass (Low Cut); knob push/BYPASS toggle filter
-SHIFT + CHANNEL         : Pre-gain; push resets 0 dB; BYPASS flips polarity (LED on = inverted)
+CHANNEL (Normal)         : Select High Pass (Low Cut); knob push toggles filter; BYPASS flips polarity
+SHIFT + CHANNEL         : Pre-gain; push resets 0 dB; BYPASS is unassigned
 SECTION (Normal)         : Prev/Next recall cycle markers (wrap); fader controls selected-track volume
 MARKER (Normal)          : Select Marker mode; Prev/Next locate markers; knob push inserts marker
 
@@ -112,7 +112,7 @@ ZOOM                     : Horizontal Zoom In / Out commands
 MASTER                   : Encoder zooms horizontally; push zooms to locators; fader controls Stereo Out; BYPASS toggles Main Mix inserts
 SHIFT + MASTER           : Encoder zooms horizontally; push zooms to locators; fader controls FX Return 1; BYPASS mutes FX Return
 CLICK                    : Knob controls horizontal zoom; fader controls Metronome Click Level
-HIGH PASS                : Selected Track Low Cut Frequency; push/BYPASS toggle filter
+HIGH PASS                : Selected Track Low Cut Frequency; knob push toggles filter; BYPASS toggles phase
 HIGH PASS LED            : White when disabled; red when enabled
 PRE GAIN LED             : White at 0 dB; magenta otherwise
 MARKER                   : Prev/Next locate previous/next marker; knob push inserts marker
@@ -127,7 +127,7 @@ FOOTSWITCH               : Normalized to normally-closed press/release behavior 
 BYPASS BUTTON PATHS:
 ----------------------------------------------------------------------------------------------------
 BYPASS                   : PAN / SCROLL / SECTION / MARKER: shared fader bypass; SHIFT + PAN: send 1 enable
-                         : CHANNEL: high pass
+                         : CHANNEL: phase/polarity (LED on = inverted); SHIFT + CHANNEL: unassigned
 						 : CLICK: metronome enabled
 						 : MASTER: Main Mix inserts (LED means not bypassed); SHIFT + MASTER: FX Return mute (LED means muted)
 						 
@@ -370,7 +370,7 @@ function assignButtonRouting(mapping) {
                 return
             }
             activeName = context.getState('shiftEnabled') === '1' ? shiftedName : normalName
-            if (normalName === 'Bypass' && (context.getState('knobMode') === 'PreGain'
+            if (normalName === 'Bypass' && (context.getState('knobMode') === 'HighPass'
                 || isMouseLinkMode(context.getState('knobMode'))
                 || isTrackFaderBypassMode(context.getState('knobMode'))
                 || context.getState('knobMode') === 'Send'
@@ -1267,15 +1267,13 @@ function updateBypassLED(context) {
         enabled = metronomeFeedbackValue && metronomeFeedbackValue.getProcessValue(context) > 0
     } else if (isMouseLinkMode(mode)) {
         enabled = context.getState('mouseBypassed') === '1'
-    } else if (mode === 'PreGain') {
-        enabled = polarityFeedbackValue && polarityFeedbackValue.getProcessValue(context) > 0
     } else if (mode === 'HighPass') {
-        enabled = highPassEnabledFeedbackValue && highPassEnabledFeedbackValue.getProcessValue(context) > 0
+        enabled = polarityFeedbackValue && polarityFeedbackValue.getProcessValue(context) > 0
     }
     setTransportLed(context, cBypass, !!enabled)
 }
 
-// BYPASS toggles the mode effect; Pan knob push separately centers pan.
+// BYPASS toggles the mode effect; Channel's knob push toggles High Pass separately.
 function toggleModeEffect(context) {
     var mode = context.getState('knobMode')
     if (mode === 'MasterFX') {
@@ -1317,18 +1315,25 @@ function toggleModeEffect(context) {
         return
     }
     var value = mode === 'Send' ? firstSendEnabledFeedbackValue
-        : mode === 'HighPass' ? highPassEnabledFeedbackValue
-        : mode === 'PreGain' ? polarityFeedbackValue : null
+        : mode === 'HighPass' ? polarityFeedbackValue : null
     if (value) {
         value.setProcessValue(context, value.getProcessValue(context) > 0 ? 0 : 1)
         if (mode === 'Send') {
             updateBypassLED(context)
             updateSendModeLED(context)
         } else if (mode === 'HighPass') {
-            updateHighPassLED(context)
             updateBypassLED(context)
         }
     }
+}
+
+function toggleHighPass(context) {
+    if (!highPassEnabledFeedbackValue) return
+    var enabled = highPassEnabledFeedbackValue.getProcessValue(context) > 0
+    var nextValue = enabled ? 0 : 1
+    highPassEnabledFeedbackValue.setProcessValue(context, nextValue)
+    context.setState('highPassEnabled', nextValue > 0 ? '1' : '0')
+    updateHighPassLED(context)
 }
 
 function updateKnobModeLEDs(context) {
@@ -1746,7 +1751,7 @@ function assignKnobControls() {
             || mode === 'Master' || mode === 'MasterFX') {
             pulseVar(context, var_zoomToLocators)
         } else if (mode === 'HighPass') {
-            toggleModeEffect(context)
+            toggleHighPass(context)
         } else if (mode === 'Marker') {
             pulseVar(context, var_markerInsertPressed)
         }

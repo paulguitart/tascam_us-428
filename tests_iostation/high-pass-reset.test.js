@@ -1,16 +1,28 @@
 const assert=require('node:assert/strict'),fs=require('fs'),vm=require('vm'),path=require('path');
 const source=fs.readFileSync(path.join(__dirname,'..','PreSonus_IOStation.js'),'utf8').replace(/\r\n/g,'\n');
 const s={};vm.createContext(s);
-const toggleStart=source.indexOf('function toggleModeEffect(context)');
-const toggleEnd=source.indexOf('function updateKnobModeLEDs(',toggleStart);
-assert(toggleStart>=0&&toggleEnd>toggleStart);
-vm.runInContext(source.slice(toggleStart,toggleEnd),s);
-s.state={knobMode:'HighPass',highPassEnabled:'0',knobPressRouted:''};
+const bypassLEDStart=source.indexOf('function updateBypassLED(context)');
+const bypassLEDend=source.indexOf('// BYPASS toggles the mode effect;',bypassLEDStart);
+assert(bypassLEDStart>=0&&bypassLEDend>bypassLEDStart);
+vm.runInContext(source.slice(bypassLEDStart,bypassLEDend),s);
+const effectStart=source.indexOf('function toggleModeEffect(context)');
+const effectEnd=source.indexOf('function updateKnobModeLEDs(',effectStart);
+assert(effectStart>=0&&effectEnd>effectStart);
+vm.runInContext(source.slice(effectStart,effectEnd),s);
+const routingStart=source.indexOf('function assignButtonRouting(mapping)');
+const routingEnd=source.indexOf('for (var buttonIndex =',routingStart);
+assert(routingStart>=0&&routingEnd>routingStart);
+vm.runInContext(source.slice(routingStart,routingEnd),s);
+s.state={knobMode:'HighPass',shiftEnabled:'0',highPassEnabled:'0',knobPressRouted:''};
 s.ctx={getState:k=>s.state[k]||'',setState:(k,v)=>s.state[k]=v};
-let enabled=0;const writes=[];
-s.highPassEnabledFeedbackValue={getProcessValue:()=>enabled,setProcessValue:(_,v)=>{enabled=v;s.state.highPassEnabled=v?'1':'0';writes.push(v)}};
-s.isTrackFaderBypassMode=()=>false;s.isMouseLinkMode=()=>false;s.isMetronomeBypassMode=()=>false;
-s.updateHighPassLED=()=>{};s.updateBypassLED=()=>{};
+s.cBypass=3;s.buttons={};s.surface={makeCustomValueVariable:()=>({setProcessValue:()=>{}})};
+s.selectedTrackToggleValues={};s.isTrackFaderBypassMode=()=>false;s.isMouseLinkMode=()=>false;
+s.isMetronomeBypassMode=()=>false;s.resolveKnobModeButton=(_,name)=>name;
+let enabled=0,polarity=0,bypassLED=false;const hpWrites=[],phaseWrites=[];
+s.highPassEnabledFeedbackValue={getProcessValue:()=>enabled,setProcessValue:(_,v)=>{enabled=v;hpWrites.push(v)}};
+s.polarityFeedbackValue={getProcessValue:()=>polarity,setProcessValue:(_,v)=>{polarity=v;phaseWrites.push(v)}};
+s.setTransportLed=(_,note,on)=>{if(note===s.cBypass)bypassLED=on};
+s.updateHighPassLED=()=>{};
 const pushStart=source.indexOf('mSection.knob_Press.mSurfaceValue.mOnProcessValueChange = function(context, value) {');
 const pushEnd=source.indexOf('// Korg zoom pattern:',pushStart);
 assert(pushStart>=0&&pushEnd>pushStart);
@@ -18,11 +30,20 @@ s.mSection={knob_Press:{mSurfaceValue:{}}};
 vm.runInContext(source.slice(pushStart,pushEnd),s);
 const push=s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange;
 for(const [initial,expected] of [[0,1],[1,0]]){
-  enabled=initial;s.state.highPassEnabled=String(initial);writes.length=0;
+  enabled=initial;s.state.highPassEnabled=String(initial);hpWrites.length=0;
   push(s.ctx,1);push(s.ctx,1);push(s.ctx,0);
-  assert.equal(enabled,expected);assert.deepEqual(writes,[expected]);
+  assert.equal(enabled,expected);assert.equal(polarity,0);assert.deepEqual(hpWrites,[expected]);
 }
-// BYPASS uses the same mode effect and remains a high-pass toggle.
-s.toggleModeEffect(s.ctx);assert.equal(enabled,1);
-s.toggleModeEffect(s.ctx);assert.equal(enabled,0);
-console.log('PASS: Channel knob push toggles high-pass once per press; BYPASS toggle remains intact');
+
+const physical={mSurfaceValue:{}};
+s.assignButtonRouting({normalName:'Bypass',shiftedName:'BypassAll',physicalButton:physical});
+const bypass=physical.mSurfaceValue.mOnProcessValueChange;
+s.state.knobMode='HighPass';s.state.shiftEnabled='0';enabled=0;polarity=0;phaseWrites.length=0;
+bypass(s.ctx,1);bypass(s.ctx,1);bypass(s.ctx,0);
+assert.equal(polarity,1);assert.equal(enabled,0);assert.deepEqual(phaseWrites,[1]);
+s.updateBypassLED(s.ctx);assert.equal(bypassLED,true);
+
+s.state.knobMode='PreGain';s.state.shiftEnabled='1';s.updateBypassLED(s.ctx);assert.equal(bypassLED,false);
+bypass(s.ctx,1);bypass(s.ctx,0);
+assert.equal(polarity,1);assert.deepEqual(phaseWrites,[1]);
+console.log('PASS: knob push alone toggles High Pass; normal Channel BYPASS toggles phase; SHIFT + Channel BYPASS is unassigned');
