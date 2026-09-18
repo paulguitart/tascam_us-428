@@ -44,7 +44,7 @@ const GREEN = [0, 127, 0]
 const BLUE =  [0, 0, 127]
 const AMBER =  [127, 48, 0]
 const MAGENTA = [127, 0, 127]
-const CYAN = [0, 127, 127]
+const LINK_LOWER_COLOR = [127, 0, 40] // red-leaning magenta; distinct from green and amber
 
 // button color values
 const ENABLE_PAN_COLOR = true             // white center, blue left, magenta right
@@ -887,7 +887,7 @@ function updateTouchLED(context) {
         if (locked) {
             var difference = mouseParameterFeedbackValue.getProcessValue(context) - Number(saved)
             var tolerance = 1 / 16383
-            setRGBLED_color(context, cTouch, difference > tolerance ? MAGENTA : difference < -tolerance ? CYAN : GREEN)
+            setRGBLED_color(context, cTouch, difference > tolerance ? MAGENTA : difference < -tolerance ? LINK_LOWER_COLOR : GREEN)
         }
         setTransportLed(context, cTouch, locked)
         return
