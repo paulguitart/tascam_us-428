@@ -550,7 +550,7 @@ var_faderInput.mOnProcessValueChange = function(context, value) {
     context.setState('lastMotorPosition', '')
     context.setState('pendingMotorPosition', '')
     value = clampFader(value)
-    if (context.getState('faderTarget') !== 'Mouse') {
+    if (context.getState('faderTarget') !== 'Mouse' && context.getState('faderTarget') !== 'PreGain') {
         value = snapFaderBottom(value)
         value = scaleFaderUnity(value, FADER_HARDWARE_UNITY, FADER_HOST_UNITY)
     }
@@ -564,6 +564,10 @@ fader.mSurfaceValue.mOnProcessValueChange = function(context, value) {
     if (context.getState('processingFaderInput') === '1') return
     if (context.getState('faderTarget') === 'Mouse') {
         if (isMouseLinkControlEnabled(context)) setMotorFader(context, clampFader(value))
+        return
+    }
+    if (context.getState('faderTarget') === 'PreGain') {
+        setMotorFader(context, clampFader(value))
         return
     }
     value = scaleFaderUnity(clampFader(value), FADER_HOST_UNITY, FADER_HARDWARE_UNITY)
@@ -939,7 +943,7 @@ function updateTouchLED(context) {
         if (level >= 1 - tolerance) color = RED
         else if (level <= tolerance) color = AMBER
         // Match the reset value directly; display callbacks may omit dB units.
-        else if (target !== 'Metronome' && Math.abs(level - FADER_HOST_UNITY) <= tolerance) color = WHITE
+        else if (target !== 'Metronome' && Math.abs(level - (target === 'PreGain' ? 0.5 : FADER_HOST_UNITY)) <= tolerance) color = WHITE
     }
     if (color) setRGBLED_color(context, cTouch, color)
     setTransportLed(context, cTouch, !!color)
@@ -949,7 +953,7 @@ function resetCurrentFader(context) {
     var target = context.getState('faderTarget')
     if (isMouseLinkMode(context.getState('knobMode'))) return
     var value = faderTargetFeedback[target]
-    if (value) value.setProcessValue(context, target === 'Metronome' ? 1 : FADER_HOST_UNITY)
+    if (value) value.setProcessValue(context, target === 'Metronome' ? 1 : target === 'PreGain' ? 0.5 : FADER_HOST_UNITY)
 }
 
 function setupFaderTargetFeedback(name, hostValue) {
@@ -971,6 +975,8 @@ function assignSelectedTrackControls() {
     // Independent fader subpages keep navigation modes on selected-track volume.
     page.makeValueBinding(fader.mSurfaceValue, hostSelectedTrack.mValue.mVolume)
         .setSubPage(faderModes.Track)
+    page.makeValueBinding(fader.mSurfaceValue, hostSelectedTrack.mPreFilter.mGain)
+        .setSubPage(faderModes.PreGain)
     page.makeValueBinding(fader.mSurfaceValue, hostStereoOut.mValue.mVolume)
         .setSubPage(faderModes.StereoOut)
     page.makeValueBinding(fader.mSurfaceValue, fxChannel.mValue.mVolume)
@@ -1189,6 +1195,7 @@ var faderModes = {
     Dormant: faderModeArea.makeSubPage('Dormant'), // No host binding or motor movement.
     Send: faderModeArea.makeSubPage('Send 1'),
     Track: faderModeArea.makeSubPage('Selected Track'),
+    PreGain: faderModeArea.makeSubPage('Selected Track Pre Gain'),
     StereoOut: faderModeArea.makeSubPage('Stereo Out'),
     FXReturn: faderModeArea.makeSubPage('FX Return 1'),
     Metronome: faderModeArea.makeSubPage('Metronome Level'),
@@ -1422,10 +1429,12 @@ function activateKnobMode(context, mode, activeMapping) {
     var target = mode === 'MouseFader' ? faderModes.Mouse : mode === 'Mouse' ? faderModes.Dormant
         : mode === 'Send' ? faderModes.Send
         : mode === 'MasterFX' ? faderModes.FXReturn
-        : isTrackFaderBypassMode(mode) || mode === 'HighPass' || mode === 'PreGain' ? faderModes.Track
+        : mode === 'PreGain' ? faderModes.PreGain
+        : isTrackFaderBypassMode(mode) || mode === 'HighPass' ? faderModes.Track
         : mode === 'Click' && ENABLE_METRONOME_FADER ? faderModes.Metronome : faderModes.StereoOut
     context.setState('faderTarget', target === faderModes.Send ? 'Send' : target === faderModes.Dormant ? 'Dormant'
         : target === faderModes.Mouse ? 'Mouse' : target === faderModes.Track ? 'Track'
+        : target === faderModes.PreGain ? 'PreGain'
         : target === faderModes.FXReturn ? 'FXReturn'
         : target === faderModes.Metronome ? 'Metronome' : 'StereoOut')
     context.setState('pendingMotorPosition', '')
@@ -1435,6 +1444,7 @@ function activateKnobMode(context, mode, activeMapping) {
         mappedFaderTouch.setProcessValue(context, 0)
     }
     target.mAction.mActivate.trigger(activeMapping)
+    if (mode === 'PreGain') syncPreGainFader(context)
     if (isMouseLinkMode(mode)) context.setState('linkShiftEnabled', mode === 'MouseFader' ? '1' : '0')
     if (mode === 'MouseFader' && !enteringLink) syncMouseFader(context)
     // Fresh mode entries use their normal SHIFT state; history restores the exact saved bit.
@@ -1618,8 +1628,51 @@ function setupPreGainFeedback() {
     polarityFeedbackValue = surface.makeCustomValueVariable('Polarity Feedback')
     page.makeValueBinding(preGainFeedbackValue, pre.mGain)
     page.makeValueBinding(polarityFeedbackValue, pre.mPhaseSwitch)
-    preGainFeedbackValue.mOnProcessValueChange = function(context) { updatePreGainLED(context) }
+    faderTargetFeedback.PreGain = preGainFeedbackValue
+    preGainFeedbackValue.mOnProcessValueChange = function(context) {
+        updatePreGainLED(context)
+        syncPreGainFader(context)
+    }
+    lowCutSlopeFeedbackValue = surface.makeCustomValueVariable('Low Cut Slope Feedback')
+    page.makeValueBinding(lowCutSlopeFeedbackValue, pre.mLowCutSlope)
+    lowCutSlopeFeedbackValue.mOnDisplayValueChange = function(context, text) {
+        // Only host-confirmed display/process pairs; never assume enum spacing.
+        var slope = parseLowCutSlope(text)
+        var process = lowCutSlopeFeedbackValue.getProcessValue(context)
+        if (slope && typeof process === 'number' && isFinite(process))
+            context.setState('lowCutSlopeProcess' + slope, String(process))
+    }
     polarityFeedbackValue.mOnProcessValueChange = function(context) { updateBypassLED(context) }
+}
+
+// Full host range: 0 / 0.5 / 1 -> bottom / center / top, without volume calibration.
+function syncPreGainFader(context) {
+    if (context.getState('faderTarget') !== 'PreGain') return
+    var gain = preGainFeedbackValue.getProcessValue(context)
+    if (typeof gain === 'number' && isFinite(gain)) setMotorFader(context, clampFader(gain))
+    updateTouchLED(context)
+}
+
+var lowCutSlopeFeedbackValue = null
+var lowCutSlopes = [6, 12, 24, 36, 48]
+function parseLowCutSlope(text) {
+    var match = String(text).match(/^\s*(6|12|24|36|48)(?=\s|dB|$)/i)
+    return match ? Number(match[1]) : 0
+}
+function setLowCutSlope(context, slope) {
+    // Cubase converts the display choice; feedback supplies its process value.
+    // Never align the encoder on reset or feedback: it must remain endless.
+    lowCutSlopeFeedbackValue.setDisplayValue(context, String(slope))
+}
+function turnLowCutSlope(context, diff) {
+    if (!isFinite(diff) || diff === 0) return
+    var current = parseLowCutSlope(lowCutSlopeFeedbackValue.getDisplayValue(context))
+    for (var i = 0; i < lowCutSlopes.length; i++) {
+        if (lowCutSlopes[i] !== current) continue
+        var next = Math.max(0, Math.min(lowCutSlopes.length - 1, i + (diff > 0 ? 1 : -1)))
+        if (next !== i) setLowCutSlope(context, lowCutSlopes[next])
+        return
+    }
 }
 
 var panFeedbackValue = null
@@ -1713,7 +1766,6 @@ function assignKnobControls() {
     // mode-specific host values are toggled explicitly by the handler.
     // Cubase calls its high-pass filter "Low Cut" in the Pre section.
     var hostPreFilter = page.mHostAccess.mTrackSelection.mMixerChannel.mPreFilter
-    page.makeValueBinding(knob, hostPreFilter.mGain).setSubPage(knobModes.PreGain)
     page.makeValueBinding(knob, hostPreFilter.mLowCutFreq)
         .setSubPage(knobModes.HighPass)
     var zoomModes = [knobModes.Zoom, knobModes.Section, knobModes.Marker,
@@ -1769,7 +1821,7 @@ function assignKnobControls() {
         if (mode === 'Pan') {
             panFeedbackValue.setProcessValue(context, 0.5)
         } else if (mode === 'PreGain') {
-            preGainFeedbackValue.setProcessValue(context, 0.5)
+            setLowCutSlope(context, 12)
         } else if (isMouseLinkMode(mode)) {
             restoreMouseLinkValue(context)
         } else if (mode === 'Send') {
@@ -1799,6 +1851,10 @@ function assignKnobControls() {
         }
         if (context.getState('mouseKnobResetting') === '1') return
         var mode = context.getState('knobMode')
+        if (mode === 'PreGain') {
+            turnLowCutSlope(context, diff)
+            return
+        }
         if (!isMouseLinkMode(mode)) {
             if (!mode || !isFinite(diff) || diff === 0) return
             // Recenter only the unbound input; normal host bindings keep their own position.

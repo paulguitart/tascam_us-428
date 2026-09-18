@@ -15,7 +15,7 @@ const s={Math,Number,String,Date,isFinite,ENABLE_METRONOME_FADER:true,ENABLE_FAD
  cPan:42,cTouch:77,cBypass:3,cShift:70,surface,
  fader:{mSurfaceValue:{}},var_faderInput:{},faderTouch:{getProcessValue:()=>touched},
  mappedFaderTouch:{setProcessValue:(_,v)=>mappedTouch=v},midiOut:{sendMidi:(_,m)=>motors.push(m)},
- faderModes:Object.fromEntries(['Track','StereoOut','FXReturn','Metronome','Dormant','Mouse','Send'].map(n=>[n,{mAction:{mActivate:{trigger(){}}}}])),
+ faderModes:Object.fromEntries(['PreGain','Track','StereoOut','FXReturn','Metronome','Dormant','Mouse','Send'].map(n=>[n,{mAction:{mActivate:{trigger(){}}}}])),
  faderTargetFeedback:{},hostStereoOut:{mValue:{mVolume:host(.4)}},fxChannel:{mValue:{mVolume:host(.3)}},hostTransport:{mMetronomeClickLevel:host(.5)},
  var_trackPrev:{},var_trackNext:{},faderNudgeAccess:{},knob:{getProcessValue:()=>.5},
  mSection:{knob_Press:{mSurfaceValue:{}}},selectedTrackToggleValues:{},buttons:{},
@@ -36,6 +36,7 @@ run('function updateSendModeLED(', 'function updateKnobModeLEDs');
 run('function resolveKnobModeButton(', 'function updateHighPassLED(');
 run('function routeUnboundKnobTurn(', 'function assignKnobControls');
 run('    var firstSend = page.mHostAccess', '    // Click mode leaves the knob unbound so its turns can route to zoom below.');
+track.mPreFilter={mGain:host(.5)};
 s.assignSelectedTrackControls();
 assert(bindings.some(b=>b.input===s.fader.mSurfaceValue&&b.target===send.mLevel&&b.subpage===s.faderModes.Send));
 assert(bindings.some(b=>b.input===s.fader.mSurfaceValue&&b.target===s.fxChannel.mValue.mVolume&&b.subpage===s.faderModes.FXReturn));

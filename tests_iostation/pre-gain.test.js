@@ -10,14 +10,15 @@ s.polarityFeedbackValue.setProcessValue=(_,v)=>polarity=v;
 s.setRGBLED_color=(_,note,color)=>colors.push(Array.from(color));s.onLED=()=>{};
 let bypass;s.setTransportLed=(_,note,on)=>{if(note===s.cBypass)bypass=on};
 state.knobMode='PreGain';
-for(const [v,c] of [[.5,[127,127,127]],[0,[127,0,127]],[.499,[127,0,127]],[.501,[127,0,127]],[1,[127,0,127]]]){
+for(const [v,c] of [[.5,[127,127,127]],[0,[127,48,0]],[.499,[127,48,0]],[.501,[127,48,0]],[1,[127,48,0]]]){
   gain=v;s.preGainFeedbackValue.mOnProcessValueChange(ctx);assert.deepEqual(colors.pop(),c);
 }
 s.toggleModeEffect(ctx);s.updateBypassLED(ctx);assert.equal(polarity,1);assert.equal(bypass,true);
 s.toggleModeEffect(ctx);s.updateBypassLED(ctx);assert.equal(polarity,0);assert.equal(bypass,false);
-gain=.1;const push=s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange;push(ctx,1);push(ctx,1);push(ctx,0);assert.deepEqual(writes,[.5]);
+const slopeWrites=[];s.lowCutSlopeFeedbackValue.setDisplayValue=(_,v)=>slopeWrites.push(v);
+gain=.1;const push=s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange;push(ctx,1);push(ctx,1);push(ctx,0);assert.deepEqual(writes,[]);assert.deepEqual(slopeWrites,['12']);
 s.faderModes.Track.mAction.mActivate.trigger=()=>{};s.updateKnobModeLEDs=()=>{};s.updateTouchLED=()=>{};s.knob.getProcessValue=()=>.5;
-s.activateKnobMode(ctx,'PreGain',{});assert.equal(state.faderTarget,'Track');
+s.activateKnobMode(ctx,'PreGain',{});assert.equal(state.faderTarget,'PreGain');
 state.shiftEnabled='0';state.knobMode='HighPass';s.buttons.Bypass.setProcessValue=()=>{};
 const press=s.uSection.btn_Bypass.mSurfaceValue.mOnProcessValueChange;press(ctx,1);press(ctx,1);press(ctx,0);assert.equal(polarity,1);
 state.shiftEnabled='1';state.knobMode='PreGain';press(ctx,1);press(ctx,0);assert.equal(polarity,0);

@@ -22,7 +22,7 @@ s.assignKnobControls();
 assert(!bindings.some(b=>b.input===s.mouseKnobInput)); // LINK input must have no host feedback path.
 const expectedKnobs = [
     ['Pan',s.page.mHostAccess.mTrackSelection.mMixerChannel.mValue.mPan],
- ['PreGain',s.page.mHostAccess.mTrackSelection.mMixerChannel.mPreFilter.mGain], ['HighPass',s.page.mHostAccess.mTrackSelection.mMixerChannel.mPreFilter.mLowCutFreq]
+ ['HighPass',s.page.mHostAccess.mTrackSelection.mMixerChannel.mPreFilter.mLowCutFreq]
 ];
 for(const [mode,host] of expectedKnobs) {
  const matches=bindings.filter(b=>b.input===s.knob&&b.page===s.knobModes[mode]);
@@ -190,7 +190,7 @@ s.mouseKnobInput.setProcessValue=(context,value)=>{
  const diff=value-raw;raw=value;s.mouseKnobInput.mOnProcessValueChange(context,value,diff);
 };
 function physicalTurn(diff){const next=Math.max(0,Math.min(1,raw+diff));const applied=next-raw;raw=next;s.mouseKnobInput.mOnProcessValueChange(ctx,next,applied);}
-for(const mode of ['Pan','PreGain','HighPass']) {
+for(const mode of ['Pan','HighPass']) {
  state.knobMode=mode;raw=.5;hostKnob=.5;forwarded.length=0;
  for(let i=0;i<30;i++)physicalTurn(.05);
  assert.equal(hostKnob,1);assert.equal(forwarded.length,30);

@@ -5,7 +5,8 @@ const vm = require('node:vm');
 const source = fs.readFileSync(require('node:path').join(__dirname, '..', 'PreSonus_IOStation.js'), 'utf8');
 const scope = {
     ENABLE_METRONOME_FADER: true, onLED() {}, offLED() {}, cShift: 6,
-    faderModes: Object.fromEntries(['Track', 'StereoOut', 'FXReturn', 'Metronome', 'Mouse', 'Dormant', 'Send'].map(name =>
+    syncPreGainFader: () => {},
+    faderModes: Object.fromEntries(['PreGain','Track', 'StereoOut', 'FXReturn', 'Metronome', 'Mouse', 'Dormant', 'Send'].map(name =>
         [name, { mAction: { mActivate: { trigger() {} } } }])),
     knob: { getProcessValue: () => 0.5 },
     updateTouchLED() {}, updateKnobModeLEDs() {},
