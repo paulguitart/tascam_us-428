@@ -1175,6 +1175,7 @@ var knobModeButtons = [
     { button: buttons.Section, mode: knobModes.Section },
     { button: buttons.Marker, mode: knobModes.Marker }
 ]
+var firstSendLevelFeedbackValue
 var var_zoomIn = surface.makeCustomValueVariable('Zoom In')
 var var_zoomOut = surface.makeCustomValueVariable('Zoom Out')
 var var_zoomToLocators = surface.makeCustomValueVariable('Zoom to Locators')
@@ -1568,7 +1569,9 @@ function assignKnobControls() {
     page.makeValueBinding(knob, page.mHostAccess.mTrackSelection.mMixerChannel.mValue.mPan)
         .setSubPage(knobModes.Pan)
     var firstSend = page.mHostAccess.mTrackSelection.mMixerChannel.mSends.getByIndex(0)
-    page.makeValueBinding(knob, firstSend.mLevel).setSubPage(knobModes.Send)
+    // No direct MIDI-knob binding to Send: every write is gated by the current mode.
+    firstSendLevelFeedbackValue = surface.makeCustomValueVariable('First Send Level')
+    page.makeValueBinding(firstSendLevelFeedbackValue, firstSend.mLevel)
     // Mouse knob writes are routed explicitly below so BYPASS can disable input.
     // Follow host/track changes so BYPASS toggles the current send state.
     var sendEnabled = surface.makeCustomValueVariable('First Send Enabled')
@@ -1644,8 +1647,7 @@ function assignKnobControls() {
         } else if (isMouseLinkMode(mode)) {
             restoreMouseLinkValue(context)
         } else if (mode === 'Send') {
-            // Shifted Pan binds the knob to send 1; use the configured Cubase unity level.
-            knob.setProcessValue(context, FADER_HOST_UNITY)
+            firstSendLevelFeedbackValue.setProcessValue(context, FADER_HOST_UNITY)
         } else if (mode === 'Click') {
             toggleMetronome(context)
         } else if (mode === 'HighPass') {
@@ -1663,6 +1665,13 @@ function assignKnobControls() {
     // Pulse each command so consecutive detents in the same direction retrigger.
     knob.mOnProcessValueChange = function(context, newValue, diff) {
         var mode = context.getState('knobMode')
+        if (mode === 'Send') {
+            if (isFinite(diff) && diff !== 0) {
+                var sendLevel = firstSendLevelFeedbackValue.getProcessValue(context)
+                firstSendLevelFeedbackValue.setProcessValue(context, clampFader(sendLevel + diff))
+            }
+            return
+        }
         if (mode === 'Mouse') {
             if (isMouseLinkControlEnabled(context) && isFinite(diff) && diff !== 0) {
                 var current = mouseParameterFeedbackValue.getProcessValue(context)

@@ -205,3 +205,5 @@ BYPASS disables/enables parameter editing without releasing the lock or changing
 The mouse fader uses the full normalized parameter range without volume calibration or bottom snapping. Motor feedback follows the parameter and waits while the fader is touched. Switching into or out of fader LINK while holding the fader blocks input and touch automation until release. Leaving LINK clears its lock and capture; Scroll, Section and Marker restore track volume when leaving either LINK mode.
 
 SHIFT + PAN remains Send 1, with its blue PAN LED. Mode history restores SHIFT for Send 1, Pre Gain and Mouse Fader, and clears it for normal modes. Saved LINK values are temporary and are cleared on exit or reload.
+
+Send 1 knob edits are explicitly gated to Send mode, using the current host level. The physical knob has no direct Send 1 level binding, so Scroll, Section and Marker zoom turns cannot also change the send through that binding. Returning to Send resumes from the current send level.

@@ -19,7 +19,6 @@ s.assignKnobControls();
 // Check destinations by mode rather than depending on registration order.
 const expectedKnobs = [
  ['Pan',s.page.mHostAccess.mTrackSelection.mMixerChannel.mValue.mPan],
- ['Send',s.page.mHostAccess.mTrackSelection.mMixerChannel.mSends.getByIndex(0).mLevel],
  ['Master',s.fxChannel.mValue.mVolume], ['Click',s.hostTransport.mMetronomeClickLevel],
  ['PreGain',s.page.mHostAccess.mTrackSelection.mMixerChannel.mPreFilter.mGain], ['HighPass',s.page.mHostAccess.mTrackSelection.mMixerChannel.mPreFilter.mLowCutFreq]
 ];
@@ -27,6 +26,8 @@ for(const [mode,host] of expectedKnobs) {
  const matches=bindings.filter(b=>b.input===s.knob&&b.page===s.knobModes[mode]);
  assert.equal(matches.length,1);assert.strictEqual(matches[0].host,host);
 }
+assert(bindings.some(b=>b.input===s.firstSendLevelFeedbackValue&&b.host===firstSend.mLevel));
+assert(!bindings.some(b=>b.input===s.knob&&b.host===firstSend.mLevel));
 assert.equal(bindings.find(b=>b.input===s.knob&&b.page===s.knobModes.Master).scaled,true);
 assert(bindings.some(b=>b.input===s.firstSendEnabledFeedbackValue&&b.host===firstSend.mOn));
 for(const mode of ['Zoom','Section','Marker']) {
@@ -142,3 +143,36 @@ s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(ctx,1);
 s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(ctx,0);
 assert.deepStrictEqual(masterInsertPulses,[1,0]);
 console.log('PASS: Marker navigation/insert, Click metronome toggle and Master insert-bypass push');
+
+// Send edits must never share the physical knob's automatic host-binding path.
+// Drive actual mode activation and knob callbacks, including endpoint detents.
+let sendLevel=.35;
+const sendWrites=[];
+s.firstSendLevelFeedbackValue.getProcessValue=()=>sendLevel;
+s.firstSendLevelFeedbackValue.setProcessValue=(_,value)=>{sendLevel=value;sendWrites.push(value);};
+for(const zoomMode of ['Zoom','Section','Marker']) {
+ s.knobModes.Send.mOnActivate(ctx);
+ events.length=0;sendWrites.length=0;sendLevel=.35;
+ s.knob.mOnProcessValueChange(ctx,.9,.05);
+ assert(Math.abs(sendLevel-.4)<1e-12);assert.equal(sendWrites.length,1);
+ assert.deepStrictEqual(events,[]);
+ s.knobModes[zoomMode].mOnActivate(ctx);
+ sendWrites.length=0;events.length=0;
+ for(const [value,diff] of [[.11,.01],[.10,-.01],[0,-.01],[0,-.01],[1,.01],[1,.01]]) {
+  s.knob.mOnProcessValueChange(ctx,value,diff);
+ }
+ assert.deepStrictEqual(events,[['in',1],['in',0],['out',1],['out',0],['out',1],['out',0],['out',1],['out',0],['in',1],['in',0],['in',1],['in',0]]);
+ // Host edits during zoom must not cause a Send write, even on knob push.
+ sendLevel=.7;
+ s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(ctx,1);
+ s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(ctx,0);
+ assert.deepStrictEqual(sendWrites,[]);assert.equal(sendLevel,.7);
+ s.knobModes.Send.mOnActivate(ctx);
+ s.knob.mOnProcessValueChange(ctx,0,.02);
+ assert(Math.abs(sendLevel-.72)<1e-12); // Resumes from host value, not the zoom position.
+ for(const diff of [0,NaN,Infinity]) s.knob.mOnProcessValueChange(ctx,.5,diff);
+ assert.equal(sendWrites.length,1);
+ sendLevel=.99;s.knob.mOnProcessValueChange(ctx,1,.1);assert.equal(sendLevel,1);
+ sendLevel=.01;s.knob.mOnProcessValueChange(ctx,0,-.1);assert.equal(sendLevel,0);
+}
+console.log('PASS: Send-to-zoom isolation in Scroll/Section/Marker, host changes, return to Send and level limits');

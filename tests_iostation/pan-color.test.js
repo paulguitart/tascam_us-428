@@ -27,14 +27,14 @@ vm.runInContext(source.slice(start,source.indexOf('    // Korg zoom pattern:',st
 const press=v=>scope.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(ctx,v);
 press(1);press(1);press(0);assert.deepEqual(writes,[.5]);assert.equal(pan,.5);
 scope.FADER_HOST_UNITY=.789087;
-scope.knob={setProcessValue:(_,v)=>writes.push(v)};
+scope.firstSendLevelFeedbackValue={setProcessValue:(_,v)=>writes.push(v)};
 state.knobMode='Send';press(1);press(1);press(0);assert.deepEqual(writes,[.5,.789087]);
 console.log('PASS: pan gradient, color flag, host feedback, inactive LEDs, center push and Send level reset');
 // Resetting level preserves either send enable state; the existing BYPASS handler still toggles it.
 let sendEnabled=0,sendLevel=.2;
 scope.isMetronomeBypassMode=()=>false;
 scope.firstSendEnabledFeedbackValue={getProcessValue:()=>sendEnabled,setProcessValue:(_,v)=>{sendEnabled=v;}};
-scope.knob.setProcessValue=(_,v)=>{sendLevel=v;};
+scope.firstSendLevelFeedbackValue.setProcessValue=(_,v)=>{sendLevel=v;};
 const toggleStart=source.indexOf('function toggleModeEffect(context)');
 vm.runInContext(source.slice(toggleStart,source.indexOf('function updateKnobModeLEDs',toggleStart)),scope);
 for(const initial of [0,1]){
