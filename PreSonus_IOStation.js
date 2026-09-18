@@ -56,7 +56,6 @@ const TOUCH_CLICK_GLOW_COLOR = GREEN
 const TOUCH_GLOW_MIN_BRIGHTNESS = 0.03
 
 // button color values
-const ENABLE_PAN_COLOR = true             // white center, blue left, magenta right
 const ENABLE_NUCLEAR_METRONOME_LEDS = false // spread metronome status across inactive mode buttons
 const ENABLE_NUCLEAR_RECORD_BLINK = true    // spread recording red pulse across inactive mode buttons
 const METRONOME_PULSE_COLOR = BLUE
@@ -364,8 +363,10 @@ function assignButtonRouting(mapping) {
     if (shiftedName !== normalName) buttons[shiftedName] = surface.makeCustomValueVariable(shiftedName)
     var stateKey = 'held.' + normalName
     mapping.physicalButton.mSurfaceValue.mOnProcessValueChange = function(context, value) {
-        // Navigation LEDs follow the physical buttons in every mode and SHIFT layer.
-        if (normalName === 'Prev') {
+        // PAN owns navigation LEDs for direction; all other modes keep press feedback.
+        if ((normalName === 'Prev' || normalName === 'Next') && context.getState('knobMode') === 'Pan') {
+            updatePanLED(context)
+        } else if (normalName === 'Prev') {
             setTransportLed(context, cPrev, value > 0)
         } else if (normalName === 'Next') {
             setTransportLed(context, cNext, value > 0)
@@ -1400,6 +1401,10 @@ function toggleHighPass(context) {
 
 function updateKnobModeLEDs(context) {
     var mode = context.getState('knobMode')
+    if (mode !== 'Pan') {
+        setTransportLed(context, cPrev, context.getState('held.Prev') !== '')
+        setTransportLed(context, cNext, context.getState('held.Next') !== '')
+    }
     updateMetronomeModeLEDs(context, Date.now())
     updateMasterLED(context)
     setTransportLed(context, cSection, mode === 'Section')
@@ -1725,24 +1730,13 @@ function turnLowCutSlope(context, diff) {
 
 var panFeedbackValue = null
 
-function getPanColor(value) {
-    if (!ENABLE_PAN_COLOR || !isFinite(value)) return WHITE
-    var pan = Math.max(0, Math.min(1, value))
-    var amount = Math.abs(pan - 0.5) * 2
-    // Center stays white; off-center starts at 50% color and rises quickly.
-    if (amount > 0) amount = 0.5 + 0.5 * Math.sqrt(amount)
-    var extreme = pan < 0.5 ? BLUE : MAGENTA
-    return [
-        WHITE[0] + (extreme[0] - WHITE[0]) * amount,
-        WHITE[1] + (extreme[1] - WHITE[1]) * amount,
-        WHITE[2] + (extreme[2] - WHITE[2]) * amount
-    ]
-}
-
 function updatePanLED(context) {
     if (context.getState('knobMode') !== 'Pan') return
     var value = panFeedbackValue ? panFeedbackValue.getProcessValue(context) : 0.5
-    setRGBLED_color(context, cPan, getPanColor(value))
+    setRGBLED_color(context, cPan, WHITE)
+    var valid = typeof value === 'number' && isFinite(value)
+    setTransportLed(context, cPrev, valid && value <= 0.5)
+    setTransportLed(context, cNext, valid && value >= 0.5)
     onLED(context, cPan)
 }
 
