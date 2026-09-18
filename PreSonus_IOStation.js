@@ -98,7 +98,7 @@ PAN (Normal)             : Select Pan knob mode; knob push centers pan
 SCROLL / SHIFT + SCROLL  : Select Zoom knob mode
 MASTER (Normal)          : Select Master mode; encoder zooms; fader controls Stereo Out
 SHIFT + MASTER           : Fader controls FX Return 1; knob rotates/presses for zoom; BYPASS toggles FX Return mute
-CLICK (Normal)           : Select Click Level knob mode
+CLICK (Normal)           : Select Click mode; knob zooms; fader controls Click level
 KNOB PUSH (Click Mode)   : Metronome on/off; Click LED shows Click mode; inactive RGB mode LEDs optionally show metronome
 CHANNEL (Normal)         : Select High Pass (Low Cut) knob mode for the selected track
 SHIFT + CHANNEL         : Pre-gain; push resets 0 dB; BYPASS flips polarity (LED on = inverted)
@@ -112,7 +112,7 @@ PAN                      : Selected Track Pan; press knob to center pan
 ZOOM                     : Horizontal Zoom In / Out commands
 MASTER                   : Encoder zooms horizontally; push zooms to locators; fader controls Stereo Out; BYPASS toggles Main Mix inserts
 SHIFT + MASTER           : Encoder zooms horizontally; push zooms to locators; fader controls FX Return 1; BYPASS mutes FX Return
-CLICK                    : Metronome Click Level; fader controls Stereo Out Volume
+CLICK                    : Knob controls horizontal zoom; fader controls Metronome Click Level
 HIGH PASS                : Selected Track Low Cut Frequency; push resets minimum; BYPASS toggles filter
 HIGH PASS LED            : White when disabled; color indicates frequency when enabled
 MARKER                   : Prev/Next locate previous/next marker; knob push inserts marker
@@ -629,6 +629,7 @@ deviceDriver.mOnActivate = function(context) {
     setRGBLED_color(context, cRead, GREEN)
     updateClickLED(context)
     updateBypassLED(context)
+    updateMasterLED(context)
 }
 deviceDriver.mOnDeactivate = function(context) {
     resetHardwareState(context)
@@ -1229,12 +1230,22 @@ var masterInsertBypassFeedback = surface.makeCustomValueVariable('Master Insert 
 page.makeValueBinding(masterInsertBypassFeedback, masterInsertBypassed)
 masterInsertBypassFeedback.mOnProcessValueChange = function(context) {
     updateBypassLED(context)
+    updateMasterLED(context)
 }
 var hostMixerZoneFX = page.mHostAccess.mMixConsole.makeMixerBankZone().includeFXChannels()
 var fxChannel = hostMixerZoneFX.makeMixerBankChannel()
 
 function isMetronomeBypassMode(mode) {
     return mode === 'Click'
+}
+
+function updateMasterLED(context) {
+    var notBypassed = masterInsertBypassFeedback
+        && masterInsertBypassFeedback.getProcessValue(context) === 0
+    var mode = context.getState('knobMode')
+    if (!notBypassed) offLED(context, cMaster)
+    else if (mode === 'Master' || mode === 'MasterFX') flashingLED(context, cMaster)
+    else onLED(context, cMaster)
 }
 
 // BYPASS is fixed-color hardware; PAN carries Send's RGB status.
@@ -1321,7 +1332,7 @@ function toggleModeEffect(context) {
 function updateKnobModeLEDs(context) {
     var mode = context.getState('knobMode')
     updateMetronomeModeLEDs(context, Date.now())
-    setTransportLed(context, cMaster, mode === 'Master' || mode === 'MasterFX')
+    updateMasterLED(context)
     setTransportLed(context, cSection, mode === 'Section')
     setTransportLed(context, cMarker, mode === 'Marker')
     updateClickLED(context)
@@ -1673,7 +1684,7 @@ function routeUnboundKnobTurn(context, newValue, diff) {
         }
         return
     }
-    if (mode !== 'Zoom' && mode !== 'Section' && mode !== 'Marker'
+    if (mode !== 'Zoom' && mode !== 'Section' && mode !== 'Marker' && mode !== 'Click'
         && mode !== 'Master' && mode !== 'MasterFX') return
     var zoomCommand
     if (diff < 0) {
@@ -1716,9 +1727,7 @@ function assignKnobControls() {
         updateBypassLED(context)
         updateSendModeLED(context)
     }
-    // Master encoder rotation is routed to zoom commands below.
-    page.makeValueBinding(knob, hostTransport.mMetronomeClickLevel)
-        .setSubPage(knobModes.Click)
+    // Click mode leaves the knob unbound so its turns can route to zoom below.
     // The encoder push is routed below so it remains a momentary press path;
     // mode-specific host values are toggled explicitly by the handler.
     // Cubase calls its high-pass filter "Low Cut" in the Pre section.
@@ -1726,7 +1735,8 @@ function assignKnobControls() {
     page.makeValueBinding(knob, hostPreFilter.mGain).setSubPage(knobModes.PreGain)
     page.makeValueBinding(knob, hostPreFilter.mLowCutFreq)
         .setSubPage(knobModes.HighPass)
-    var zoomModes = [knobModes.Zoom, knobModes.Section, knobModes.Marker, knobModes.Master, knobModes.MasterFX]
+    var zoomModes = [knobModes.Zoom, knobModes.Section, knobModes.Marker,
+        knobModes.Master, knobModes.MasterFX, knobModes.Click]
     for (var zoomIndex = 0; zoomIndex < zoomModes.length; zoomIndex++) {
         page.makeCommandBinding(var_zoomIn, 'Zoom', 'Zoom In').setSubPage(zoomModes[zoomIndex])
         page.makeCommandBinding(var_zoomOut, 'Zoom', 'Zoom Out').setSubPage(zoomModes[zoomIndex])
@@ -1815,6 +1825,7 @@ function assignKnobControls() {
             context.setState('mouseKnobResetEcho', '0.5')
             mouseKnobInput.setProcessValue(context, 0.5)
             if (mode === 'Send' || mode === 'Zoom' || mode === 'Section' || mode === 'Marker'
+                || mode === 'Click'
                 || mode === 'Master' || mode === 'MasterFX') {
                 routeUnboundKnobTurn(context, newValue, diff)
             } else {

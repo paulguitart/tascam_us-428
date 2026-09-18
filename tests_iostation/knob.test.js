@@ -22,18 +22,18 @@ s.assignKnobControls();
 assert(!bindings.some(b=>b.input===s.mouseKnobInput)); // LINK input must have no host feedback path.
 const expectedKnobs = [
     ['Pan',s.page.mHostAccess.mTrackSelection.mMixerChannel.mValue.mPan],
- ['Click',s.hostTransport.mMetronomeClickLevel],
  ['PreGain',s.page.mHostAccess.mTrackSelection.mMixerChannel.mPreFilter.mGain], ['HighPass',s.page.mHostAccess.mTrackSelection.mMixerChannel.mPreFilter.mLowCutFreq]
 ];
 for(const [mode,host] of expectedKnobs) {
  const matches=bindings.filter(b=>b.input===s.knob&&b.page===s.knobModes[mode]);
  assert.equal(matches.length,1);assert.strictEqual(matches[0].host,host);
 }
+assert(!bindings.some(b=>b.input===s.knob&&b.host===s.hostTransport.mMetronomeClickLevel));
 assert(bindings.some(b=>b.input===s.firstSendLevelFeedbackValue&&b.host===firstSend.mLevel));
 assert(!bindings.some(b=>b.input===s.knob&&b.host===firstSend.mLevel));
 assert(!bindings.some(b=>b.input===s.knob&&(b.page===s.knobModes.Master||b.page===s.knobModes.MasterFX)));
 assert(bindings.some(b=>b.input===s.firstSendEnabledFeedbackValue&&b.host===firstSend.mOn));
-for(const mode of ['Zoom','Section','Marker','Master','MasterFX']) {
+for(const mode of ['Zoom','Section','Marker','Master','MasterFX','Click']) {
  for(const [input,command] of [[s.var_zoomIn,'Zoom In'],[s.var_zoomOut,'Zoom Out']]) {
   assert(commands.some(b=>b.input===input&&b.category==='Zoom'&&b.command===command&&b.page===s.knobModes[mode]));
  }
@@ -55,10 +55,13 @@ const fxFaderBinding=bindings.find(b=>b.input===s.fader.mSurfaceValue&&b.host===
 assert(fxFaderBinding);
 assert(bindings.some(b=>b.input===s.faderTargetFeedback.FXReturn&&b.host===s.fxChannel.mValue.mVolume));
 assert(bindings.some(b=>b.input===s.fxReturnMuteFeedback&&b.host===s.fxChannel.mValue.mMute));
-for(const mode of ['Pan','Click','HighPass']){
+for(const mode of ['Pan','HighPass']){
  s.knobModes[mode].mOnActivate(ctx);s.knob.mOnProcessValueChange(ctx,.6,.1);
  assert.equal(events.length,0);assert.equal(ctx.getState('knobMode'),mode);
 }
+s.knobModes.Click.mOnActivate(ctx);s.knob.mOnProcessValueChange(ctx,.6,.1);
+assert.deepStrictEqual(events,[['in',1],['in',0]]);assert.equal(ctx.getState('knobMode'),'Click');
+events.length=0;
 s.knobModes.Master.mOnActivate(ctx);
 assert.equal(ctx.getState('faderTarget'),'StereoOut');assert.equal(ctx.getState('shiftEnabled'),'0');
 events.length=0;s.knob.mOnProcessValueChange(ctx,.6,.1);assert.deepStrictEqual(events,[['in',1],['in',0]]);
@@ -204,14 +207,14 @@ s.mouseKnobInput.setProcessValue=(context,value)=>{
  const diff=value-raw;raw=value;s.mouseKnobInput.mOnProcessValueChange(context,value,diff);
 };
 function physicalTurn(diff){const next=Math.max(0,Math.min(1,raw+diff));const applied=next-raw;raw=next;s.mouseKnobInput.mOnProcessValueChange(ctx,next,applied);}
-for(const mode of ['Pan','Click','PreGain','HighPass']) {
+for(const mode of ['Pan','PreGain','HighPass']) {
  state.knobMode=mode;raw=.5;hostKnob=.5;forwarded.length=0;
  for(let i=0;i<30;i++)physicalTurn(.05);
  assert.equal(hostKnob,1);assert.equal(forwarded.length,30);
  for(let i=0;i<30;i++)physicalTurn(-.05);
  assert.equal(hostKnob,0);assert.equal(forwarded.length,60);
 }
-for(const mode of ['Zoom','Section','Marker','Master','MasterFX']) {
+for(const mode of ['Zoom','Section','Marker','Master','MasterFX','Click']) {
  state.knobMode=mode;raw=.5;forwarded.length=0;events.length=0;
  for(let i=0;i<30;i++)physicalTurn(.05);
  assert.equal(events.length,60);assert.deepStrictEqual(forwarded,[]);
@@ -227,7 +230,7 @@ console.log('PASS: sole MIDI receiver, normal-mode routing and full travel, repe
 Object.defineProperty(s.knob,'mOnProcessValueChange',{
  configurable:true,get(){throw new Error('DukValue is uninitialized');},set(){}
 });
-for(const mode of ['Zoom','Section','Marker','Master','MasterFX']) {
+for(const mode of ['Zoom','Section','Marker','Master','MasterFX','Click']) {
  state.knobMode=mode;state.mouseKnobResetEcho='';raw=.5;events.length=0;
  physicalTurn(.05);physicalTurn(-.05);physicalTurn(.05);
  assert.deepStrictEqual(events,[['in',1],['in',0],['out',1],['out',0],['in',1],['in',0]]);

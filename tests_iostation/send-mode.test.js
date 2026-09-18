@@ -35,7 +35,7 @@ run('function updateTouchLED(', '//---------------------------------------------
 run('function updateSendModeLED(', 'function updateKnobModeLEDs');
 run('function resolveKnobModeButton(', 'var highPassColors');
 run('function routeUnboundKnobTurn(', 'function assignKnobControls');
-run('    var firstSend = page.mHostAccess', '    // Master encoder rotation is routed to zoom commands below.');
+run('    var firstSend = page.mHostAccess', '    // Click mode leaves the knob unbound so its turns can route to zoom below.');
 s.assignSelectedTrackControls();
 assert(bindings.some(b=>b.input===s.fader.mSurfaceValue&&b.target===send.mLevel&&b.subpage===s.faderModes.Send));
 assert(bindings.some(b=>b.input===s.fader.mSurfaceValue&&b.target===s.fxChannel.mValue.mVolume&&b.subpage===s.faderModes.FXReturn));
