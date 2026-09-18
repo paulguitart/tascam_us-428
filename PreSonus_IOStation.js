@@ -296,6 +296,11 @@ bindButton(mSection.knob_Press, cKnobPress)
 mSection.knob_vis.mSurfaceValue.mMidiBinding.setInputPort(midiIn)
     .bindToControlChange(0, cKnobRotate).setTypeRelativeSignedBit()
 
+// Separate LINK input has no host binding, so PAN feedback cannot become LINK input.
+var mouseKnobInput = surface.makeCustomValueVariable('LINK Encoder Input')
+mouseKnobInput.mMidiBinding.setInputPort(midiIn)
+    .bindToControlChange(0, cKnobRotate).setTypeRelativeSignedBit()
+
 // Printed button functions. SHIFT is a software latch: press once to enable,
 // press again to disable. This is our routing policy, not a firmware mode change.
 // The two printed "Lock" labels have distinct names so they can be assigned separately.
@@ -1472,7 +1477,7 @@ function alignMouseKnobOnce(context, value) {
     context.setState('mouseKnobResetting', '1')
     try {
         context.setState('mouseKnobResetEcho', String(clampFader(value)))
-        knob.setProcessValue(context, clampFader(value))
+        mouseKnobInput.setProcessValue(context, clampFader(value))
     } finally {
         context.setState('mouseKnobResetting', resetting)
     }
@@ -1686,26 +1691,11 @@ function assignKnobControls() {
     // Korg zoom pattern: compare successive knob positions and fire zoom commands.
     // Pulse each command so consecutive detents in the same direction retrigger.
     knob.mOnProcessValueChange = function(context, newValue, diff) {
-        // Consume the one programmatic capture/reset callback, including deferred delivery.
-        var resetEcho = context.getState('mouseKnobResetEcho')
-        if (resetEcho !== '') {
-            context.setState('mouseKnobResetEcho', '')
-            if (Math.abs(newValue - Number(resetEcho)) < 1e-9) return
-        }
-        if (context.getState('mouseKnobResetting') === '1') return
         var mode = context.getState('knobMode')
         if (mode === 'Send') {
             if (isFinite(diff) && diff !== 0) {
                 var sendLevel = firstSendLevelFeedbackValue.getProcessValue(context)
                 firstSendLevelFeedbackValue.setProcessValue(context, clampFader(sendLevel + diff))
-            }
-            return
-        }
-        if (mode === 'Mouse') {
-            if (isMouseLinkControlEnabled(context) && isFinite(diff) && diff !== 0) {
-                var current = mouseParameterFeedbackValue.getProcessValue(context)
-                mouseParameterFeedbackValue.setProcessValue(context, clampFader(current + diff))
-                updateTouchLED(context)
             }
             return
         }
@@ -1723,6 +1713,25 @@ function assignKnobControls() {
             pulseVar(context, zoomCommand)
         }
     }
+    mouseKnobInput.mOnProcessValueChange = function(context, newValue, diff) {
+        // Consume the one programmatic capture/reset callback, including deferred delivery.
+        var resetEcho = context.getState('mouseKnobResetEcho')
+        if (resetEcho !== '') {
+            context.setState('mouseKnobResetEcho', '')
+            if (Math.abs(newValue - Number(resetEcho)) < 1e-9) return
+        }
+        if (context.getState('mouseKnobResetting') === '1') return
+        var mode = context.getState('knobMode')
+        if (mode === 'Mouse') {
+            if (isMouseLinkControlEnabled(context) && isFinite(diff) && diff !== 0) {
+                var current = mouseParameterFeedbackValue.getProcessValue(context)
+                mouseParameterFeedbackValue.setProcessValue(context, clampFader(current + diff))
+                updateTouchLED(context)
+            }
+            return
+        }
+    }
+
 }
 
 page.mOnActivate = function(context, activeMapping) {

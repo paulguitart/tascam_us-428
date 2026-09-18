@@ -17,6 +17,7 @@ const firstSend=sends.getByIndex(0);
 sends.getByIndex=index=>{assert.equal(index,0);return firstSend;};
 s.assignKnobControls();
 // Check destinations by mode rather than depending on registration order.
+assert(!bindings.some(b=>b.input===s.mouseKnobInput)); // LINK input must have no host feedback path.
 const expectedKnobs = [
  ['Pan',s.page.mHostAccess.mTrackSelection.mMixerChannel.mValue.mPan],
  ['Master',s.fxChannel.mValue.mVolume], ['Click',s.hostTransport.mMetronomeClickLevel],

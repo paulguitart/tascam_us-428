@@ -14,7 +14,7 @@ const s={Date,Math,Number,String,isFinite,
  isMetronomeBypassMode:()=>false,selectedTrackToggleValues:{},buttons:{},
  mappedFaderTouch:{setProcessValue(){}},faderTouch:{getProcessValue:()=>touched},fader:{mSurfaceValue:{}},var_faderInput:{},
  midiOut:{sendMidi:(_,m)=>motors.push(m)},mSection:{knob_Press:{mSurfaceValue:{}}},
- knob:{getProcessValue:()=>parameter,setProcessValue(){}},faderTargetFeedback:{},
+ knob:{getProcessValue:()=>parameter,setProcessValue(){}},mouseKnobInput:{getProcessValue:()=>parameter,setProcessValue(){}},faderTargetFeedback:{},
  surface:{makeCustomValueVariable:()=>({setProcessValue(){}})},
  faderModes:Object.fromEntries(['Track','StereoOut','Metronome','Mouse','Dormant'].map(k=>[k,{mAction:{mActivate:{trigger(){}}}}]))
 };
@@ -39,7 +39,7 @@ function settle(){s.updateMouseLinkCapture(ctx,Number(state.mouseCaptureAt))}
 
 const touchButton={normalName:'Touch',shiftedName:'Latch',physicalButton:{mSurfaceValue:{}}};
 s.assignButtonRouting(touchButton);const touch=touchButton.physicalButton.mSurfaceValue.mOnProcessValueChange;
-const turn=diff=>s.knob.mOnProcessValueChange(ctx,.5,diff);
+const turn=diff=>s.mouseKnobInput.mOnProcessValueChange(ctx,.5,diff);
 s.activateKnobMode(ctx,'Mouse',{});assert.equal(state.faderTarget,'Dormant');assert.equal(locked,0);
 assert.equal(touchOn,false);turn(.1);assert.equal(parameter,.32);
 // TOUCH explicitly captures; held repeats must not restart capture.
@@ -156,10 +156,10 @@ console.log('PASS: dormant LINK fader blocks input, touch and stale motor feedba
 
 // One-shot encoder alignment: never unlock the hovered target or sync continuously.
 let encoder=.9,delivery='sync';const encoderWrites=[],deferred=[],lockWrites=[];
-s.knob.getProcessValue=()=>encoder;
-s.knob.setProcessValue=(context,value)=>{
+s.mouseKnobInput.getProcessValue=()=>encoder;
+s.mouseKnobInput.setProcessValue=(context,value)=>{
  const diff=value-encoder;encoder=value;encoderWrites.push(value);
- const callback=()=>s.knob.mOnProcessValueChange(context,value,diff);
+ const callback=()=>s.mouseKnobInput.mOnProcessValueChange(context,value,diff);
  if(delivery==='sync')callback();else if(delivery==='deferred')deferred.push(callback);
 };
 s.mouseLockFeedbackValue.setProcessValue=(_,value)=>{locked=value;lockWrites.push(value);};
@@ -169,7 +169,7 @@ assert.deepEqual(encoderWrites,[.32]); // Capture aligns once, without editing t
 function detent(diff) {
  const next=Math.max(0,Math.min(1,encoder+diff));
  const applied=next-encoder;encoder=next;
- s.knob.mOnProcessValueChange(ctx,next,applied);
+ s.mouseKnobInput.mOnProcessValueChange(ctx,next,applied);
 }
 for(const callbackMode of ['sync','deferred','none']) {
  delivery=callbackMode;
@@ -238,3 +238,34 @@ for(const priorMode of ['', 'MouseFader', 'Pan']) {
  assert.equal(motors.length,motorBefore);assert.equal(writes.length,writeBefore);
 }
 console.log('PASS: fresh/reloaded page starts in unlocked knob LINK, clears SHIFT and stale capture, and leaves fader dormant without motor or parameter writes');
+
+// Selected-track pan feedback can reach the shared surface; it must not be input to LINK.
+s.knob.setProcessValue=()=>assert.fail('LINK alignment must not write the host-bound knob');
+state.mouseBypassed='';s.activateKnobMode(ctx,'Mouse',{});
+delivery='sync';parameter=.5;s.beginMouseLinkCapture(ctx);settle();
+const feedbackQueue=[];
+for(const feedbackDelivery of ['sync','deferred']) {
+ let editCount=0;
+ s.mouseParameterFeedbackValue.setProcessValue=(context,value)=>{
+  assert(++editCount<10,'Pan feedback loop');
+  const delta=value-parameter;parameter=value;writes.push(value);
+  const feedback=()=>{s.knob.mOnProcessValueChange(context,value,delta);s.syncMouseFader(context);};
+  if(feedbackDelivery==='sync')feedback();else feedbackQueue.push(feedback);
+ };
+ parameter=.5;encoder=.5;
+ const before=writes.length;
+ // The physical CC reaches both surface inputs; only the isolated LINK input edits.
+ s.knob.mOnProcessValueChange(ctx,.55,.05);detent(.05);
+ while(feedbackQueue.length)feedbackQueue.shift()();
+ assert.equal(editCount,1);assert.equal(writes.length,before+1);
+ assert(Math.abs(parameter-.55)<1e-12);
+ // Unsolicited/shared-surface feedback does not move the locked value.
+ s.knob.mOnProcessValueChange(ctx,.9,.35);assert.equal(editCount,1);
+ push(1);push(0);while(feedbackQueue.length)feedbackQueue.shift()();
+ assert.equal(editCount,2);assert.equal(parameter,.5);
+ for(const mode of ['Pan','Send','MouseFader','Zoom','Section','Marker']) {
+  state.knobMode=mode;s.mouseKnobInput.mOnProcessValueChange(ctx,.8,.1);
+ }
+ assert.equal(editCount,2);state.knobMode='Mouse';
+}
+console.log('PASS: selected-track pan feedback cannot re-enter LINK edits, including deferred callbacks and reset; isolated input edits only in knob LINK');
