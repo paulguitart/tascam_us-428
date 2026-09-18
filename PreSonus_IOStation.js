@@ -1429,8 +1429,8 @@ function activateKnobMode(context, mode, activeMapping) {
     var target = mode === 'MouseFader' ? faderModes.Mouse : mode === 'Mouse' ? faderModes.Dormant
         : mode === 'Send' ? faderModes.Send
         : mode === 'MasterFX' ? faderModes.FXReturn
-        : mode === 'PreGain' ? faderModes.PreGain
-        : isTrackFaderBypassMode(mode) || mode === 'HighPass' ? faderModes.Track
+        : mode === 'PreGain' || mode === 'HighPass' ? faderModes.PreGain
+        : isTrackFaderBypassMode(mode) ? faderModes.Track
         : mode === 'Click' && ENABLE_METRONOME_FADER ? faderModes.Metronome : faderModes.StereoOut
     context.setState('faderTarget', target === faderModes.Send ? 'Send' : target === faderModes.Dormant ? 'Dormant'
         : target === faderModes.Mouse ? 'Mouse' : target === faderModes.Track ? 'Track'
@@ -1444,7 +1444,7 @@ function activateKnobMode(context, mode, activeMapping) {
         mappedFaderTouch.setProcessValue(context, 0)
     }
     target.mAction.mActivate.trigger(activeMapping)
-    if (mode === 'PreGain') syncPreGainFader(context)
+    if (mode === 'PreGain' || mode === 'HighPass') syncPreGainFader(context)
     if (isMouseLinkMode(mode)) context.setState('linkShiftEnabled', mode === 'MouseFader' ? '1' : '0')
     if (mode === 'MouseFader' && !enteringLink) syncMouseFader(context)
     // Fresh mode entries use their normal SHIFT state; history restores the exact saved bit.
@@ -1467,7 +1467,7 @@ function activateKnobMode(context, mode, activeMapping) {
 
 // High Pass uses white when off and red when on; inactive mode buttons follow the nuclear LED flags.
 function updateHighPassLED(context) {
-    if (context.getState('knobMode') !== 'HighPass') return
+    if (context.getState('knobMode') !== 'HighPass' && context.getState('knobMode') !== 'PreGain') return
     var color = context.getState('highPassEnabled') === '1' ? RED : WHITE
     setRGBLED_color(context, cChannel, color)
     onLED(context, cChannel)
@@ -1615,11 +1615,8 @@ var preGainFeedbackValue = null
 var polarityFeedbackValue = null
 
 function updatePreGainLED(context) {
-    if (context.getState('knobMode') !== 'PreGain') return
-    var gain = preGainFeedbackValue.getProcessValue(context)
-    var atZeroDb = isFinite(gain) && Math.abs(gain - 0.5) <= 1e-6
-    setRGBLED_color(context, cChannel, atZeroDb ? WHITE : AMBER)
-    onLED(context, cChannel)
+    // Both Channel layers report filter enable; TOUCH reports pre-gain.
+    updateHighPassLED(context)
 }
 
 function setupPreGainFeedback() {

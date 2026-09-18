@@ -67,15 +67,28 @@ for(const initial of choices){
  push();turn(1,.01);assert.equal(slope,24);
 }
 slope=displaySlope=6;
-// Normal CHANNEL retains calibrated volume, its reset, and ignores gain feedback.
-s.activateKnobMode(ctx,'HighPass',{});assert.equal(state.faderTarget,'Track');
-touched=1;s.var_faderInput.mOnProcessValueChange(ctx,.8);assert(Math.abs(volume-.75)<1e-12);
-touched=0;state.lastMotorPosition='';s.fader.mSurfaceValue.mOnProcessValueChange(ctx,.75);assert.equal(motors.pop(),Math.round(.8*16383));
-s.resetCurrentFader(ctx);assert.equal(volume,.75);s.updateTouchLED(ctx);assert.deepEqual(colors[s.cTouch],[127,127,127]);
-const count=motors.length;gain=.9;s.preGainFeedbackValue.mOnProcessValueChange(ctx,gain);assert.equal(motors.length,count);
+// Both CHANNEL layers share pre-gain; SHIFT must not move or retarget it.
+volume=.3;
+for(const mode of ['HighPass','PreGain','HighPass']){
+ s.activateKnobMode(ctx,mode,{});assert.equal(state.faderTarget,'PreGain');
+ touched=1;s.var_faderInput.mOnProcessValueChange(ctx,.8);assert.equal(gain,.8);assert.equal(volume,.3);
+ touched=0;state.lastMotorPosition='';s.fader.mSurfaceValue.mOnProcessValueChange(ctx,.75);assert.equal(motors.pop(),Math.round(.75*16383));
+ s.resetCurrentFader(ctx);assert.equal(gain,.5);assert.equal(volume,.3);assert.deepEqual(colors[s.cTouch],[127,127,127]);
+ gain=.9;s.preGainFeedbackValue.mOnProcessValueChange(ctx,gain);assert.equal(motors.pop(),Math.round(.9*16383));
+ for(const on of [0,1]){
+  s.highPassEnabledFeedbackValue.mOnProcessValueChange(ctx,on);
+  assert.deepEqual(colors[s.cChannel],on?[127,0,0]:[127,127,127]);
+  gain=.1;s.preGainFeedbackValue.mOnProcessValueChange(ctx,gain);
+  assert.deepEqual(colors[s.cChannel],on?[127,0,0]:[127,127,127]);
+ }
+}
+// PAN still has calibrated track volume.
+s.activateKnobMode(ctx,'Pan',{});assert.equal(state.faderTarget,'Track');
+touched=1;s.var_faderInput.mOnProcessValueChange(ctx,.8);assert(Math.abs(volume-.75)<1e-12);touched=0;
+s.activateKnobMode(ctx,'HighPass',{});
 let enabled=0,phase=0;s.highPassEnabledFeedbackValue.getProcessValue=()=>enabled;s.highPassEnabledFeedbackValue.setProcessValue=(_,v)=>enabled=v;
 s.polarityFeedbackValue.getProcessValue=()=>phase;s.polarityFeedbackValue.setProcessValue=(_,v)=>phase=v;
 state.highPassEnabled='0';push();assert.equal(enabled,1);assert.equal(slope,6);
 for(const mode of ['HighPass','PreGain']){state.knobMode=mode;s.toggleModeEffect(ctx);s.updateBypassLED(ctx);assert.equal(lamps[s.cBypass],phase>0)}
 assert.equal(enabled,1);
-console.log('PASS: both Channel fader targets, full-range feedback/motor mapping, reset/LEDs, native slope enum stepping, endless turns after reset, normal CHANNEL calibration/filter/phase isolation');
+console.log('PASS: both Channel fader targets, full-range feedback/motor mapping, reset/LEDs, native slope enum stepping, endless turns after reset, shared CHANNEL pre-gain/filter LEDs and PAN calibration isolation');

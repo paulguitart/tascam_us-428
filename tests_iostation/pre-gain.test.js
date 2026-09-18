@@ -10,7 +10,7 @@ s.polarityFeedbackValue.setProcessValue=(_,v)=>polarity=v;
 s.setRGBLED_color=(_,note,color)=>colors.push(Array.from(color));s.onLED=()=>{};
 let bypass;s.setTransportLed=(_,note,on)=>{if(note===s.cBypass)bypass=on};
 state.knobMode='PreGain';
-for(const [v,c] of [[.5,[127,127,127]],[0,[127,48,0]],[.499,[127,48,0]],[.501,[127,48,0]],[1,[127,48,0]]]){
+for(const [v,c] of [[.5,[127,127,127]],[0,[127,127,127]],[.499,[127,127,127]],[.501,[127,127,127]],[1,[127,127,127]]]){
   gain=v;s.preGainFeedbackValue.mOnProcessValueChange(ctx);assert.deepEqual(colors.pop(),c);
 }
 s.toggleModeEffect(ctx);s.updateBypassLED(ctx);assert.equal(polarity,1);assert.equal(bypass,true);
@@ -23,7 +23,7 @@ state.shiftEnabled='0';state.knobMode='HighPass';s.buttons.Bypass.setProcessValu
 const press=s.uSection.btn_Bypass.mSurfaceValue.mOnProcessValueChange;press(ctx,1);press(ctx,1);press(ctx,0);assert.equal(polarity,1);
 state.shiftEnabled='1';state.knobMode='PreGain';press(ctx,1);press(ctx,0);assert.equal(polarity,0);
 state.knobMode='Pan';s.preGainFeedbackValue.mOnProcessValueChange(ctx);assert.equal(colors.length,0);
-console.log('PASS: pre-gain white at 0 dB and amber otherwise; reset and phase BYPASS in both Channel modes');
+console.log('PASS: Channel white when filter is off regardless of pre-gain; reset and phase BYPASS in both Channel modes');
 
 // Exercise Channel/SHIFT transitions with action bindings simulated by their targets.
 s.buttons.Channel.setProcessValue=(ctx,v)=>{if(v)s.activateKnobMode(ctx,'HighPass',{})};

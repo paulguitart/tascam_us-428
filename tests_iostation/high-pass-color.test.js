@@ -20,7 +20,8 @@ assert.deepEqual(colors.pop(),{note:42,color:[127,0,0]});
 state.knobMode='Pan';s.updateHighPassLED(ctx);
 assert.equal(colors.length,0);assert.equal(lit.length,2);
 let gain=.5;s.preGainFeedbackValue={getProcessValue:()=>gain};state.knobMode='PreGain';
-for(const [v,expected] of [[.5,[127,127,127]],[0,[127,48,0]],[.499,[127,48,0]],[.501,[127,48,0]],[1,[127,48,0]]]){
-  gain=v;s.updatePreGainLED(ctx);assert.deepEqual(colors.pop(),{note:42,color:expected});
+for(const enabled of ['0','1']) for(const v of [0,.499,.5,.501,1]){
+ state.highPassEnabled=enabled;gain=v;s.updatePreGainLED(ctx);
+ assert.deepEqual(colors.pop(),{note:42,color:enabled==='1'?[127,0,0]:[127,127,127]});
 }
-console.log('PASS: Channel LED is white/red in High Pass and white/amber in Pre Gain');
+console.log('PASS: both Channel layers show white/red filter state independently of pre-gain');
