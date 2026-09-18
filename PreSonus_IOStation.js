@@ -50,6 +50,7 @@ const LINK_LOWER_COLOR = [127, 0, 40] // red-leaning magenta; distinct from gree
 const ENABLE_VOLUME_TOUCH_GLOW = true
 const ENABLE_CLICK_TOUCH_GLOW = true
 const TOUCH_GLOW_LOW_COLOR = AMBER
+const TOUCH_GLOW_BOTTOM_COLOR = BLUE // Volume only; set equal to LOW_COLOR for a single-color fade.
 const TOUCH_GLOW_HIGH_COLOR = RED
 const TOUCH_CLICK_GLOW_COLOR = GREEN
 const TOUCH_GLOW_MIN_BRIGHTNESS = 0.03
@@ -954,10 +955,22 @@ function updateTouchLED(context) {
             var distance = level < unity ? (unity - clampFader(level)) / unity
                 : (clampFader(level) - unity) / (1 - unity)
             var atZero = Math.abs(level - unity) <= tolerance
-            // Linear in physical travel; a small floor keeps near-zero color visible.
+            // Linear in physical travel; below unity fades down, above unity heats up.
             var floor = clampFader(TOUCH_GLOW_MIN_BRIGHTNESS)
             var brightness = atZero ? 1 : floor + (1 - floor) * distance
-            setRGBLED_color(context, cTouch, atZero ? WHITE : level < unity ? TOUCH_GLOW_LOW_COLOR : TOUCH_GLOW_HIGH_COLOR, brightness)
+            var glowColor = atZero ? WHITE : TOUCH_GLOW_HIGH_COLOR
+            if (!atZero && level < unity) {
+                brightness = floor + (1 - floor) * (1 - distance)
+                glowColor = TOUCH_GLOW_LOW_COLOR
+                if (volumeGlow && target !== 'PreGain') {
+                    glowColor = []
+                    for (var component = 0; component < 3; component++) {
+                        glowColor[component] = TOUCH_GLOW_LOW_COLOR[component]
+                            + (TOUCH_GLOW_BOTTOM_COLOR[component] - TOUCH_GLOW_LOW_COLOR[component]) * distance
+                    }
+                }
+            }
+            setRGBLED_color(context, cTouch, glowColor, brightness)
             setTransportLed(context, cTouch, true)
             return
         }

@@ -34,7 +34,7 @@ for(const [v,color,on] of [[0,[127,48,0],true],[1,[127,0,0],true],[.3,[127,48,0]
  gain=v;s.preGainFeedbackValue.mOnProcessValueChange(ctx,v);assert.equal(lamps[s.cTouch],on);if(color)assert.deepEqual(colors[s.cTouch],color);
 }
 // PreGain brightness follows physical distance, with full white at zero.
-for(const [v,color,brightness] of [[0,[127,48,0],1],[.25,[127,48,0],.515],[.499,[127,48,0],.03194],[.5,[127,127,127],1],[.501,[127,0,0],.03194],[.75,[127,0,0],.515],[1,[127,0,0],1]]){
+for(const [v,color,brightness] of [[0,[127,48,0],.03],[.25,[127,48,0],.515],[.499,[127,48,0],.99806],[.5,[127,127,127],1],[.501,[127,0,0],.03194],[.75,[127,0,0],.515],[1,[127,0,0],1]]){
  gain=v;s.preGainFeedbackValue.mOnProcessValueChange(ctx,v);
  assert.deepEqual(colors[s.cTouch],color);assert(Math.abs(brightnesses[s.cTouch]-brightness)<1e-9);assert.equal(lamps[s.cTouch],true);
 }
