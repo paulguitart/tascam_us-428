@@ -38,7 +38,7 @@ for(const mode of ['Zoom','Section','Marker','Master','MasterFX','Click']) {
   assert(commands.some(b=>b.input===input&&b.category==='Zoom'&&b.command===command&&b.page===s.knobModes[mode]));
  }
 }
-for(const mode of ['Zoom','Section','Master','MasterFX']) assert(commands.some(b=>b.input===s.var_zoomToLocators&&b.command==='Zoom to Locators'&&b.page===s.knobModes[mode]));
+for(const mode of ['Zoom','Section','Master','MasterFX','Click']) assert(commands.some(b=>b.input===s.var_zoomToLocators&&b.command==='Zoom to Locators'&&b.page===s.knobModes[mode]));
 assert(!bindings.some(b=>b.input===s.fader.mSurfaceValue)); // Fader has independent subpages.
 assert(!bindings.some(b=>b.input===s.knob&&(b.page===s.knobModes.Mouse||b.page===s.knobModes.MouseFader)));
 for(const mapping of s.knobModeButtons) assert(actions.some(a=>a.input===mapping.button&&a.action===mapping.mode.mAction.mActivate));
@@ -152,18 +152,16 @@ assert.deepStrictEqual(midi.filter(message=>message[0]===144&&message[1]===s.cMa
 s.knobModes.Click.mOnActivate(ctx);
 s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(ctx,1);
 s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(ctx,0);
-assert.deepStrictEqual(metronomePulses,[1]);
-s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(ctx,1);
-s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(ctx,0);
-assert.deepStrictEqual(metronomePulses,[1,0]);
+assert.deepStrictEqual(locatorPulses,[1,0]);
+assert.deepStrictEqual(metronomePulses,[]);
 s.knobModes.Master.mOnActivate(ctx);
 s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(ctx,1);
 s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(ctx,0);
 s.knobModes.MasterFX.mOnActivate(ctx);
 s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(ctx,1);
 s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(ctx,0);
-assert.deepStrictEqual(locatorPulses,[1,0,1,0]);
-console.log('PASS: Marker navigation/insert, Click metronome toggle and Zoom to Locators push in both Master modes');
+assert.deepStrictEqual(locatorPulses,[1,0,1,0,1,0]);
+console.log('PASS: Marker navigation/insert, Click zoom push and Zoom to Locators push in both Master modes');
 
 // Send edits must never share the physical knob's automatic host-binding path.
 // Drive actual mode activation and knob callbacks, including endpoint detents.

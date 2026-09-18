@@ -99,7 +99,7 @@ SCROLL / SHIFT + SCROLL  : Select Zoom knob mode
 MASTER (Normal)          : Select Master mode; encoder zooms; fader controls Stereo Out
 SHIFT + MASTER           : Fader controls FX Return 1; knob rotates/presses for zoom; BYPASS toggles FX Return mute
 CLICK (Normal)           : Select Click mode; knob zooms; fader controls Click level
-KNOB PUSH (Click Mode)   : Metronome on/off; Click LED shows Click mode; inactive RGB mode LEDs optionally show metronome
+KNOB PUSH (Click Mode)   : Zoom to Locators; BYPASS toggles metronome
 CHANNEL (Normal)         : Select High Pass (Low Cut) knob mode for the selected track
 SHIFT + CHANNEL         : Pre-gain; push resets 0 dB; BYPASS flips polarity (LED on = inverted)
 SECTION (Normal)         : Prev/Next recall cycle markers (wrap); fader controls selected-track volume
@@ -1231,7 +1231,6 @@ var masterInsertBypassFeedback = surface.makeCustomValueVariable('Master Insert 
 page.makeValueBinding(masterInsertBypassFeedback, masterInsertBypassed)
 masterInsertBypassFeedback.mOnProcessValueChange = function(context) {
     updateBypassLED(context)
-    updateMasterLED(context)
 }
 var hostMixerZoneFX = page.mHostAccess.mMixConsole.makeMixerBankZone().includeFXChannels()
 var fxChannel = hostMixerZoneFX.makeMixerBankChannel()
@@ -1242,14 +1241,7 @@ function isMetronomeBypassMode(mode) {
 
 function updateMasterLED(context) {
     var mode = context.getState('knobMode')
-    if (mode === 'Master' || mode === 'MasterFX') {
-        flashingLED(context, cMaster)
-        return
-    }
-    var notBypassed = masterInsertBypassFeedback
-        && masterInsertBypassFeedback.getProcessValue(context) === 0
-    if (notBypassed) onLED(context, cMaster)
-    else offLED(context, cMaster)
+    setTransportLed(context, cMaster, mode === 'Master' || mode === 'MasterFX')
 }
 
 // BYPASS is fixed-color hardware; PAN carries Send's RGB status.
@@ -1753,6 +1745,7 @@ function assignKnobControls() {
     page.makeCommandBinding(var_zoomToLocators, 'Zoom', 'Zoom to Locators').setSubPage(knobModes.Section)
     page.makeCommandBinding(var_zoomToLocators, 'Zoom', 'Zoom to Locators').setSubPage(knobModes.Master)
     page.makeCommandBinding(var_zoomToLocators, 'Zoom', 'Zoom to Locators').setSubPage(knobModes.MasterFX)
+    page.makeCommandBinding(var_zoomToLocators, 'Zoom', 'Zoom to Locators').setSubPage(knobModes.Click)
     if (cubase13OrHigher) {
         page.makeCommandBinding(var_markerInsertPressed,
             'Marker', 'Insert Marker').setSubPage(knobModes.Marker)
@@ -1780,8 +1773,8 @@ function assignKnobControls() {
     knobModes.Section.mOnActivate = function(context, activeMapping) { activateKnobMode(context, 'Section', activeMapping) }
     knobModes.Marker.mOnActivate = function(context, activeMapping) { activateKnobMode(context, 'Marker', activeMapping) }
 
-    // Route encoder pushes for the active command mode. Click uses the
-    // host-bound custom metronome variable rather than a page binding.
+    // Route encoder pushes for the active command mode. Click push zooms;
+    // BYPASS remains the metronome toggle.
     // Cubase 12 and 13+ expose Insert Marker under different command categories.
     mSection.knob_Press.mSurfaceValue.mOnProcessValueChange = function(context, value) {
         if (value <= 0) {
@@ -1802,15 +1795,13 @@ function assignKnobControls() {
             firstSendPrePostFeedbackValue.setProcessValue(context,
                 firstSendPrePostFeedbackValue.getProcessValue(context) > 0 ? 0 : 1)
             updateSendModeLED(context)
-        } else if (mode === 'Click') {
-            toggleMetronome(context)
+        } else if (mode === 'Click' || mode === 'Zoom' || mode === 'Section'
+            || mode === 'Master' || mode === 'MasterFX') {
+            pulseVar(context, var_zoomToLocators)
         } else if (mode === 'HighPass') {
             highPassFrequencyFeedbackValue.setProcessValue(context, 0)
         } else if (mode === 'Marker') {
             pulseVar(context, var_markerInsertPressed)
-        } else if (mode === 'Zoom' || mode === 'Section'
-            || mode === 'Master' || mode === 'MasterFX') {
-            pulseVar(context, var_zoomToLocators)
         }
     }
 

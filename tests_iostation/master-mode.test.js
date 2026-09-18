@@ -16,10 +16,10 @@ const scope = {
     isTrackFaderBypassMode: () => false,
     isMetronomeBypassMode: () => false,
     isMouseLinkMode: () => false,
-    setTransportLed: (ctx, note, enabled) => { if (note === 3) bypassLed = enabled; },
-    offLED: (ctx, note) => { if (note === 0x3A) masterLed = 0; },
-    onLED: (ctx, note) => { if (note === 0x3A) masterLed = 127; },
-    flashingLED: (ctx, note) => { if (note === 0x3A) masterLed = 1; },
+    setTransportLed: (ctx, note, enabled) => {
+        if (note === 3) bypassLed = enabled;
+        if (note === 0x3A) masterLed = enabled ? 127 : 0;
+    },
     masterInsertBypassFeedback: { getProcessValue: () => insertsBypassed },
     var_masterInsertBypassPressed: {
         setProcessValue: (ctx, value) => insertBypassPulses.push(value)
@@ -43,6 +43,8 @@ function runFunction(name, nextName) {
 runFunction('updateMasterLED', 'updateBypassLED');
 runFunction('updateBypassLED', 'toggleModeEffect');
 runFunction('toggleModeEffect', 'updateKnobModeLEDs');
+const masterLEDCode = source.slice(source.indexOf('function updateMasterLED('), source.indexOf('\n}', source.indexOf('function updateMasterLED(')) + 2);
+assert(!masterLEDCode.includes('masterInsertBypassFeedback'));
 
 state.knobMode = 'MasterFX';
 scope.updateBypassLED(context);
@@ -73,7 +75,7 @@ assert.equal(bypassLed, false);
 state.knobMode = 'Pan';
 insertsBypassed = 0;
 scope.updateMasterLED(context);
-assert.equal(masterLed, 127); // Global insert state outside Master modes.
+assert.equal(masterLed, 0); // Off outside Master modes, even when inserts are active.
 insertsBypassed = 1;
 scope.updateMasterLED(context);
 assert.equal(masterLed, 0);
@@ -81,14 +83,17 @@ for (const mode of ['Master', 'MasterFX']) {
     state.knobMode = mode;
     insertsBypassed = 0;
     scope.updateMasterLED(context);
-    assert.equal(masterLed, 1); // Hardware blink regardless of Main Mix insert state.
+    assert.equal(masterLed, 127); // On in either Master mode.
     insertsBypassed = 1;
     scope.updateMasterLED(context);
-    assert.equal(masterLed, 1); // Both Master modes blink regardless of insert state.
+    assert.equal(masterLed, 127); // Still on when the Main Mix insert is bypassed.
 }
-state.knobMode = 'Master'; // Returning from SHIFT + Master restores the Master-mode blink.
+state.knobMode = 'Master'; // Returning from SHIFT + Master keeps the mode LED on.
 scope.updateMasterLED(context);
-assert.equal(masterLed, 1);
+assert.equal(masterLed, 127);
+state.knobMode = 'Click';
+scope.updateMasterLED(context);
+assert.equal(masterLed, 0);
 
 const zoomPulses = [];
 scope.mSection = { knob_Press: { mSurfaceValue: {} } };
@@ -104,4 +109,4 @@ for (const mode of ['Master', 'MasterFX']) {
     scope.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(context, 0);
 }
 assert.deepEqual(zoomPulses, [1, 0, 1, 0]);
-console.log('PASS: Master and SHIFT + Master use separate BYPASS actions; Master LED feedback/blink and locator zoom verified');
+console.log('PASS: separate Master and SHIFT + Master BYPASS actions; insert-independent Master mode LED and locator zoom verified');

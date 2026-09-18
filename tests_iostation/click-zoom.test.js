@@ -14,7 +14,7 @@ const scope = {
     }
 };
 const state = { knobMode: 'Click' };
-const context = { getState: key => state[key] || '' };
+const context = { getState: key => state[key] || '', setState: (key, value) => { state[key] = value; } };
 vm.createContext(scope);
 const routeStart = source.indexOf('function routeUnboundKnobTurn(');
 const routeEnd = source.indexOf('function assignKnobControls(', routeStart);
@@ -32,4 +32,29 @@ assert(assignments.includes('knobModes.MasterFX, knobModes.Click'));
 assert(!assignments.includes('makeValueBinding(knob, hostTransport.mMetronomeClickLevel)'));
 assert(source.includes("|| mode === 'Click'\n                || mode === 'Master'"));
 assert(source.includes("page.makeValueBinding(fader.mSurfaceValue, hostTransport.mMetronomeClickLevel)"));
-console.log('PASS: Click knob rotation zooms horizontally; the knob is unbound from click level and the fader remains mapped');
+assert(source.includes("setSubPage(knobModes.Click)"));
+
+const locatorPulses = [];
+let metronomeToggles = 0;
+scope.var_zoomToLocators = { setProcessValue: (context, value) => locatorPulses.push(value) };
+scope.mSection = { knob_Press: { mSurfaceValue: {} } };
+scope.toggleMetronome = () => { metronomeToggles++; };
+scope.isTrackFaderBypassMode = () => false;
+scope.isMouseLinkMode = () => false;
+scope.isMetronomeBypassMode = mode => mode === 'Click';
+const pushStart = source.indexOf('    mSection.knob_Press.mSurfaceValue.mOnProcessValueChange =');
+const pushEnd = source.indexOf('    // Korg zoom pattern:', pushStart);
+assert(pushStart >= 0 && pushEnd > pushStart);
+vm.runInContext(source.slice(pushStart, pushEnd), scope);
+scope.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(context, 1);
+scope.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(context, 0);
+assert.deepEqual(locatorPulses, [1, 0]);
+assert.equal(metronomeToggles, 0);
+
+const effectStart = source.indexOf('function toggleModeEffect(');
+const effectEnd = source.indexOf('function updateKnobModeLEDs(', effectStart);
+assert(effectStart >= 0 && effectEnd > effectStart);
+vm.runInContext(source.slice(effectStart, effectEnd), scope);
+scope.toggleModeEffect(context);
+assert.equal(metronomeToggles, 1); // BYPASS remains the Click-mode metronome toggle.
+console.log('PASS: Click knob rotation and push zoom; BYPASS still toggles the metronome and the fader remains mapped');
