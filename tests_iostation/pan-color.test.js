@@ -34,6 +34,7 @@ console.log('PASS: pan gradient, color flag, host feedback, inactive LEDs, cente
 // Resetting level preserves either send enable state; the existing BYPASS handler still toggles it.
 let sendEnabled=0,sendLevel=.2;
 scope.isMetronomeBypassMode=()=>false;
+vm.runInContext(source.slice(source.indexOf('function isTrackFaderBypassMode('),source.indexOf('function clampFader(')),scope);
 scope.firstSendEnabledFeedbackValue={getProcessValue:()=>sendEnabled,setProcessValue:(_,v)=>{sendEnabled=v;}};
 
 const toggleStart=source.indexOf('function toggleModeEffect(context)');

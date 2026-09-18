@@ -84,3 +84,52 @@ s.activateKnobMode(ctx,'Send',{});const heldWrites=writes.length;s.var_faderInpu
 touched=0;s.faderTouch.mOnProcessValueChange(ctx,0);touched=1;s.faderTouch.mOnProcessValueChange(ctx,1);
 s.var_faderInput.mOnProcessValueChange(ctx,.2);assert.equal(send.mLevel.value,.2);
 console.log('PASS: send fader/TOUCH unity, independent track knob, pre/post push, all four PAN colors, BYPASS enable, feedback and saved PAN bypass restoration');
+
+// Navigation modes must never inherit Send, output, metronome or dormant fader targets.
+run('function isMetronomeBypassMode(', '// BYPASS is fixed-color');
+s.metronomeFeedbackValue={getProcessValue:()=>1};s.masterInsertBypassFeedback={getProcessValue:()=>0};
+let metronomeToggles=0;s.toggleMetronome=()=>metronomeToggles++;
+const trackModes=['Pan','Zoom','Section','Marker'];
+for(const previous of ['Pan','Send','Master','Click','Mouse','MouseFader']){
+ for(const destination of trackModes)for(const bypassed of ['', '1']){
+  touched=0;state.panFaderBypassed=bypassed;state.mouseFaderWaitRelease='';
+  state.knobMode=previous;state.faderTarget=previous==='Send'?'Send':previous==='Master'?'StereoOut':previous==='Click'?'Metronome':previous==='Mouse'?'Dormant':previous==='MouseFader'?'Mouse':'Track';
+  state.pendingMotorPosition='.9';
+  let activatedTarget=null;
+  s.faderModes.Track.mAction.mActivate.trigger=()=>activatedTarget='Track';
+  s.activateKnobMode(ctx,destination,{});
+  assert.equal(activatedTarget,'Track');assert.equal(state.faderTarget,'Track');
+  assert.equal(state.pendingMotorPosition,'');assert.equal(lamps[s.cBypass],bypassed==='1');
+  const beforeWrite=writes.length,beforeMotor=motors.length,sendBefore=send.mLevel.value;
+  touched=1;s.faderTouch.mOnProcessValueChange(ctx,1);s.var_faderInput.mOnProcessValueChange(ctx,.37);
+  s.fader.mSurfaceValue.mOnProcessValueChange(ctx,.37);touched=0;s.faderTouch.mOnProcessValueChange(ctx,0);
+  assert.equal(send.mLevel.value,sendBefore);
+  if(bypassed){assert.equal(writes.length,beforeWrite);assert.equal(motors.length,beforeMotor);assert.equal(mappedTouch,0);}
+  else {assert.equal(track.mValue.mVolume.value,.37);assert.equal(writes.length,beforeWrite+1);}
+  // Both SHIFT layers use the same fader bypass and never toggle the metronome.
+  for(const layer of ['0','1']){
+   state.shiftEnabled=layer;const before=state.panFaderBypassed==='1';
+   bypass(ctx,1);bypass(ctx,1);bypass(ctx,0);
+   assert.equal(state.panFaderBypassed==='1',!before);assert.equal(lamps[s.cBypass],!before);
+  }
+ }
+}
+assert.equal(metronomeToggles,0);
+// Disable once, traverse all shared modes, then re-enable under a held fader.
+state.panFaderBypassed='';s.activateKnobMode(ctx,'Pan',{});bypass(ctx,1);bypass(ctx,0);
+for(const destination of trackModes){s.activateKnobMode(ctx,destination,{});assert.equal(s.isPanFaderBypassed(ctx),true);assert.equal(lamps[s.cBypass],true);}
+touched=1;s.faderTouch.mOnProcessValueChange(ctx,1);const beforeHeld=writes.length;
+bypass(ctx,1);bypass(ctx,0);s.var_faderInput.mOnProcessValueChange(ctx,.9);assert.equal(writes.length,beforeHeld);
+touched=0;s.faderTouch.mOnProcessValueChange(ctx,0);touched=1;s.faderTouch.mOnProcessValueChange(ctx,1);
+s.var_faderInput.mOnProcessValueChange(ctx,.42);assert.equal(track.mValue.mVolume.value,.42);
+touched=0;s.faderTouch.mOnProcessValueChange(ctx,0);
+// Zoom remains an encoder-only command; fader events above never dispatch it.
+const zoomCommands=[];s.var_zoomIn={name:'in'};s.var_zoomOut={name:'out'};s.pulseVar=(_,v)=>zoomCommands.push(v.name);
+for(const destination of ['Zoom','Section','Marker']){
+ s.activateKnobMode(ctx,destination,{});const before=zoomCommands.length;
+ touched=1;s.var_faderInput.mOnProcessValueChange(ctx,.51);touched=0;s.faderTouch.mOnProcessValueChange(ctx,0);
+ assert.equal(zoomCommands.length,before);
+ s.routeUnboundKnobTurn(ctx,.6,.1);s.routeUnboundKnobTurn(ctx,.5,-.1);assert.deepEqual(zoomCommands.slice(-2),['in','out']);
+}
+s.activateKnobMode(ctx,'Click',{});state.shiftEnabled='0';bypass(ctx,1);bypass(ctx,0);assert.equal(metronomeToggles,1);
+console.log('PASS: PAN/Zoom/Section/Marker force track volume from every prior target, share BYPASS across SHIFT layers, preserve held-fader safety and keep zoom on encoder only');

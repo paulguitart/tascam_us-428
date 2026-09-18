@@ -101,7 +101,7 @@ CLICK (Normal)           : Select Click Level knob mode
 KNOB PUSH (Click Mode)   : Metronome on/off; Click LED shows Click mode; inactive RGB mode LEDs optionally show metronome
 CHANNEL (Normal)         : Select High Pass (Low Cut) knob mode for the selected track
 SHIFT + CHANNEL         : Pre-gain; push resets 0 dB; BYPASS flips polarity (LED on = inverted)
-SECTION (Normal)         : Prev/Next recall cycle markers (wrap); keep current fader target
+SECTION (Normal)         : Prev/Next recall cycle markers (wrap); fader controls selected-track volume
 MARKER (Normal)          : Select Marker mode; Prev/Next locate markers; knob push inserts marker
 
 KNOB MODES:
@@ -117,16 +117,16 @@ MARKER                   : Prev/Next locate previous/next marker; knob push inse
 
 FADER / FOOTSWITCH:
 ----------------------------------------------------------------------------------------------------
-FADER                    : Selected Track Volume; MASTER / CLICK use Stereo Out; SCROLL / SECTION / MARKER keep prior target
+FADER                    : Selected Track Volume; MASTER / CLICK use Stereo Out; SCROLL / SECTION / MARKER use selected-track volume
                          : Input is ignored until touched
                          : Motor waits while touched, then applies any pending position
 FOOTSWITCH               : Normalized to normally-closed press/release behavior by default
 
 BYPASS BUTTON PATHS:
 ----------------------------------------------------------------------------------------------------
-BYPASS                   : PAN: fader bypass; SHIFT + PAN: send 1 enable
+BYPASS                   : PAN / SCROLL / SECTION / MARKER: shared fader bypass; SHIFT + PAN: send 1 enable
                          : CHANNEL: high pass
-						 : CLICK, SCROLL, SECTION, MARKER: metronome enabled
+						 : CLICK: metronome enabled
                          : MASTER: Main Mix inserts (LED means not bypassed)
 						 
 UNASSIGNED BUTTON PATHS:
@@ -367,7 +367,7 @@ function assignButtonRouting(mapping) {
                 return
             }
             activeName = context.getState('shiftEnabled') === '1' ? shiftedName : normalName
-            if (normalName === 'Bypass' && (context.getState('knobMode') === 'PreGain' || isMouseLinkMode(context.getState('knobMode')) || context.getState('knobMode') === 'Pan' || context.getState('knobMode') === 'Send')) activeName = 'Bypass'
+            if (normalName === 'Bypass' && (context.getState('knobMode') === 'PreGain' || isMouseLinkMode(context.getState('knobMode')) || isTrackFaderBypassMode(context.getState('knobMode')) || context.getState('knobMode') === 'Send')) activeName = 'Bypass'
             if (normalName === 'Touch' && (isMouseLinkMode(context.getState('knobMode')) || context.getState('knobMode') === 'Send')) activeName = 'Touch'
             activeName = resolveKnobModeButton(context, activeName)
             context.setState(stateKey, activeName)
@@ -455,7 +455,11 @@ function flashingLED(context, note) { sendHardwareMidi(context, 0x90, note, 1) }
 function midi7(value) { return Math.max(0, Math.min(127, Math.round(value))) }
 function isPanFaderBypassed(context) {
     var mode = context.getState('knobMode')
-    return mode === 'Pan' && context.getState('panFaderBypassed') === '1'
+    return isTrackFaderBypassMode(mode) && context.getState('panFaderBypassed') === '1'
+}
+
+function isTrackFaderBypassMode(mode) {
+    return mode === 'Pan' || mode === 'Zoom' || mode === 'Section' || mode === 'Marker'
 }
 
 function clampFader(value) { return Math.max(0, Math.min(1, value)) }
@@ -939,7 +943,7 @@ function assignSelectedTrackControls() {
 
     page.makeActionBinding(var_trackPrev, hostTrackSelection.mAction.mPrevTrack)
     page.makeActionBinding(var_trackNext, hostTrackSelection.mAction.mNextTrack)
-    // Independent fader subpages let Scroll, Section and Marker preserve the previous assignment.
+    // Independent fader subpages keep navigation modes on selected-track volume.
     page.makeValueBinding(fader.mSurfaceValue, hostSelectedTrack.mValue.mVolume)
         .setSubPage(faderModes.Track)
     page.makeValueBinding(fader.mSurfaceValue, hostStereoOut.mValue.mVolume)
@@ -985,7 +989,9 @@ function sendTransportFeedback(hostValue, note, name) {
 }
 
 function updateClickLED(context) {
-    setTransportLed(context, cClick, context.getState('knobMode') === 'Click')
+    if (context.getState('knobMode') === 'Click') flashingLED(context, cClick)
+    else setTransportLed(context, cClick,
+        metronomeFeedbackValue && metronomeFeedbackValue.getProcessValue(context) > 0)
 }
 
 // Tascam pattern: host BPM -> milliseconds per beat -> Date.now() idle timer.
@@ -1048,6 +1054,7 @@ function setupMetronomeFeedback() {
             context.setState('metronomePulseStart', '')
         }
         context.setState('metronomeEnabled', enabled)
+        updateClickLED(context)
         updateMetronomeModeLEDs(context, Date.now())
         updateBypassLED(context)
     }
@@ -1211,7 +1218,7 @@ var hostMixerZoneFX = page.mHostAccess.mMixConsole.makeMixerBankZone().includeFX
 var fxChannel = hostMixerZoneFX.makeMixerBankChannel()
 
 function isMetronomeBypassMode(mode) {
-    return mode === 'Click' || mode === 'Zoom' || mode === 'Section' || mode === 'Marker'
+    return mode === 'Click'
 }
 
 // BYPASS is fixed-color hardware; PAN carries Send's RGB status.
@@ -1228,7 +1235,7 @@ function updateBypassLED(context) {
     var enabled = false
     if (mode === 'Master') {
         enabled = masterInsertBypassFeedback.getProcessValue(context) === 0
-    } else if (mode === 'Pan') {
+    } else if (isTrackFaderBypassMode(mode)) {
         enabled = context.getState('panFaderBypassed') === '1'
     } else if (mode === 'Send') {
         enabled = firstSendEnabledFeedbackValue && firstSendEnabledFeedbackValue.getProcessValue(context) <= 0
@@ -1247,7 +1254,7 @@ function updateBypassLED(context) {
 // BYPASS toggles the mode effect; Pan knob push separately centers pan.
 function toggleModeEffect(context) {
     var mode = context.getState('knobMode')
-    if (mode === 'Pan') {
+    if (isTrackFaderBypassMode(mode)) {
         context.setState('panFaderBypassed', context.getState('panFaderBypassed') === '1' ? '' : '1')
         context.setState('pendingMotorPosition', '')
         context.setState('lastMotorPosition', '')
@@ -1341,23 +1348,22 @@ function activateKnobMode(context, mode, activeMapping) {
         context.setState('mouseFaderWaitRelease', faderTouch.getProcessValue(context) > 0 ? '1' : '')
         mappedFaderTouch.setProcessValue(context, 0)
     }
-    // Mouse control ends on mode exit, even for modes that normally retain the fader.
-    if (isMouseLinkMode(current) || (mode !== 'Zoom' && mode !== 'Section' && mode !== 'Marker')) {
-        var target = mode === 'MouseFader' ? faderModes.Mouse : mode === 'Mouse' ? faderModes.Dormant
-            : mode === 'Send' ? faderModes.Send
-            : mode === 'Pan' || mode === 'HighPass' || mode === 'PreGain'
-            ? faderModes.Track
-            : mode === 'Click' && ENABLE_METRONOME_FADER ? faderModes.Metronome
-            : mode === 'Zoom' || mode === 'Section' || mode === 'Marker' ? faderModes.Track : faderModes.StereoOut
-        context.setState('faderTarget', target === faderModes.Send ? 'Send' : target === faderModes.Dormant ? 'Dormant' : target === faderModes.Mouse ? 'Mouse' : target === faderModes.Track ? 'Track'
-            : target === faderModes.Metronome ? 'Metronome' : 'StereoOut')
-        context.setState('pendingMotorPosition', '')
-        if (isMouseLinkMode(current) || isMouseLinkMode(mode) || current === 'Send' || mode === 'Send') {
-            context.setState('mouseFaderWaitRelease', faderTouch.getProcessValue(context) > 0 ? '1' : '')
-            mappedFaderTouch.setProcessValue(context, 0)
-        }
-        target.mAction.mActivate.trigger(activeMapping)
+    // Every mode explicitly selects its fader target; navigation modes always use track volume.
+    var previousFaderTarget = context.getState('faderTarget')
+    var target = mode === 'MouseFader' ? faderModes.Mouse : mode === 'Mouse' ? faderModes.Dormant
+        : mode === 'Send' ? faderModes.Send
+        : isTrackFaderBypassMode(mode) || mode === 'HighPass' || mode === 'PreGain' ? faderModes.Track
+        : mode === 'Click' && ENABLE_METRONOME_FADER ? faderModes.Metronome : faderModes.StereoOut
+    context.setState('faderTarget', target === faderModes.Send ? 'Send' : target === faderModes.Dormant ? 'Dormant'
+        : target === faderModes.Mouse ? 'Mouse' : target === faderModes.Track ? 'Track'
+        : target === faderModes.Metronome ? 'Metronome' : 'StereoOut')
+    context.setState('pendingMotorPosition', '')
+    if (previousFaderTarget !== context.getState('faderTarget') || isMouseLinkMode(current) || isMouseLinkMode(mode)) {
+        context.setState('lastMotorPosition', '')
+        context.setState('mouseFaderWaitRelease', faderTouch.getProcessValue(context) > 0 ? '1' : '')
+        mappedFaderTouch.setProcessValue(context, 0)
     }
+    target.mAction.mActivate.trigger(activeMapping)
     if (isMouseLinkMode(mode)) context.setState('linkShiftEnabled', mode === 'MouseFader' ? '1' : '0')
     if (mode === 'MouseFader' && !enteringLink) syncMouseFader(context)
     // These normal modes clear SHIFT; recalled alternates restore it from their mode.
