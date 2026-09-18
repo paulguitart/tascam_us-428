@@ -490,7 +490,10 @@ function sendHardwareMidi(context, status, address, value) {
     context.setState(cacheKey, String(value))
 }
 
-function offLED(context, note) { sendHardwareMidi(context, 0x90, note, 0) }
+function offLED(context, note) {
+    sendHardwareMidi(context, 0x90, note, 0)
+    if (rgbNotes.indexOf(note) >= 0) setRGBLED(context, note, 0, 0, 0)
+}
 function onLED(context, note) { sendHardwareMidi(context, 0x90, note, 127) }
 function flashingLED(context, note) { sendHardwareMidi(context, 0x90, note, 1) }
 function midi7(value) { return Math.max(0, Math.min(127, Math.round(value))) }
@@ -506,6 +509,7 @@ function isTrackFaderBypassMode(mode) {
 function clampFader(value) { return Math.max(0, Math.min(1, value)) }
 
 // RGB color and on/off/flash state are separate hardware messages.
+// OFF clears RGB components; callers set the color before turning an RGB LED on.
 function setRGBLED(context, note, r, g, b, brightness) {
     // Use an ES5 body check; Cubase does not parse ES2015 default parameters.
     if (typeof brightness === 'undefined') brightness = FULL_BRIGHTNESS
