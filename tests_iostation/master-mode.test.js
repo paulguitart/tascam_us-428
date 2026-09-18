@@ -4,8 +4,11 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 const source = fs.readFileSync(path.join(__dirname, '..', 'PreSonus_IOStation.js'), 'utf8');
+assert(source.includes('page.makeCommandBinding(var_masterInsertBypassPressed,'));
+assert(!source.includes('page.makeCommandBinding(buttons.Bypass,'));
 const state = {};
 let mute = 0, insertsBypassed = 0, bypassLed = false, masterLed = null;
+const insertBypassPulses = [];
 const context = { getState: key => state[key] || '', setState: (key, value) => { state[key] = value; } };
 const scope = {
     cBypass: 3,
@@ -18,6 +21,13 @@ const scope = {
     onLED: (ctx, note) => { if (note === 0x3A) masterLed = 127; },
     flashingLED: (ctx, note) => { if (note === 0x3A) masterLed = 1; },
     masterInsertBypassFeedback: { getProcessValue: () => insertsBypassed },
+    var_masterInsertBypassPressed: {
+        setProcessValue: (ctx, value) => insertBypassPulses.push(value)
+    },
+    pulseVar: (ctx, variable) => {
+        variable.setProcessValue(ctx, 1);
+        variable.setProcessValue(ctx, 0);
+    },
     fxReturnMuteFeedback: {
         getProcessValue: () => mute,
         setProcessValue: (ctx, value) => { mute = value; scope.updateBypassLED(ctx); }
@@ -37,8 +47,10 @@ runFunction('toggleModeEffect', 'updateKnobModeLEDs');
 state.knobMode = 'MasterFX';
 scope.updateBypassLED(context);
 assert.equal(bypassLed, false);
+assert.deepEqual(insertBypassPulses, []);
 scope.toggleModeEffect(context);
 assert.equal(mute, 1);
+assert.deepEqual(insertBypassPulses, []);
 assert.equal(bypassLed, true);
 scope.toggleModeEffect(context);
 assert.equal(mute, 0);
@@ -51,6 +63,9 @@ state.knobMode = 'Master';
 insertsBypassed = 0;
 scope.updateBypassLED(context);
 assert.equal(bypassLed, true);
+scope.toggleModeEffect(context);
+assert.deepEqual(insertBypassPulses, [1, 0]);
+assert.equal(mute, 1); // Normal Master uses its own insert command trigger.
 insertsBypassed = 1;
 scope.updateBypassLED(context);
 assert.equal(bypassLed, false);
@@ -66,11 +81,14 @@ for (const mode of ['Master', 'MasterFX']) {
     state.knobMode = mode;
     insertsBypassed = 0;
     scope.updateMasterLED(context);
-    assert.equal(masterLed, 1); // Hardware blink while the Main Mix insert is active.
+    assert.equal(masterLed, 1); // Hardware blink regardless of Main Mix insert state.
     insertsBypassed = 1;
     scope.updateMasterLED(context);
-    assert.equal(masterLed, 0); // A bypassed insert stays dark even in Master mode.
+    assert.equal(masterLed, 1); // Both Master modes blink regardless of insert state.
 }
+state.knobMode = 'Master'; // Returning from SHIFT + Master restores the Master-mode blink.
+scope.updateMasterLED(context);
+assert.equal(masterLed, 1);
 
 const zoomPulses = [];
 scope.mSection = { knob_Press: { mSurfaceValue: {} } };
@@ -86,4 +104,4 @@ for (const mode of ['Master', 'MasterFX']) {
     scope.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(context, 0);
 }
 assert.deepEqual(zoomPulses, [1, 0, 1, 0]);
-console.log('PASS: Master LED follows Main Mix insert globally and blinks when active in Master modes; BYPASS and locator zoom behavior verified');
+console.log('PASS: Master and SHIFT + Master use separate BYPASS actions; Master LED feedback/blink and locator zoom verified');

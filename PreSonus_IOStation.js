@@ -1217,6 +1217,7 @@ var var_zoomIn = surface.makeCustomValueVariable('Zoom In')
 var var_zoomOut = surface.makeCustomValueVariable('Zoom Out')
 var var_zoomToLocators = surface.makeCustomValueVariable('Zoom to Locators')
 var var_markerInsertPressed = surface.makeCustomValueVariable('Marker Insert Pressed')
+var var_masterInsertBypassPressed = surface.makeCustomValueVariable('Master Insert Bypass Pressed')
 
 // Same output-bank approach as the Korg: the FIRST output channel is Stereo Out.
 // Projects with multiple output buses must place the intended master first.
@@ -1240,12 +1241,15 @@ function isMetronomeBypassMode(mode) {
 }
 
 function updateMasterLED(context) {
+    var mode = context.getState('knobMode')
+    if (mode === 'Master' || mode === 'MasterFX') {
+        flashingLED(context, cMaster)
+        return
+    }
     var notBypassed = masterInsertBypassFeedback
         && masterInsertBypassFeedback.getProcessValue(context) === 0
-    var mode = context.getState('knobMode')
-    if (!notBypassed) offLED(context, cMaster)
-    else if (mode === 'Master' || mode === 'MasterFX') flashingLED(context, cMaster)
-    else onLED(context, cMaster)
+    if (notBypassed) onLED(context, cMaster)
+    else offLED(context, cMaster)
 }
 
 // BYPASS is fixed-color hardware; PAN carries Send's RGB status.
@@ -1287,6 +1291,10 @@ function toggleModeEffect(context) {
         var isMuted = fxReturnMuteFeedback.getProcessValue(context) > 0
         fxReturnMuteFeedback.setProcessValue(context, isMuted ? 0 : 1)
         updateBypassLED(context)
+        return
+    }
+    if (mode === 'Master') {
+        pulseVar(context, var_masterInsertBypassPressed)
         return
     }
     if (isTrackFaderBypassMode(mode)) {
@@ -1752,7 +1760,7 @@ function assignKnobControls() {
         page.makeCommandBinding(var_markerInsertPressed,
             'Transport', 'Insert Marker').setSubPage(knobModes.Marker)
     }
-    page.makeCommandBinding(buttons.Bypass,
+    page.makeCommandBinding(var_masterInsertBypassPressed,
         'Mixer', 'Bypass: Inserts on Main Mix').setSubPage(knobModes.Master)
     page.makeCommandBinding(var_markerPrev,
         'Transport', 'Locate Previous Marker')

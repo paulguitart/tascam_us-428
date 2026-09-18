@@ -47,9 +47,10 @@ assert(actions.some(a=>a.input===s.buttons.Zoom&&a.action===s.knobModes.Zoom.mAc
 assert(actions.some(a=>a.input===s.buttons.MasterFX&&a.action===s.knobModes.MasterFX.mAction.mActivate));
 assert(actions.some(a=>a.input===s.buttons.Click&&a.action===s.knobModes.Click.mAction.mActivate));
 assert(actions.some(a=>a.input===s.buttons.Marker&&a.action===s.knobModes.Marker.mAction.mActivate));
-assert(commands.some(binding=>binding.input===s.buttons.Bypass&&binding.category==='Mixer'
+assert(commands.some(binding=>binding.input===s.var_masterInsertBypassPressed&&binding.category==='Mixer'
  &&binding.command==='Bypass: Inserts on Main Mix'&&binding.page===s.knobModes.Master));
-assert(!commands.some(binding=>binding.input===s.buttons.Bypass&&binding.page===s.knobModes.MasterFX));
+assert(!commands.some(binding=>binding.input===s.buttons.Bypass));
+assert(!commands.some(binding=>binding.input===s.var_masterInsertBypassPressed&&binding.page===s.knobModes.MasterFX));
 s.assignSelectedTrackControls();
 const fxFaderBinding=bindings.find(b=>b.input===s.fader.mSurfaceValue&&b.host===s.fxChannel.mValue.mVolume&&b.page===s.faderModes.FXReturn);
 assert(fxFaderBinding);
