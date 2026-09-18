@@ -165,7 +165,7 @@ s.knob.setProcessValue=(context,value)=>{
 s.mouseLockFeedbackValue.setProcessValue=(_,value)=>{locked=value;lockWrites.push(value);};
 state.mouseBypassed='';s.activateKnobMode(ctx,'Mouse',{});
 parameter=.32;s.beginMouseLinkCapture(ctx);settle();lockWrites.length=0;
-assert.deepEqual(encoderWrites,[]); // Capture leaves the encoder alone.
+assert.deepEqual(encoderWrites,[.32]); // Capture aligns once, without editing the host.
 function detent(diff) {
  const next=Math.max(0,Math.min(1,encoder+diff));
  const applied=next-encoder;encoder=next;
@@ -173,6 +173,22 @@ function detent(diff) {
 }
 for(const callbackMode of ['sync','deferred','none']) {
  delivery=callbackMode;
+ // Initial capture must have full travel even if the prior mode left the knob at an edge.
+ for(const initialEncoder of [0,1]) {
+  encoder=initialEncoder;parameter=.32;
+  const before=writes.length,encoderBefore=encoderWrites.length;
+  s.beginMouseLinkCapture(ctx);settle();
+  while(deferred.length)deferred.shift()();
+  assert.equal(writes.length,before);assert.equal(encoderWrites.length,encoderBefore+1);
+  assert.equal(encoder,.32);assert.equal(parameter,.32);assert.equal(locked,1);
+  lockWrites.length=0;
+  for(let i=0;i<25;i++)detent(.05);
+  assert.equal(parameter,1);
+  for(let i=0;i<25;i++)detent(-.05);
+  assert.equal(parameter,0);
+  assert.deepEqual(lockWrites,[]); // Turning never releases the captured target.
+ }
+
  for(let cycle=0;cycle<3;cycle++) {
   parameter=.9;encoder=.9;
   const before=writes.length,encoderBefore=encoderWrites.length;
@@ -198,3 +214,27 @@ const before=writes.length;push(1);push(0);
 assert.equal(writes.length,before);assert.equal(encoderWrites.length,encoderBefore);
 assert.deepEqual(lockWrites,[]);
 console.log('PASS: one encoder alignment per LINK knob reset, sync/deferred/no callback guards, repeated full travel, preserved lock and snapshot; no host-feedback/fader/bypass alignment');
+
+// Page startup must explicitly activate knob LINK and never select a motorized target.
+s.page={};s.activateFaderNudge=()=>{};s.restoreTransportLEDs=()=>{};
+const activatedKnobModes=[];
+s.knobModes=Object.fromEntries(['Mouse','Pan'].map(mode=>[mode,{mAction:{mActivate:{trigger(mapping){
+ activatedKnobModes.push(mode);s.activateKnobMode(ctx,mode,mapping);
+}}}}]));
+run('page.mOnActivate =', 'page.mOnDeactivate =');
+for(const priorMode of ['', 'MouseFader', 'Pan']) {
+ state.knobMode=priorMode;state.shiftEnabled='1';state.linkShiftEnabled='1';
+ state.faderTarget='Track';state.mouseStartingValue='.7';state.mouseCaptureAt='123';locked=1;
+ state.pendingMotorPosition='.9';activatedTargets.length=0;activatedKnobModes.length=0;
+ const motorBefore=motors.length,writeBefore=writes.length;
+ s.page.mOnActivate(ctx,{});
+ assert.deepEqual(activatedKnobModes,['Mouse']);
+ assert(activatedTargets.length>0&&activatedTargets.every(target=>target==='Dormant'));
+ assert.equal(state.knobMode,'Mouse');assert.equal(state.faderTarget,'Dormant');
+ assert.equal(state.shiftEnabled,'0');assert.equal(state.linkShiftEnabled,'0');
+ assert.equal(locked,0);assert.equal(state.mouseStartingValue,'');assert.equal(state.mouseCaptureAt,'');
+ assert.equal(state.pendingMotorPosition,'');assert.equal(state.previousKnobMode,'');
+ s.var_faderInput.mOnProcessValueChange(ctx,.8);s.syncMouseFader(ctx);
+ assert.equal(motors.length,motorBefore);assert.equal(writes.length,writeBefore);
+}
+console.log('PASS: fresh/reloaded page starts in unlocked knob LINK, clears SHIFT and stale capture, and leaves fader dormant without motor or parameter writes');

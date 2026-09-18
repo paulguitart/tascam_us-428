@@ -1149,8 +1149,8 @@ var faderModes = {
 }
 var knobModeArea = page.makeSubPageArea('Knob Mode')
 var knobModes = {
+    Mouse: knobModeArea.makeSubPage('Mouse Parameter'), // Safe default: unlocked, fader dormant.
     Send: knobModeArea.makeSubPage('Send 1'),
-    Mouse: knobModeArea.makeSubPage('Mouse Parameter'),
     MouseFader: knobModeArea.makeSubPage('Mouse Fader (Knob Disabled)'),
     Pan: knobModeArea.makeSubPage('Pan'),
     Zoom: knobModeArea.makeSubPage('Zoom'),
@@ -1459,9 +1459,23 @@ function updateMouseLinkCapture(context, now) {
     mouseLockFeedbackValue.setProcessValue(context, 1)
     context.setState('mouseStartingValue', String(mouseParameterFeedbackValue.getProcessValue(context)))
     context.setState('mouseCaptureAt', '')
+    alignMouseKnobOnce(context, Number(context.getState('mouseStartingValue')))
     updateMouseLinkLED(context)
     syncMouseFader(context)
     updateBypassLED(context)
+}
+
+// Only explicit capture/reset actions align the encoder; never host feedback or turns.
+function alignMouseKnobOnce(context, value) {
+    if (context.getState('knobMode') !== 'Mouse' || !isFinite(value)) return
+    var resetting = context.getState('mouseKnobResetting')
+    context.setState('mouseKnobResetting', '1')
+    try {
+        context.setState('mouseKnobResetEcho', String(clampFader(value)))
+        knob.setProcessValue(context, clampFader(value))
+    } finally {
+        context.setState('mouseKnobResetting', resetting)
+    }
 }
 
 function restoreMouseLinkValue(context) {
@@ -1472,10 +1486,7 @@ function restoreMouseLinkValue(context) {
     context.setState('mouseKnobResetting', '1')
     try {
         mouseParameterFeedbackValue.setProcessValue(context, Number(saved))
-        if (context.getState('knobMode') === 'Mouse') {
-            context.setState('mouseKnobResetEcho', String(clampFader(Number(saved))))
-            knob.setProcessValue(context, clampFader(Number(saved)))
-        }
+        alignMouseKnobOnce(context, Number(saved))
     } finally {
         context.setState('mouseKnobResetting', '')
     }
@@ -1675,7 +1686,7 @@ function assignKnobControls() {
     // Korg zoom pattern: compare successive knob positions and fire zoom commands.
     // Pulse each command so consecutive detents in the same direction retrigger.
     knob.mOnProcessValueChange = function(context, newValue, diff) {
-        // Consume the one programmatic reset callback, including deferred delivery.
+        // Consume the one programmatic capture/reset callback, including deferred delivery.
         var resetEcho = context.getState('mouseKnobResetEcho')
         if (resetEcho !== '') {
             context.setState('mouseKnobResetEcho', '')
@@ -1718,8 +1729,8 @@ page.mOnActivate = function(context, activeMapping) {
     activateFaderNudge(context, activeMapping)
     context.setState('knobMode', '')
     context.setState('previousKnobMode', '')
-    knobModes.Pan.mAction.mActivate.trigger(activeMapping)
-    activateKnobMode(context, 'Pan', activeMapping)
+    knobModes.Mouse.mAction.mActivate.trigger(activeMapping)
+    activateKnobMode(context, 'Mouse', activeMapping)
     restoreTransportLEDs(context)
 }
 
