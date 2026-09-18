@@ -103,14 +103,14 @@ LINK (Normal)            : Mouse parameter on knob; fader dormant; push restores
 SHIFT inside LINK       : Toggle knob/fader; selection recalled on return, isolated from other modes
                          : TOUCH captures/locks (green = saved value, magenta = above, cyan = below); BYPASS disables controls
 PAN (Normal)             : Select Pan knob mode; knob push centers pan
-SCROLL / SHIFT + SCROLL  : Select Zoom knob mode
+SCROLL / SHIFT + SCROLL  : Zoom knob mode; Prev/Next recall cycle markers (wrap)
 MASTER (Normal)          : Select Master mode; encoder zooms; fader controls Stereo Out
 SHIFT + MASTER           : Fader controls FX Return 1; knob rotates/presses for zoom; BYPASS toggles FX Return mute
 CLICK (Normal)           : Select Click mode; knob zooms; fader controls Click level
 KNOB PUSH (Click Mode)   : Zoom to Locators; BYPASS toggles metronome
 CHANNEL (Normal)         : Select High Pass (Low Cut); knob push toggles filter; BYPASS flips polarity
 SHIFT + CHANNEL         : Pre-gain; push resets 0 dB; BYPASS flips polarity (LED on = inverted)
-SECTION (Normal)         : Prev/Next recall cycle markers (wrap); fader controls selected-track volume
+SECTION (Normal)         : Prev/Next set left/right locators; fader controls selected-track volume
 MARKER (Normal)          : Select Marker mode; Prev/Next locate markers; knob push inserts marker
 
 KNOB MODES:
@@ -795,7 +795,7 @@ function routeNavigationPress(context, direction) {
 
     if (ENABLE_FADER_NUDGE && (mode === 'Master' || mode === 'MasterFX')) {
         nudgeCurrentFader(context, direction === 'Prev' ? -1 : 1)
-    } else if (mode === 'Section') {
+    } else if (mode === 'Zoom') {
         if (direction === 'Prev') {
             recallPrevCycle(context)
         } else {
@@ -807,7 +807,7 @@ function routeNavigationPress(context, direction) {
         } else {
             pulseVar(context, var_markerNext)
         }
-    } else if (mode === 'Zoom' || mode === 'Master' || mode === 'MasterFX') {
+    } else if (mode === 'Section' || mode === 'Master' || mode === 'MasterFX') {
         if (direction === 'Prev') {
             pulseVar(context, var_setLeftLocatorPressed)
         } else {
