@@ -11,18 +11,33 @@ function capture(list,info){list.push(info);return {setSubPage(page){info.page=p
 s.page.makeValueBinding=(input,host)=>capture(bindings,{input,host});
 s.page.makeActionBinding=(input,action)=>actions.push({input,action});
 s.page.makeCommandBinding=(input,category,command)=>capture(commands,{input,category,command});
+// The SDK stub creates a new Send object per lookup; keep host identity stable.
+const sends=s.page.mHostAccess.mTrackSelection.mMixerChannel.mSends;
+const firstSend=sends.getByIndex(0);
+sends.getByIndex=index=>{assert.equal(index,0);return firstSend;};
 s.assignKnobControls();
-assert.equal(bindings.length,5);assert.equal(actions.length,7);assert.equal(commands.length,6);
-assert.strictEqual(bindings[0].host,s.page.mHostAccess.mTrackSelection.mMixerChannel.mValue.mPan);
-assert.strictEqual(bindings[0].page,s.knobModes.Pan);
-assert.strictEqual(bindings[1].host,s.fxChannel.mValue.mVolume);
-assert.strictEqual(bindings[1].page,s.knobModes.Master);
-assert.strictEqual(bindings[2].input,s.fader.mSurfaceValue);
-assert.strictEqual(bindings[2].host,s.hostStereoOut.mValue.mVolume);
-assert.strictEqual(bindings[2].page,s.knobModes.Master);
-assert.equal(bindings[2].scaled,undefined);
-assert.strictEqual(bindings[3].host,s.hostTransport.mMetronomeClickLevel);
-assert.strictEqual(bindings[3].page,s.knobModes.Click);
+// Check destinations by mode rather than depending on registration order.
+const expectedKnobs = [
+ ['Pan',s.page.mHostAccess.mTrackSelection.mMixerChannel.mValue.mPan],
+ ['Send',s.page.mHostAccess.mTrackSelection.mMixerChannel.mSends.getByIndex(0).mLevel],
+ ['Master',s.fxChannel.mValue.mVolume], ['Click',s.hostTransport.mMetronomeClickLevel],
+ ['PreGain',s.page.mHostAccess.mTrackSelection.mMixerChannel.mPreFilter.mGain], ['HighPass',s.page.mHostAccess.mTrackSelection.mMixerChannel.mPreFilter.mLowCutFreq]
+];
+for(const [mode,host] of expectedKnobs) {
+ const matches=bindings.filter(b=>b.input===s.knob&&b.page===s.knobModes[mode]);
+ assert.equal(matches.length,1);assert.strictEqual(matches[0].host,host);
+}
+assert.equal(bindings.find(b=>b.input===s.knob&&b.page===s.knobModes.Master).scaled,true);
+assert(bindings.some(b=>b.input===s.firstSendEnabledFeedbackValue&&b.host===firstSend.mOn));
+for(const mode of ['Zoom','Section','Marker']) {
+ for(const [input,command] of [[s.var_zoomIn,'Zoom In'],[s.var_zoomOut,'Zoom Out']]) {
+  assert(commands.some(b=>b.input===input&&b.category==='Zoom'&&b.command===command&&b.page===s.knobModes[mode]));
+ }
+}
+for(const mode of ['Zoom','Section']) assert(commands.some(b=>b.input===s.var_zoomToLocators&&b.command==='Zoom to Locators'&&b.page===s.knobModes[mode]));
+assert(!bindings.some(b=>b.input===s.fader.mSurfaceValue)); // Fader has independent subpages.
+assert(!bindings.some(b=>b.input===s.knob&&(b.page===s.knobModes.Mouse||b.page===s.knobModes.MouseFader)));
+for(const mapping of s.knobModeButtons) assert(actions.some(a=>a.input===mapping.button&&a.action===mapping.mode.mAction.mActivate));
 assert(actions.some(a=>a.input===s.buttons.Scroll&&a.action===s.knobModes.Zoom.mAction.mActivate));
 assert(actions.some(a=>a.input===s.buttons.Zoom&&a.action===s.knobModes.Zoom.mAction.mActivate));
 assert(actions.some(a=>a.input===s.buttons.Click&&a.action===s.knobModes.Click.mAction.mActivate));
@@ -47,6 +62,7 @@ console.log('PASS: isolated knob bindings, mode selectors, LED state, repeated z
 
 const preFilter=s.page.mHostAccess.mTrackSelection.mMixerChannel.mPreFilter;
 const cutoff=bindings.find(binding=>binding.host===preFilter.mLowCutFreq);
+s.setupHighPassFeedback();
 const enable=bindings.find(binding=>binding.host===preFilter.mLowCutOn);
 assert.strictEqual(cutoff.input,s.knob);
 assert.strictEqual(cutoff.page,s.knobModes.HighPass);
@@ -57,7 +73,7 @@ s.knobModes.HighPass.mOnActivate(ctx);
 assert(midi.some(message=>message[1]===s.cChannel&&message[2]===127));
 s.knobModes.Pan.mOnActivate(ctx);
 assert.deepStrictEqual(midi.filter(message=>message[1]===s.cChannel).pop(),[144,s.cChannel,0]);
-console.log('PASS: Channel selects high-pass; cutoff and push-toggle are scoped to that mode; mode LED clears on exit');
+console.log('PASS: Channel selects high-pass; cutoff and feedback are scoped to that mode; mode LED clears on exit');
 // High-pass color feedback uses host display values, including Hz/kHz formatting.
 assert.equal(s.parseFrequencyHz('80.0','Hz'),80);
 assert.equal(s.parseFrequencyHz('0,3','kHz'),300);
@@ -66,33 +82,22 @@ assert(Number.isNaN(s.parseFrequencyHz('Unavailable','Hz')));
 assert.equal(s.getHighPassColor(20).red,0);
 assert.equal(s.getHighPassColor(20).green,127);
 assert.equal(s.getHighPassColor(20).blue,0);
-assert.equal(Math.round(s.getHighPassColor(80).blue),77);
-assert.equal(Math.round(s.getHighPassColor(80).green),25);
-assert.equal(s.getHighPassColor(300).blue,127);
-for(const hz of [300,301,1000,20000]){
- const color=s.getHighPassColor(hz);
- assert.equal(color.red,127);assert.equal(color.green,0);assert.equal(color.blue,127);
-}
-for(let hz=20;hz<=20000;hz+=13){
- const color=s.getHighPassColor(hz);
- assert(Math.abs(Math.max(color.red,color.green,color.blue)-127)<1e-9);assert(Math.min(color.red,color.green,color.blue)<49);
- assert(color.blue>=0 && color.blue<=127);
- for(const component of ['red','green','blue']) assert(color[component]>=0 && color[component]<=127);
-}
+// Full gradient and endpoint coverage lives in high-pass-color.test.js.
 bindings.length=0;s.setupHighPassFeedback();
 const enabledFeedback=bindings.find(b=>b.host===preFilter.mLowCutOn).input;
 const frequencyFeedback=bindings.find(b=>b.host===preFilter.mLowCutFreq).input;
 s.knobModes.HighPass.mOnActivate(ctx);
 function lastColor(status){return midi.filter(message=>message[0]===status && message[1]===s.cChannel).pop()[2];}
 enabledFeedback.mOnProcessValueChange(ctx,0);
-assert.deepStrictEqual([lastColor(145),lastColor(146),lastColor(147)],[0,127,0]);
+assert.deepStrictEqual([lastColor(145),lastColor(146),lastColor(147)],[127,127,127]);
 frequencyFeedback.mOnDisplayValueChange(ctx,'300','Hz');
 enabledFeedback.mOnProcessValueChange(ctx,1);
 assert.deepStrictEqual([lastColor(145),lastColor(146),lastColor(147)],[127,0,127]);
 frequencyFeedback.mOnDisplayValueChange(ctx,'80','Hz');
-assert.deepStrictEqual([lastColor(145),lastColor(146),lastColor(147)],[127,0,65]);
+const at80=s.getHighPassColor(80);
+assert.deepStrictEqual([lastColor(145),lastColor(146),lastColor(147)],[at80.red,at80.green,at80.blue].map(Math.round));
 frequencyFeedback.mOnDisplayValueChange(ctx,'Unknown','');
-assert.deepStrictEqual([lastColor(145),lastColor(146),lastColor(147)],[127,0,0]);
+assert.deepStrictEqual([lastColor(145),lastColor(146),lastColor(147)],[0,127,0]); // Unknown frequency falls back to the low endpoint.
 s.knobModes.Pan.mOnActivate(ctx);
 enabledFeedback.mOnProcessValueChange(ctx,0);
 frequencyFeedback.mOnDisplayValueChange(ctx,'150','Hz');
@@ -100,8 +105,8 @@ assert.deepStrictEqual(midi.filter(message=>message[0]===144&&message[1]===s.cCh
 console.log('PASS: Hz parsing, green-to-magenta gradient with 300 Hz clamp, host-driven colors and off-mode LED');
 
 const markerModeCommands=commands.filter(binding=>binding.page===s.knobModes.Marker);
-assert(markerModeCommands.some(binding=>binding.input===s.buttons.Prev&&binding.category==='Transport'&&binding.command==='Locate Previous Marker'));
-assert(markerModeCommands.some(binding=>binding.input===s.buttons.Next&&binding.category==='Transport'&&binding.command==='Locate Next Marker'));
+assert(commands.some(binding=>binding.input===s.var_markerPrev&&binding.category==='Transport'&&binding.command==='Locate Previous Marker'));
+assert(commands.some(binding=>binding.input===s.var_markerNext&&binding.category==='Transport'&&binding.command==='Locate Next Marker'));
 const markerInsertCommand=s.cubase13OrHigher?'Marker':'Transport';
 assert.equal(markerModeCommands.filter(binding=>binding.category===markerInsertCommand&&binding.command==='Insert Marker').length,1);
 const markerPulses=[];
@@ -136,4 +141,4 @@ s.knobModes.Master.mOnActivate(ctx);
 s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(ctx,1);
 s.mSection.knob_Press.mSurfaceValue.mOnProcessValueChange(ctx,0);
 assert.deepStrictEqual(masterInsertPulses,[1,0]);
-console.log('PASS: Marker navigation/insert, Master fader and Master insert-bypass push');
+console.log('PASS: Marker navigation/insert, Click metronome toggle and Master insert-bypass push');

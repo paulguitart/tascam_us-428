@@ -79,5 +79,8 @@ h.scope.setRGBLED(h.context,77,127,40,0);
 assert.deepStrictEqual(h.messages,[[145,77,127],[146,77,40],[147,77,0]]);
 h.messages.length=0;
 h.scope.setRGBLED_color(h.context,77,[0,127,0]);
-assert.deepStrictEqual(h.messages,[[145,77,0],[146,77,127],[147,77,0]]);
+// Blue remains zero, so the output cache suppresses that unchanged component.
+assert.deepStrictEqual(h.messages,[[145,77,0],[146,77,127]]);
+h.scope.setRGBLED_color(h.context,77,[0,127,0]);
+assert.equal(h.messages.length,2);
 console.log('PASS: omitted brightness defaults to full for RGB components and color-array helper');

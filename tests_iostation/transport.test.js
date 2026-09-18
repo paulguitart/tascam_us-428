@@ -72,9 +72,11 @@ console.log('PASS: host transport bindings, toggle modes and command targets');
 // Utility actions use the named SHIFT paths; Cycle retains its existing binding.
 bindings.length = 0; commands.length = 0;
 scope.assignUtilityControls();
-assert.strictEqual(commands[0][0], scope.buttons.Undo);
-assert.strictEqual(commands[1][0], scope.buttons.Redo);
-assert.deepStrictEqual(commands.map(c => c.slice(1)), [['Edit','Undo'],['Edit','Redo']]);
+for (const name of ['Undo','Redo']) {
+    const matches = commands.filter(c => c[1] === 'Edit' && c[2] === name);
+    assert.equal(matches.length, 1);
+    assert.strictEqual(matches[0][0], scope.buttons[name]);
+}
 assert.equal(bindings.length, 0);
 assert(!scope.transportFeedback.some(feedback => feedback.note === scope.cClick));
 const metronome = scope.metronomeFeedbackValue;
@@ -95,29 +97,23 @@ for (const feedback of [cycle]) {
     feedback.value.mOnProcessValueChange(context,1);
     assert.deepStrictEqual(midi,[[144,feedback.note,0],[144,feedback.note,127]]);
 }
-function clickColor() {
-    return [145,146,147].map(status => Number(context.getState('midi.' + status + '.' + scope.cClick)));
-}
+
 function clickLedOn() {
     return Number(context.getState('midi.144.' + scope.cClick)) === 127;
 }
 scope.resetHardwareState(context); midi.length=0;
 context.setState('knobMode','Pan'); setMetronome(1);
-assert.deepStrictEqual(clickColor(),[127,48,0]); // metronome on outside Click mode: amber
-assert(clickLedOn());
+assert(!clickLedOn());
 scope.resetHardwareState(context); midi.length=0;
 scope.knobModes.Click.mOnActivate(context);
-assert.deepStrictEqual(clickColor(),[0,127,0]); // Click mode plus metronome on: green
 assert(clickLedOn());
-scope.resetHardwareState(context); midi.length=0;
+midi.length=0;
 setMetronome(0);
-assert.deepStrictEqual(clickColor(),[0,0,127]); // Click mode with metronome off: blue
 assert(clickLedOn());
 scope.resetHardwareState(context); midi.length=0;
 scope.knobModes.Pan.mOnActivate(context);
-assert.deepStrictEqual(clickColor(),[0,0,0]); // neither state active: off
 assert(!clickLedOn());
-console.log('PASS: Undo/Redo paths, mode-scoped metronome toggle, and Click RGB state colors');
+console.log('PASS: Undo/Redo paths, mode-scoped metronome toggle, and Click mode LED independent of metronome state');
 // Selected-track navigation and motor-fader volume use the existing logical paths.
 const actions = [];
 bindings.length = 0;
@@ -128,19 +124,14 @@ scope.page.makeActionBinding = (input, action) => {
 };
 scope.assignSelectedTrackControls();
 const selection = scope.page.mHostAccess.mTrackSelection;
-assert.equal(actions.length, 10);
-for (const modeName of ['Pan', 'Zoom', 'Master', 'Click', 'HighPass']) {
-    const mode = scope.knobModes[modeName];
-    assert(actions.some(binding => binding.input === scope.buttons.Prev
-        && binding.action === selection.mAction.mPrevTrack && binding.page === mode));
-    assert(actions.some(binding => binding.input === scope.buttons.Next
-        && binding.action === selection.mAction.mNextTrack && binding.page === mode));
-}
-assert(!actions.some(binding => binding.page === scope.knobModes.Marker));
-assert.equal(bindings.length, 5);
-for (const modeName of ['Pan', 'Zoom', 'Click', 'HighPass', 'Marker']) {
-    assert(bindings.some(binding => binding.input === scope.fader.mSurfaceValue
-        && binding.host === selection.mMixerChannel.mValue.mVolume
-        && binding.page === scope.knobModes[modeName]));
-}
-console.log('PASS: selected-track Prev/Next and fader bindings stay scoped outside Master/Marker navigation');
+assert.equal(actions.length, 2);
+assert(actions.some(b=>b.input===scope.var_trackPrev&&b.action===selection.mAction.mPrevTrack));
+assert(actions.some(b=>b.input===scope.var_trackNext&&b.action===selection.mAction.mNextTrack));
+const faderBindings=bindings.filter(b=>b.input===scope.fader.mSurfaceValue);
+assert.equal(faderBindings.length,4);
+for(const [mode,host] of [
+ ['Track',selection.mMixerChannel.mValue.mVolume], ['StereoOut',scope.hostStereoOut.mValue.mVolume],
+ ['Metronome',scope.hostTransport.mMetronomeClickLevel], ['Mouse',scope.page.mHostAccess.mMouseCursor.mValueUnderMouse]
+]) assert(faderBindings.some(b=>b.host===host&&b.page===scope.faderModes[mode]));
+assert(!faderBindings.some(b=>b.page===scope.faderModes.Dormant));
+console.log('PASS: logical track navigation and independent fader targets, with no dormant binding');

@@ -8,7 +8,7 @@ const scope = {
  STOP_SAVE_PREDELAY_MS: 500, SAVE_BLINK_INTERVAL_MS: 140, SAVE_BLINK_TOGGLES: 10,
  confirmTransportNotes: [1,2,3,4], stopProgressNotes: [2,1,3,4],
  transportFeedback: [1,2,3,4,5].map(note => ({note, value: {getProcessValue: () => note === 3 ? 1 : 0}})),
- setTransportLed: (_, note, on) => {leds[note] = on;}, updateMetronomeModeLEDs() {},
+ setTransportLed: (_, note, on) => {leds[note] = on;}, updateMetronomeModeLEDs() {}, updateMouseLinkCapture() {},
  deviceDriver: {}, hostTransport: {}, page: {makeValueBinding: () => ({setTypeToggle() {}}), makeCommandBinding() {}},
  transport: Object.fromEntries(['btnPlay','btnRecord','btnCycle','btnFastForward','btnStop','btnRewind'].map(name => [name,{mSurfaceValue:{}}]))
 };
