@@ -76,6 +76,23 @@ for (const name of ['Link', 'Pan', 'Channel', 'Scroll', 'Master', 'Click', 'Sect
 }
 console.log('PASS: mode selection enters normal modes despite SHIFT, toggles back, suppresses duplicate presses and releases across SHIFT changes');
 
+// TOUCH keeps its channel-mode fader reset action on both SHIFT layers.
+scope.buttons.Touch = scope.surface.makeCustomValueVariable('Touch');
+scope.resetCurrentFader = context => events.push(['resetCurrentFader', context.getState('knobMode')]);
+const touchMapping = { normalName: 'Touch', shiftedName: 'Latch', physicalButton: { mSurfaceValue: {} } };
+scope.assignButtonRouting(touchMapping);
+for (const [mode, shift] of [['HighPass', '0'], ['PreGain', '1']]) {
+    const context = device();
+    context.setState('knobMode', mode);
+    context.setState('shiftEnabled', shift);
+    events.length = 0;
+    const press = touchMapping.physicalButton.mSurfaceValue.mOnProcessValueChange;
+    press(context, 1);
+    press(context, 0);
+    assert.deepEqual(events, [['resetCurrentFader', mode], ['Touch', 1], ['Touch', 0]]);
+}
+console.log('PASS: TOUCH resets the channel fader in HighPass and PreGain modes');
+
 // Fresh mode entries clear SHIFT; history restores the exact prior mode and SHIFT bit.
 let shiftLed = false;
 scope.onLED = (_, note) => { if (note === scope.cShift) shiftLed = true; };

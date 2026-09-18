@@ -134,7 +134,8 @@ BYPASS                   : PAN / SCROLL / SECTION / MARKER: shared fader bypass;
 UNASSIGNED BUTTON PATHS:
 ----------------------------------------------------------------------------------------------------
 TOUCH                    : Normal path
-SHIFT + BYPASS / TOUCH / WRITE / READ          : BypassAll / Latch / Trim / Off
+SHIFT + BYPASS / TOUCH / WRITE / READ          : BypassAll / Latch* / Trim / Off
+                         : * TOUCH resets the fader in LINK, Send, and both CHANNEL modes
 SHIFT inside LINK        : Toggle remembered knob/fader selection
 SHIFT + PAN              : Send 1 fader mode
 SHIFT + CHANNEL          : Pre Gain mode
@@ -388,7 +389,8 @@ function assignButtonRouting(mapping) {
                 || context.getState('knobMode') === 'Send'
                 || context.getState('knobMode') === 'Master'
                 || context.getState('knobMode') === 'MasterFX')) activeName = 'Bypass'
-            if (normalName === 'Touch' && (isMouseLinkMode(context.getState('knobMode')) || context.getState('knobMode') === 'Send')) activeName = 'Touch'
+            if (normalName === 'Touch' && (isMouseLinkMode(currentMode) || currentMode === 'Send'
+                || currentMode === 'HighPass' || currentMode === 'PreGain')) activeName = 'Touch'
             activeName = resolveKnobModeButton(context, activeName)
             context.setState(stateKey, activeName)
             // Selected-track state bindings toggle on press; their release must not clear the host value.
